@@ -141,18 +141,29 @@ class MetaAnalysisAggregator(BaseAggregator):
 
         for trait, frame in (("bmi", bmi_df), ("t2d", t2d_df)):
             plot_manhattan(
-                frame, trait.upper(), self.hit_threshold,
-                self.graphs_dir / f"appfl_meta_gwas_{trait}_manhattan.png", label="meta",
+                frame,
+                trait.upper(),
+                self.hit_threshold,
+                self.graphs_dir / f"appfl_meta_gwas_{trait}_manhattan.png",
+                label="meta",
             )
             plot_qq(
-                frame["P"].to_numpy(dtype=np.float64), trait.upper(), self.qq_max_points,
+                frame["P"].to_numpy(dtype=np.float64),
+                trait.upper(),
+                self.qq_max_points,
                 self.graphs_dir / f"appfl_meta_gwas_{trait}_qq.png",
             )
 
         if self.plot_per_site:
             self._plot_per_site(
-                client_ids, variant_df, bmi_beta_stack, bmi_se_stack,
-                t2d_beta_stack, t2d_se_stack, maf_stack, gwas_n,
+                client_ids,
+                variant_df,
+                bmi_beta_stack,
+                bmi_se_stack,
+                t2d_beta_stack,
+                t2d_se_stack,
+                maf_stack,
+                gwas_n,
             )
 
         self.global_state = {
@@ -195,17 +206,22 @@ class MetaAnalysisAggregator(BaseAggregator):
         contributions = np.where(usable, weights * beta_stack, 0.0)
 
         beta = np.divide(
-            contributions.sum(axis=0), weight_sum,
-            out=np.full(weight_sum.shape, np.nan, dtype=np.float64), where=weight_sum > 0,
+            contributions.sum(axis=0),
+            weight_sum,
+            out=np.full(weight_sum.shape, np.nan, dtype=np.float64),
+            where=weight_sum > 0,
         )
         se = np.sqrt(
             np.divide(
-                1.0, weight_sum,
-                out=np.full(weight_sum.shape, np.nan, dtype=np.float64), where=weight_sum > 0,
+                1.0,
+                weight_sum,
+                out=np.full(weight_sum.shape, np.nan, dtype=np.float64),
+                where=weight_sum > 0,
             )
         )
         stat = np.divide(
-            beta, se,
+            beta,
+            se,
             out=np.zeros(weight_sum.shape, dtype=np.float64),
             where=np.isfinite(se) & (se > 0),
         )
@@ -266,7 +282,8 @@ class MetaAnalysisAggregator(BaseAggregator):
             ):
                 with np.errstate(divide="ignore", invalid="ignore"):
                     stat = np.divide(
-                        beta_row, se_row,
+                        beta_row,
+                        se_row,
                         out=np.zeros_like(beta_row),
                         where=np.isfinite(se_row) & (se_row > 0),
                     )
@@ -281,10 +298,15 @@ class MetaAnalysisAggregator(BaseAggregator):
 
                 lower = trait.lower()
                 plot_manhattan(
-                    frame, trait, self.hit_threshold,
-                    per_site_dir / f"{client_id}_{lower}_manhattan.png", label=str(client_id),
+                    frame,
+                    trait,
+                    self.hit_threshold,
+                    per_site_dir / f"{client_id}_{lower}_manhattan.png",
+                    label=str(client_id),
                 )
                 plot_qq(
-                    p_value, trait, self.qq_max_points,
+                    p_value,
+                    trait,
+                    self.qq_max_points,
                     per_site_dir / f"{client_id}_{lower}_qq.png",
                 )

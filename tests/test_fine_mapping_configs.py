@@ -209,7 +209,7 @@ def test_the_published_scenario_refuses_to_run_without_a_staged_pool(tmp_path, m
     from appfl_bio_suite.experiments.fine_mapping.simulation.cohort import materialize_pool
 
     monkeypatch.delenv("FEDFM_HAPNEST_DIR", raising=False)
-    scenario = load_scenario("three-site-hapnest")   # loads fine
+    scenario = load_scenario("three-site-hapnest")  # loads fine
 
     with pytest.raises(ValueError, match="FEDFM_HAPNEST_DIR"):
         scenario.pool_dir(tmp_path)
@@ -277,9 +277,7 @@ def test_a_scenario_missing_a_pipeline_block_is_refused():
 def test_server_config_is_single_round():
     """Aggregate FL has exactly one exchange. More rounds recompute identical second
     moments at full cost, which looks like a hang rather than an error."""
-    config = yaml.safe_load(
-        (SPEC.configs_path / "server.yaml").read_text(encoding="utf-8")
-    )
+    config = yaml.safe_load((SPEC.configs_path / "server.yaml").read_text(encoding="utf-8"))
     assert config["server_configs"]["num_global_epochs"] == 1
 
 

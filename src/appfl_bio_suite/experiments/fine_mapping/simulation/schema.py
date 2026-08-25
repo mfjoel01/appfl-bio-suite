@@ -106,7 +106,12 @@ class CohortParams:
     # come from the per-site compositions; this only has to be large enough to serve them.
     superpopulation_weights: dict[str, float] = field(
         default_factory=lambda: {
-            "EUR": 0.30, "AFR": 0.30, "AMR": 0.10, "EAS": 0.08, "CSA": 0.14, "MID": 0.08
+            "EUR": 0.30,
+            "AFR": 0.30,
+            "AMR": 0.10,
+            "EAS": 0.08,
+            "CSA": 0.14,
+            "MID": 0.08,
         }
     )
     # Variants per LD block, and the within-block correlation. Fine-mapping is entirely
@@ -216,8 +221,15 @@ class FineMappingScenario:
                 "here -- see fedfm/__init__.py."
             )
 
-        for key in ("master_seed", "chromosome", "superpopulations", "locus_selection",
-                    "architecture", "phenotype", "qc"):
+        for key in (
+            "master_seed",
+            "chromosome",
+            "superpopulations",
+            "locus_selection",
+            "architecture",
+            "phenotype",
+            "qc",
+        ):
             if key not in self.pipeline:
                 raise ValueError(
                     f"scenario '{self.name}' is missing `pipeline.{key}`. The pipeline "

@@ -127,9 +127,7 @@ def run_simulation(scenario, out_dir: Path, notes: str = ""):
 
     # -- step 0 --------------------------------------------------------
     log.info("step 0: genotype pool (provider=%s)", scenario.cohort.provider)
-    pool_prefix = materialize_pool(
-        scenario.cohort, scenario.chromosome, scenario.pool_dir(out_dir)
-    )
+    pool_prefix = materialize_pool(scenario.cohort, scenario.chromosome, scenario.pool_dir(out_dir))
 
     # -- step 1 --------------------------------------------------------
     log.info("step 1: per-site cohorts")
@@ -153,10 +151,7 @@ def run_simulation(scenario, out_dir: Path, notes: str = ""):
         name=scenario.name,
         description=scenario.description,
         seed=int(scenario.pipeline.get("master_seed", 0)),
-        sites=[
-            SiteAllocation(site_id=site, n_samples=int(cfg.sites[site].n))
-            for site in site_ids
-        ],
+        sites=[SiteAllocation(site_id=site, n_samples=int(cfg.sites[site].n)) for site in site_ids],
         parameters={"cohort": scenario.cohort.to_dict(), "pipeline": scenario.pipeline},
     )
 
@@ -235,9 +230,7 @@ def _write_pipeline_config(scenario, cfg, out_dir: Path) -> Path:
         "# comparators the federated run is judged against. They run on the coordinator\n"
         "# and have no APPFL involvement.\n"
     )
-    destination.write_text(
-        header + yaml.safe_dump(body, sort_keys=False), encoding="utf-8"
-    )
+    destination.write_text(header + yaml.safe_dump(body, sort_keys=False), encoding="utf-8")
     log.info("pipeline config: %s", destination)
     return destination
 
@@ -253,7 +246,8 @@ def cli_entry(
     from appfl_bio_suite.core.simulation import verify_against_manifest
 
     logging.basicConfig(
-        level=logging.INFO, format="[%(asctime)s %(levelname)s] %(message)s",
+        level=logging.INFO,
+        format="[%(asctime)s %(levelname)s] %(message)s",
         datefmt="%H:%M:%S",
     )
 
@@ -297,9 +291,7 @@ def cli_entry(
         return 2
 
     loaded = load_scenario(scenario)
-    destination = (
-        Path(out_dir) if out_dir else Path("local/data") / f"fine-mapping-{loaded.name}"
-    )
+    destination = Path(out_dir) if out_dir else Path("local/data") / f"fine-mapping-{loaded.name}"
     manifest = run_simulation(loaded, destination)
 
     print(f"\nSimulation complete: {destination}")
@@ -317,10 +309,7 @@ def cli_entry(
         f"--data-root {destination}"
     )
     print("\nVerify a later rerun against this run with:")
-    print(
-        f"  appfl-bio-suite simulate fine-mapping --verify "
-        f"{destination / 'run_manifest.json'}"
-    )
+    print(f"  appfl-bio-suite simulate fine-mapping --verify {destination / 'run_manifest.json'}")
     return 0
 
 

@@ -129,9 +129,7 @@ def write_plink1(prefix: Path, genotypes, chrom, positions, sample_ids, alleles=
             )
             codes[n_samples:] = _MISSING_CODE
             quads = codes.reshape(-1, 4)
-            packed = (
-                quads[:, 0] | (quads[:, 1] << 2) | (quads[:, 2] << 4) | (quads[:, 3] << 6)
-            )
+            packed = quads[:, 0] | (quads[:, 1] << 2) | (quads[:, 2] << 4) | (quads[:, 3] << 6)
             handle.write(packed.astype(np.uint8).tobytes())
 
     return prefix
@@ -205,10 +203,7 @@ def generate_synthetic_pool(params: CohortParams, chromosome: int, out_dir: Path
     base_rho = float(np.clip(params.ld_correlation, 0.0, 0.99))
     spread = float(np.clip(params.ld_divergence, 0.0, 1.0)) * 0.5
     rho = {
-        pop: np.clip(
-            base_rho + rng.uniform(-spread, spread, n_blocks), 0.05, 0.98
-        )
-        for pop in pops
+        pop: np.clip(base_rho + rng.uniform(-spread, spread, n_blocks), 0.05, 0.98) for pop in pops
     }
 
     genotypes = np.empty((n, m), dtype=np.int8)
@@ -272,8 +267,7 @@ def materialize_pool(params: CohortParams, chromosome: int, hapnest_dir: Path) -
             )
         prefix = staged / POOL_STEM(chromosome)
         missing = [
-            str(_ext(prefix, e)) for e in (".bed", ".bim", ".fam")
-            if not _ext(prefix, e).is_file()
+            str(_ext(prefix, e)) for e in (".bed", ".bim", ".fam") if not _ext(prefix, e).is_file()
         ]
         if not (staged / "population_manifest.tsv").is_file():
             missing.append(str(staged / "population_manifest.tsv"))
@@ -292,14 +286,14 @@ def materialize_pool(params: CohortParams, chromosome: int, hapnest_dir: Path) -
 
     if params.provider == "synthetic_hapnest":
         prefix = hapnest_dir / POOL_STEM(chromosome)
-        if all(_ext(prefix, e).is_file() for e in (".bed", ".bim", ".fam")) and (
-            hapnest_dir / "population_manifest.tsv"
-        ).is_file():
+        if (
+            all(_ext(prefix, e).is_file() for e in (".bed", ".bim", ".fam"))
+            and (hapnest_dir / "population_manifest.tsv").is_file()
+        ):
             log.info("pool already present, reusing: %s", prefix)
             return prefix
         return generate_synthetic_pool(params, chromosome, hapnest_dir)
 
     raise ValueError(
-        f"unknown cohort provider '{params.provider}'. "
-        "Known: synthetic_hapnest, hapnest."
+        f"unknown cohort provider '{params.provider}'. Known: synthetic_hapnest, hapnest."
     )

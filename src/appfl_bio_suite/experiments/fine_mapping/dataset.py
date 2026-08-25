@@ -102,8 +102,7 @@ class SiteFineMappingDataset:
             raise FileNotFoundError(
                 f"{self.site_id}: missing required input files in {self.data_dir}\n"
                 "  missing: " + ", ".join(missing) + "\n"
-                "  present: " + (", ".join(present) if present else "(directory is empty)")
-                + "\n\n"
+                "  present: " + (", ".join(present) if present else "(directory is empty)") + "\n\n"
                 "Unpack the bundle you were sent so that these files sit directly in "
                 "data_dir, not in a nested subdirectory."
             )
@@ -119,9 +118,7 @@ class SiteFineMappingDataset:
 
         # -- the fam: one line per individual, in .bed column order ------------
         with self.plink_fam.open("r", encoding="utf-8") as handle:
-            fam_ids = [
-                line.split()[1] for line in handle if line.strip()
-            ]
+            fam_ids = [line.split()[1] for line in handle if line.strip()]
         self.sample_size = len(fam_ids)
         if self.sample_size == 0:
             raise ValueError(
@@ -162,9 +159,7 @@ class SiteFineMappingDataset:
         self.composition = dict(sorted(composition.items()))
 
         # -- the loci to fine-map ---------------------------------------------
-        self.loci = _read_tsv(
-            self.loci_path, ("locus_id", "chrom", "start_bp", "end_bp")
-        )
+        self.loci = _read_tsv(self.loci_path, ("locus_id", "chrom", "start_bp", "end_bp"))
         if not self.loci:
             raise ValueError(f"{self.site_id}: selected_loci.tsv lists no loci")
 

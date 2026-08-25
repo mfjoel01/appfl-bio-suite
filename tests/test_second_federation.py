@@ -44,8 +44,7 @@ def test_it_shares_nothing_with_the_shipped_example(federation):
     assert federation.coordinator.identity != example.coordinator.identity
     assert {s.id for s in federation.sites}.isdisjoint({s.id for s in example.sites})
     assert (
-        federation.experiment("gwas").service_account
-        != example.experiment("gwas").service_account
+        federation.experiment("gwas").service_account != example.experiment("gwas").service_account
     )
 
 
@@ -130,15 +129,19 @@ def test_the_endpoint_template_matches_each_sites_scheduler(federation, tmp_path
     """A PBS site and a SLURM site must get different provider blocks."""
     from appfl_bio_suite.core.partner import generate_bundle
 
-    pbs = (generate_bundle(federation, "gwas", "harbour-lab", tmp_path / "a")
-           / "user_config_template.yaml.j2").read_text(encoding="utf-8")
+    pbs = (
+        generate_bundle(federation, "gwas", "harbour-lab", tmp_path / "a")
+        / "user_config_template.yaml.j2"
+    ).read_text(encoding="utf-8")
     assert "PBSProProvider" in pbs
     assert "queue: research" in pbs
     assert "MpiExecLauncher" in pbs
     assert "SlurmProvider" not in pbs
 
-    slurm = (generate_bundle(federation, "gwas", "reef-station", tmp_path / "b")
-             / "user_config_template.yaml.j2").read_text(encoding="utf-8")
+    slurm = (
+        generate_bundle(federation, "gwas", "reef-station", tmp_path / "b")
+        / "user_config_template.yaml.j2"
+    ).read_text(encoding="utf-8")
     assert "SlurmProvider" in slurm
     assert "partition: batch" in slurm
     assert "SrunLauncher" in slurm
@@ -151,9 +154,7 @@ def test_the_config_block_carries_this_sites_own_paths(federation, tmp_path):
     from appfl_bio_suite.core.partner import generate_bundle
 
     destination = generate_bundle(federation, "gwas", "reef-station", tmp_path)
-    block = yaml.safe_load(
-        (destination / "your-config-block.yaml").read_text(encoding="utf-8")
-    )[0]
+    block = yaml.safe_load((destination / "your-config-block.yaml").read_text(encoding="utf-8"))[0]
 
     assert block["client_id"] == "Reef"
     assert block["data_configs"]["dataset_kwargs"]["data_dir"] == "/scratch/marine_gwas/reef"

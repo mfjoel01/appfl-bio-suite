@@ -92,7 +92,7 @@ def split_instance_id(instance: str, locus_id: str) -> tuple[str, int]:
     """
     if not instance.startswith(f"{locus_id}_"):
         raise ValueError(f"instance {instance!r} does not belong to locus {locus_id!r}")
-    remainder = instance[len(locus_id) + 1:]
+    remainder = instance[len(locus_id) + 1 :]
     arch_id, sep, rep = remainder.rpartition("_rep")
     if not sep or not rep.isdigit():
         raise ValueError(
@@ -118,9 +118,7 @@ class FineMappingAggregator(BaseAggregator):
         self.keep_work = bool(cfg.get("keep_work", False))
         self.make_figures = bool(cfg.get("make_figures", True))
 
-        self.output_dir = Path(
-            cfg.get("output_dir", "local/output/fine-mapping")
-        ).resolve()
+        self.output_dir = Path(cfg.get("output_dir", "local/output/fine-mapping")).resolve()
         self.data_dir = self.output_dir / "data"
         self.graphs_dir = self.output_dir / "graphs"
         self.logs_dir = self.output_dir / "logs"
@@ -142,9 +140,7 @@ class FineMappingAggregator(BaseAggregator):
         self.vendor_root = Path(cfg.get("vendor_root", ".")).resolve()
         self.susiex = str(cfg.get("susiex_binary") or _resolve_binary("SuSiEx", self.vendor_root))
         try:
-            self.plink = str(
-                cfg.get("plink_binary") or _resolve_binary("plink", self.vendor_root)
-            )
+            self.plink = str(cfg.get("plink_binary") or _resolve_binary("plink", self.vendor_root))
         except FileNotFoundError:
             self.plink = "plink"
 
@@ -180,13 +176,15 @@ class FineMappingAggregator(BaseAggregator):
                 # Every site must agree on a locus's window, or they are not fine-mapping
                 # the same region. Checked rather than assumed because the windows come
                 # from each site's own bundle.
-                as_series = pd.Series({
-                    "locus_id": entry["locus_id"],
-                    "chrom": int(entry["chrom"]),
-                    "start_bp": int(entry["start_bp"]),
-                    "end_bp": int(entry["end_bp"]),
-                    "stratum": entry.get("stratum", ""),
-                })
+                as_series = pd.Series(
+                    {
+                        "locus_id": entry["locus_id"],
+                        "chrom": int(entry["chrom"]),
+                        "start_bp": int(entry["start_bp"]),
+                        "end_bp": int(entry["end_bp"]),
+                        "stratum": entry.get("stratum", ""),
+                    }
+                )
                 known = loci.get(entry["locus_id"])
                 if known is not None and not known.drop("stratum").equals(
                     as_series.drop("stratum")
@@ -211,8 +209,13 @@ class FineMappingAggregator(BaseAggregator):
                 u = _to_numpy(payload[f"{KEY_USUM}{KEY_SEP}{locus_id}{KEY_SEP}{pop}"])
                 geno_by_locus.setdefault(locus_id, []).append(
                     GenoAggregate(
-                        site=str(cid), pop=pop, locus_id=locus_id, variants=variants,
-                        G=G, u=np.asarray(u, dtype=np.float64), n=int(block["n"]),
+                        site=str(cid),
+                        pop=pop,
+                        locus_id=locus_id,
+                        variants=variants,
+                        G=G,
+                        u=np.asarray(u, dtype=np.float64),
+                        n=int(block["n"]),
                         n_incomplete_variants=int(block["n_incomplete_variants"]),
                     )
                 )
@@ -229,10 +232,14 @@ class FineMappingAggregator(BaseAggregator):
                 q, w, n = _to_numpy(payload[f"{KEY_SCALARS}{KEY_SEP}{inst}{KEY_SEP}{pop}"])
                 pheno_by_instance.setdefault(inst, {}).setdefault(pop, []).append(
                     PhenoAggregate(
-                        site=str(cid), pop=pop, instance=inst,
+                        site=str(cid),
+                        pop=pop,
+                        instance=inst,
                         snp_ids=snp_ids_of[(block["locus_id"], pop)],
                         c=np.asarray(c, dtype=np.float64),
-                        q=float(q), w=float(w), n=int(n),
+                        q=float(q),
+                        w=float(w),
+                        n=int(n),
                     )
                 )
 
@@ -257,8 +264,7 @@ class FineMappingAggregator(BaseAggregator):
             )
         manifest = pd.read_csv(self.causal_manifest, sep="\t")
         return {
-            (r.locus_id, r.architecture_id, int(r.replicate)):
-                str(r.causal_snp_ids).split(",")
+            (r.locus_id, r.architecture_id, int(r.replicate)): str(r.causal_snp_ids).split(",")
             for r in manifest.itertuples(index=False)
         }
 
@@ -269,9 +275,7 @@ class FineMappingAggregator(BaseAggregator):
         client_ids = list(local_models.keys())
         self.logger.info(f"fine-mapping across {len(client_ids)} site(s)")
 
-        geno_by_locus, pheno_by_instance, loci, manifests = self._decode(
-            client_ids, local_models
-        )
+        geno_by_locus, pheno_by_instance, loci, manifests = self._decode(client_ids, local_models)
         truth_map = self._truth_map()
 
         # The ancestry columns to build, in a stable order. Union across sites, ordered by
@@ -372,8 +376,18 @@ class FineMappingAggregator(BaseAggregator):
 
         def call(arch_id, rep, truth, pooled):
             return fed_finemap_instance(
-                locus, arch_id, rep, truth, columns, pooled, self.work_root,
-                self.susiex, self.plink, self.level, self.pval_thresh, self.keep_work,
+                locus,
+                arch_id,
+                rep,
+                truth,
+                columns,
+                pooled,
+                self.work_root,
+                self.susiex,
+                self.plink,
+                self.level,
+                self.pval_thresh,
+                self.keep_work,
             )
 
         if self.n_workers <= 1:
@@ -384,8 +398,18 @@ class FineMappingAggregator(BaseAggregator):
         return list(
             Parallel(n_jobs=self.n_workers, backend="loky")(
                 delayed(fed_finemap_instance)(
-                    locus, arch_id, rep, truth, columns, pooled, self.work_root,
-                    self.susiex, self.plink, self.level, self.pval_thresh, self.keep_work,
+                    locus,
+                    arch_id,
+                    rep,
+                    truth,
+                    columns,
+                    pooled,
+                    self.work_root,
+                    self.susiex,
+                    self.plink,
+                    self.level,
+                    self.pval_thresh,
+                    self.keep_work,
                 )
                 for arch_id, rep, truth, pooled in jobs
             )
@@ -409,17 +433,19 @@ class FineMappingAggregator(BaseAggregator):
         results.to_csv(results_path, sep="\t", index=False)
         self.logger.info(f"wrote {len(results)} result row(s) -> {results_path}")
 
-        pd.DataFrame([
-            {
-                "CLIENT_ID": cid,
-                "N_SAMPLES": manifests[cid]["sample_size"],
-                "ANCESTRIES": ",".join(sorted(manifests[cid]["composition"])),
-                "N_GENO_BLOCKS": len(manifests[cid]["geno_blocks"]),
-                "N_PHENO_BLOCKS": len(manifests[cid]["pheno_blocks"]),
-                "N_VARIANTS_FLIPPED": manifests[cid]["n_flipped"],
-            }
-            for cid in client_ids
-        ]).to_csv(self.data_dir / "fed_fm_site_summary.csv", index=False)
+        pd.DataFrame(
+            [
+                {
+                    "CLIENT_ID": cid,
+                    "N_SAMPLES": manifests[cid]["sample_size"],
+                    "ANCESTRIES": ",".join(sorted(manifests[cid]["composition"])),
+                    "N_GENO_BLOCKS": len(manifests[cid]["geno_blocks"]),
+                    "N_PHENO_BLOCKS": len(manifests[cid]["pheno_blocks"]),
+                    "N_VARIANTS_FLIPPED": manifests[cid]["n_flipped"],
+                }
+                for cid in client_ids
+            ]
+        ).to_csv(self.data_dir / "fed_fm_site_summary.csv", index=False)
 
         if results.empty:
             self.logger.warning("no instances were fine-mapped; skipping rollups")
@@ -438,16 +464,20 @@ class FineMappingAggregator(BaseAggregator):
         frame = pd.concat([results, meta], axis=1)
 
         def rollup(group: pd.DataFrame) -> pd.Series:
-            return pd.Series({
-                "n_instances": len(group),
-                "power_any_causal": group["any_causal_captured"].mean(),
-                "mean_n_cs": group["n_credible_sets"].mean(),
-                "median_best_cs_size": group["best_cs_size"].median(),
-                "mean_causal_pip": group["causal_pip_max"].mean(),
-            })
+            return pd.Series(
+                {
+                    "n_instances": len(group),
+                    "power_any_causal": group["any_causal_captured"].mean(),
+                    "mean_n_cs": group["n_credible_sets"].mean(),
+                    "median_best_cs_size": group["best_cs_size"].median(),
+                    "mean_causal_pip": group["causal_pip_max"].mean(),
+                }
+            )
 
-        for by, name in ((["ncsl", "h2_target", "rg"], "by_architecture"),
-                         (["stratum", "rg"], "by_stratum_rg")):
+        for by, name in (
+            (["ncsl", "h2_target", "rg"], "by_architecture"),
+            (["stratum", "rg"], "by_stratum_rg"),
+        ):
             cols = [c for c in by if c in frame.columns and frame[c].notna().any()]
             if not cols:
                 continue

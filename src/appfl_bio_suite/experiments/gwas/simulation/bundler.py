@@ -148,7 +148,8 @@ def bundle_sites(
     missing = [str(p) for p in required if not p.exists()]
     if missing:
         raise FileNotFoundError(
-            "cannot bundle -- step 1 outputs are missing:\n  - " + "\n  - ".join(missing)
+            "cannot bundle -- step 1 outputs are missing:\n  - "
+            + "\n  - ".join(missing)
             + "\n\nRun the phenotype simulation first."
         )
 
@@ -215,12 +216,8 @@ def bundle_sites(
         _subset_rows_by_iid(pheno_pgs_eval, site_iids).to_csv(
             site_dir / "phenotypes_pgs_eval.csv", index=False
         )
-        _subset_rows_by_iid(covariates, site_iids).to_csv(
-            site_dir / "covariates.csv", index=False
-        )
-        _subset_rows_by_iid(pgs_scores, site_iids).to_csv(
-            site_dir / "pgs_scores.csv", index=False
-        )
+        _subset_rows_by_iid(covariates, site_iids).to_csv(site_dir / "covariates.csv", index=False)
+        _subset_rows_by_iid(pgs_scores, site_iids).to_csv(site_dir / "pgs_scores.csv", index=False)
 
         # Scoring weights are cohort-wide, not per-site.
         shutil.copy(pooled_dir / "score_t2d.txt", site_dir / "score_t2d.txt")

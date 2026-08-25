@@ -149,9 +149,7 @@ def _prep_pgs(df: pd.DataFrame, bim: pd.DataFrame, bim_set: set) -> pd.DataFrame
     return df.reset_index(drop=True)
 
 
-def _compute_pgs(
-    pgs_df: pd.DataFrame, G, snp_to_pos: dict, chunk_size: int = 2000
-) -> np.ndarray:
+def _compute_pgs(pgs_df: pd.DataFrame, G, snp_to_pos: dict, chunk_size: int = 2000) -> np.ndarray:
     """Weighted allele-dosage sum, chunked.
 
     Dosage encoding with ``ref="a1"`` is the count of the SECOND allele (the BIM's A2):

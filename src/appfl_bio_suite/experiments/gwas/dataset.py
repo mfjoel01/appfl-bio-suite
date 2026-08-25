@@ -75,8 +75,7 @@ class SiteGWASDataset:
             raise FileNotFoundError(
                 f"{self.site_id}: missing required input files in {self.data_dir}\n"
                 "  missing: " + ", ".join(missing) + "\n"
-                "  present: " + (", ".join(present) if present else "(directory is empty)")
-                + "\n\n"
+                "  present: " + (", ".join(present) if present else "(directory is empty)") + "\n\n"
                 "Unpack the bundle you were sent so that these files sit directly in "
                 "data_dir, not in a nested subdirectory."
             )

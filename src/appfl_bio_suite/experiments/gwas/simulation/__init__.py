@@ -289,7 +289,7 @@ def cli_entry(
     if scenario is None:
         print(
             "specify --scenario. Available:\n  "
-            + "\n  ".join(list_scenarios()) 
+            + "\n  ".join(list_scenarios())
             + "\n\nOr --list-scenarios for detail.",
             file=sys.stderr,
         )

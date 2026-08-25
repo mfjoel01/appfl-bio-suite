@@ -52,8 +52,10 @@ _SEARCH_PATH = (
 
 _ENV_VAR = "APPFL_BIO_SUITE_FEDERATION"
 
-_UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
-                      r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+_UUID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
 
 
 class FederationError(Exception):
@@ -494,8 +496,7 @@ class Federation(_Strict):
         except KeyError:
             known = ", ".join(sorted(self.experiments)) or "none"
             raise FederationError(
-                f"experiment '{name}' is not declared in {self._where()}. "
-                f"Declared: {known}."
+                f"experiment '{name}' is not declared in {self._where()}. Declared: {known}."
             ) from None
 
     def site(self, site_id: str) -> Site:
@@ -560,9 +561,7 @@ def find_federation_file(explicit: str | Path | None = None) -> Path:
     if env:
         path = Path(env).expanduser()
         if not path.is_file():
-            raise FederationError(
-                f"{_ENV_VAR} points at {path}, which does not exist."
-            )
+            raise FederationError(f"{_ENV_VAR} points at {path}, which does not exist.")
         return path
 
     for candidate in _SEARCH_PATH:

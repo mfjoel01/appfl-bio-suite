@@ -127,9 +127,7 @@ def _top_level_imports(tree: ast.AST) -> set[str]:
     _shipped_modules(),
     ids=[f"{e}:{m}" for e, m, _ in _shipped_modules()],
 )
-def test_shipped_module_imports_are_worker_safe(
-    experiment: str, module: str, spec: ExperimentSpec
-):
+def test_shipped_module_imports_are_worker_safe(experiment: str, module: str, spec: ExperimentSpec):
     path = spec.package_path / f"{module}.py"
     assert path.is_file(), (
         f"{spec.name} declares shipped module '{module}' but {path} does not exist"
@@ -189,9 +187,7 @@ def test_shipped_module_does_not_import_the_suite(
     _shipped_modules(),
     ids=[f"{e}:{m}" for e, m, _ in _shipped_modules()],
 )
-def test_shipped_module_has_no_relative_imports(
-    experiment: str, module: str, spec: ExperimentSpec
-):
+def test_shipped_module_has_no_relative_imports(experiment: str, module: str, spec: ExperimentSpec):
     """Relative imports cannot resolve in shipped source; it runs with no package."""
     path = spec.package_path / f"{module}.py"
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))

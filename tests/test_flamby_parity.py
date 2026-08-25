@@ -156,15 +156,19 @@ def test_server_config_matches_the_pre_migration_one(server_config):
     legacy_train = legacy["client_configs"]["train_configs"]
     train = server_config["client_configs"]["train_configs"]
 
-    for key in ("trainer", "mode", "num_local_steps", "optim",
-                "train_batch_size", "val_batch_size", "do_validation"):
+    for key in (
+        "trainer",
+        "mode",
+        "num_local_steps",
+        "optim",
+        "train_batch_size",
+        "val_batch_size",
+        "do_validation",
+    ):
         assert train[key] == legacy_train[key], f"{key} differs from the pre-migration config"
 
     assert train["optim_args"]["lr"] == legacy_train["optim_args"]["lr"]
-    assert (
-        server_config["server_configs"]["aggregator"]
-        == legacy["server_configs"]["aggregator"]
-    )
+    assert server_config["server_configs"]["aggregator"] == legacy["server_configs"]["aggregator"]
     assert (
         server_config["client_configs"]["model_configs"]["model_name"]
         == legacy["client_configs"]["model_configs"]["model_name"]
@@ -183,8 +187,9 @@ def test_client_config_shape_matches_the_pre_migration_one(client_configs):
     assert set(ours["data_configs"]["dataset_kwargs"]) == set(
         legacy_sample["data_configs"]["dataset_kwargs"]
     )
-    assert ours["data_configs"]["dataset_kwargs"]["dataset"] == (
-        legacy_sample["data_configs"]["dataset_kwargs"]["dataset"]
+    assert (
+        ours["data_configs"]["dataset_kwargs"]["dataset"]
+        == (legacy_sample["data_configs"]["dataset_kwargs"]["dataset"])
     )
 
 
@@ -214,9 +219,9 @@ def test_numerical_parity_is_explicitly_unverified():
     If a baseline run of the pre-migration tree ever exists, replace this with a real
     comparison and update ABOUT.md's record of runs.
     """
-    about = (
-        repo_root() / "docs" / "experiments" / EXPERIMENT / "ABOUT.md"
-    ).read_text(encoding="utf-8")
+    about = (repo_root() / "docs" / "experiments" / EXPERIMENT / "ABOUT.md").read_text(
+        encoding="utf-8"
+    )
     assert "no completed baseline" in about.lower(), (
         "ABOUT.md must keep stating that no baseline run exists for this experiment, so "
         "that a first green run from this repository is not mistaken for parity."

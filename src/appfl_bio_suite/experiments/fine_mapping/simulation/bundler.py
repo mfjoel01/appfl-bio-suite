@@ -165,15 +165,13 @@ def verify_disjoint(bundles: dict[str, Path]) -> dict[tuple[str, str], int]:
     """Return ``{(site_a, site_b): n_shared}`` for every pair that shares individuals."""
     members: dict[str, set[str]] = {}
     for site, data_dir in bundles.items():
-        manifest = pd.read_csv(
-            data_dir / "site_manifest.tsv", sep="\t", dtype={"IID": str}
-        )
+        manifest = pd.read_csv(data_dir / "site_manifest.tsv", sep="\t", dtype={"IID": str})
         members[site] = set(manifest["IID"])
 
     overlaps: dict[tuple[str, str], int] = {}
     names = sorted(members)
     for i, a in enumerate(names):
-        for b in names[i + 1:]:
+        for b in names[i + 1 :]:
             shared = members[a] & members[b]
             if shared:
                 overlaps[(a, b)] = len(shared)

@@ -229,9 +229,7 @@ def validate_mapping_file(
         try:
             mappers = load_mappers([entry], None, None)
         except Exception as exc:
-            report.errors.append(
-                f"could not load mapping document: {type(exc).__name__}: {exc}"
-            )
+            report.errors.append(f"could not load mapping document: {type(exc).__name__}: {exc}")
             continue
 
         for mapper in mappers:

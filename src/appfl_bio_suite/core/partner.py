@@ -220,8 +220,7 @@ def generate_bundle(
         "#\n"
         "# There is deliberately no `dataset_path`: that file is read on the\n"
         "# coordinator's machine and its contents are shipped to your worker, so it is\n"
-        "# never a path on your cluster.\n\n"
-        + yaml.safe_dump([block], sort_keys=False),
+        "# never a path on your cluster.\n\n" + yaml.safe_dump([block], sort_keys=False),
         encoding="utf-8",
     )
     written.append(config_path)

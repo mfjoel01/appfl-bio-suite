@@ -218,9 +218,7 @@ def build_server_config(
     if exp.rounds is not None:
         server["num_global_epochs"] = exp.rounds
     if exp.client_weights_mode is not None:
-        server.setdefault("aggregator_kwargs", {})["client_weights_mode"] = (
-            exp.client_weights_mode
-        )
+        server.setdefault("aggregator_kwargs", {})["client_weights_mode"] = exp.client_weights_mode
     # The pooled hits table must use the same threshold the sites did, so it comes from
     # the same place their client configs get it from.
     if exp.hit_p_threshold is not None:
@@ -278,9 +276,7 @@ def _resolve_config_paths(config: dict[str, Any], spec: ExperimentSpec) -> None:
         node[key] = _shipped_module_path(spec, module)
 
 
-def resolve_run(
-    federation: Federation, experiment: str, variant: str = "default"
-) -> ResolvedRun:
+def resolve_run(federation: Federation, experiment: str, variant: str = "default") -> ResolvedRun:
     spec = get_spec(experiment)
     exp = federation.experiment(experiment)
     if not exp.sites:

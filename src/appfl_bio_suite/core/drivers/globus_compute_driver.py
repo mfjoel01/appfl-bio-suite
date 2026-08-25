@@ -96,9 +96,7 @@ def main(argv: list[str] | None = None) -> int:
         client_rounds: dict[str, int] = {}
 
         while not server_agent.training_finished():
-            endpoint_id, client_model, client_metadata = (
-                communicator.recv_result_from_one_client()
-            )
+            endpoint_id, client_model, client_metadata = communicator.recv_result_from_one_client()
             client_rounds[endpoint_id] = client_rounds.get(endpoint_id, 0) + 1
             log.info(
                 f"[train] {site(endpoint_id)} returned round "
@@ -112,14 +110,24 @@ def main(argv: list[str] | None = None) -> int:
                 futures[endpoint_id] = global_model
             else:
                 _dispatch_next(
-                    communicator, server_agent, log, site, endpoint_id, global_model,
+                    communicator,
+                    server_agent,
+                    log,
+                    site,
+                    endpoint_id,
+                    global_model,
                     client_rounds[endpoint_id],
                 )
 
             for done_id in [eid for eid, f in futures.items() if f.done()]:
                 _dispatch_next(
-                    communicator, server_agent, log, site, done_id,
-                    futures.pop(done_id).result(), client_rounds[done_id],
+                    communicator,
+                    server_agent,
+                    log,
+                    site,
+                    done_id,
+                    futures.pop(done_id).result(),
+                    client_rounds[done_id],
                 )
     except KeyboardInterrupt:
         log.warning("[train] interrupted; cancelling outstanding tasks")
@@ -151,7 +159,10 @@ def _dispatch_next(communicator, server_agent, log, site, endpoint_id, global_mo
     if server_agent.training_finished():
         return
     communicator.send_task_to_one_client(
-        endpoint_id, task_name="train", model=global_model, metadata=metadata,
+        endpoint_id,
+        task_name="train",
+        model=global_model,
+        metadata=metadata,
         need_model_response=True,
     )
     log.info(f"[train] sent updated global model to {site(endpoint_id)}")

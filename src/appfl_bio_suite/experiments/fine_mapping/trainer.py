@@ -89,10 +89,10 @@ from appfl.algorithm.trainer.base_trainer import BaseTrainer  # noqa: E402
 # Payload keys are "<kind>::<scope>::<pop>". A flat tensor dict is what APPFL's
 # communicators serialize, so structure has to live in the key and in the manifest.
 KEY_SEP = "::"
-KEY_GRAM = "G"        # G::<locus_id>::<pop>    -- (M, M) genotype Gram
-KEY_USUM = "u"        # u::<locus_id>::<pop>    -- (M,)   column sums
-KEY_XTY = "c"         # c::<instance>::<pop>    -- (M,)   X'y
-KEY_SCALARS = "s"     # s::<instance>::<pop>    -- (3,)   (q, w, n)
+KEY_GRAM = "G"  # G::<locus_id>::<pop>    -- (M, M) genotype Gram
+KEY_USUM = "u"  # u::<locus_id>::<pop>    -- (M,)   column sums
+KEY_XTY = "c"  # c::<instance>::<pop>    -- (M,)   X'y
+KEY_SCALARS = "s"  # s::<instance>::<pop>    -- (3,)   (q, w, n)
 KEY_MANIFEST = "manifest"
 
 # ``X'X`` entries are sums of products of dosages in {0,1,2}, so they are integers
@@ -138,8 +138,7 @@ def read_bim(path):
         sep=r"\s+",
         header=None,
         names=_BIM_COLUMNS,
-        dtype={"chrom": str, "snp_id": str, "cm": float, "bp": np.int64,
-               "a1": str, "a2": str},
+        dtype={"chrom": str, "snp_id": str, "cm": float, "bp": np.int64, "a1": str, "a2": str},
         engine="python",
     )
 
@@ -150,8 +149,7 @@ def read_fam(path):
         sep=r"\s+",
         header=None,
         names=_FAM_COLUMNS,
-        dtype={"FID": str, "IID": str, "father": str, "mother": str,
-               "sex": str, "pheno": str},
+        dtype={"FID": str, "IID": str, "father": str, "mother": str, "sex": str, "pheno": str},
         engine="python",
     )
 
@@ -218,7 +216,7 @@ def columns_with_missing(X, chunk=_ROW_CHUNK):
     """
     bad = np.zeros(X.shape[1], dtype=bool)
     for start in range(0, X.shape[0], chunk):
-        bad |= np.isnan(X[start:start + chunk]).any(axis=0)
+        bad |= np.isnan(X[start : start + chunk]).any(axis=0)
     return bad
 
 
@@ -263,9 +261,7 @@ def locus_window_variants(bim, chrom, start_bp, end_bp):
     The preserved index is the variant's row inside the matching ``.bed``, which is what
     :func:`read_bed_variants` wants.
     """
-    mask = (bim["chrom"].astype(str) == str(chrom)) & bim["bp"].between(
-        int(start_bp), int(end_bp)
-    )
+    mask = (bim["chrom"].astype(str) == str(chrom)) & bim["bp"].between(int(start_bp), int(end_bp))
     return bim.loc[mask]
 
 
@@ -347,8 +343,7 @@ class SiteFineMappingTrainer(BaseTrainer):
         self.gram_dtype = str(self.train_configs.get("uplink_gram_dtype", "float64"))
         if self.gram_dtype not in ("float64", "float32"):
             raise ValueError(
-                f"uplink_gram_dtype must be 'float64' or 'float32', got "
-                f"{self.gram_dtype!r}"
+                f"uplink_gram_dtype must be 'float64' or 'float32', got {self.gram_dtype!r}"
             )
 
         default_out = str(self.train_dataset.data_dir.parent / "output")
@@ -387,7 +382,8 @@ class SiteFineMappingTrainer(BaseTrainer):
                     f"{self.locus_shard_index} of {self.locus_n_shards}"
                 )
             loci = [
-                locus for i, locus in enumerate(loci)
+                locus
+                for i, locus in enumerate(loci)
                 if i % self.locus_n_shards == self.locus_shard_index
             ]
         if self.locus_limit is not None:
@@ -453,11 +449,13 @@ class SiteFineMappingTrainer(BaseTrainer):
         bim = read_bim(dataset.plink_bim)
         fam = read_fam(dataset.plink_fam)
         manifest = pd.read_csv(
-            dataset.manifest_path, sep="\t",
+            dataset.manifest_path,
+            sep="\t",
             dtype={"FID": str, "IID": str, "superpopulation": str},
         )
         reference = pd.read_csv(
-            dataset.reference_path, sep="\t",
+            dataset.reference_path,
+            sep="\t",
             dtype={"snp_id": str, "chrom": str, "bp": np.int64, "a1": str, "a2": str},
         )
         if reference["snp_id"].duplicated().any():
@@ -520,41 +518,38 @@ class SiteFineMappingTrainer(BaseTrainer):
 
             try:
                 for pop in pops:
-                    members = manifest.loc[
-                        manifest["superpopulation"] == pop, "IID"
-                    ]
+                    members = manifest.loc[manifest["superpopulation"] == pop, "IID"]
                     if members.empty:
                         continue  # this site holds none of this ancestry
-                    rows = np.sort(
-                        row_of.reindex(members.values).to_numpy(dtype=np.int64)
-                    )
+                    rows = np.sort(row_of.reindex(members.values).to_numpy(dtype=np.int64))
                     Xp = X[rows]
                     keep = ~columns_with_missing(Xp)
                     if not keep.all():
                         Xp = Xp[:, keep]
                     n = int(Xp.shape[0])
                     block_vars = (
-                        variants if keep.all()
-                        else variants.loc[keep].reset_index(drop=True)
+                        variants if keep.all() else variants.loc[keep].reset_index(drop=True)
                     )
 
                     payload[block_key(KEY_GRAM, locus_id, pop)] = self._pack_gram(gram(Xp))
                     payload[block_key(KEY_USUM, locus_id, pop)] = torch.from_numpy(
                         Xp.sum(axis=0, dtype=np.float64)
                     )
-                    geno_meta.append({
-                        "locus_id": locus_id,
-                        "pop": pop,
-                        "n": n,
-                        "n_incomplete_variants": int((~keep).sum()),
-                        "variants": {
-                            "chrom": block_vars["chrom"].astype(str).tolist(),
-                            "snp_id": block_vars["snp_id"].astype(str).tolist(),
-                            "bp": block_vars["bp"].astype(np.int64).tolist(),
-                            "a1": block_vars["a1"].astype(str).tolist(),
-                            "a2": block_vars["a2"].astype(str).tolist(),
-                        },
-                    })
+                    geno_meta.append(
+                        {
+                            "locus_id": locus_id,
+                            "pop": pop,
+                            "n": n,
+                            "n_incomplete_variants": int((~keep).sum()),
+                            "variants": {
+                                "chrom": block_vars["chrom"].astype(str).tolist(),
+                                "snp_id": block_vars["snp_id"].astype(str).tolist(),
+                                "bp": block_vars["bp"].astype(np.int64).tolist(),
+                                "a1": block_vars["a1"].astype(str).tolist(),
+                                "a2": block_vars["a2"].astype(str).tolist(),
+                            },
+                        }
+                    )
 
                     if instances:
                         Yp = Y[rows]
@@ -569,12 +564,14 @@ class SiteFineMappingTrainer(BaseTrainer):
                                 [float(q[col]), float(w[col]), float(n)],
                                 dtype=torch.float64,
                             )
-                            pheno_meta.append({
-                                "instance": inst,
-                                "locus_id": locus_id,
-                                "pop": pop,
-                                "n": n,
-                            })
+                            pheno_meta.append(
+                                {
+                                    "instance": inst,
+                                    "locus_id": locus_id,
+                                    "pop": pop,
+                                    "n": n,
+                                }
+                            )
                         del Yp
                     del Xp
             finally:
@@ -586,36 +583,36 @@ class SiteFineMappingTrainer(BaseTrainer):
                 f"block(s), {len(instances)} instance(s)"
             )
 
-        manifest_blob = json.dumps({
-            "client_id": self.client_id,
-            "sample_size": int(len(fam)),
-            "composition": dataset.composition,
-            "pops": pops,
-            "loci": [
-                {
-                    "locus_id": str(locus["locus_id"]),
-                    "chrom": str(locus["chrom"]),
-                    "start_bp": int(locus["start_bp"]),
-                    "end_bp": int(locus["end_bp"]),
-                    "stratum": str(locus.get("stratum", "")),
-                }
-                for locus in loci
-            ],
-            "instances": all_instances,
-            "geno_blocks": geno_meta,
-            "pheno_blocks": pheno_meta,
-            "n_flipped": n_flipped,
-            "gram_dtype": self.gram_dtype,
-            "locus_shard": [self.locus_shard_index, self.locus_n_shards],
-        }).encode("utf-8")
+        manifest_blob = json.dumps(
+            {
+                "client_id": self.client_id,
+                "sample_size": int(len(fam)),
+                "composition": dataset.composition,
+                "pops": pops,
+                "loci": [
+                    {
+                        "locus_id": str(locus["locus_id"]),
+                        "chrom": str(locus["chrom"]),
+                        "start_bp": int(locus["start_bp"]),
+                        "end_bp": int(locus["end_bp"]),
+                        "stratum": str(locus.get("stratum", "")),
+                    }
+                    for locus in loci
+                ],
+                "instances": all_instances,
+                "geno_blocks": geno_meta,
+                "pheno_blocks": pheno_meta,
+                "n_flipped": n_flipped,
+                "gram_dtype": self.gram_dtype,
+                "locus_shard": [self.locus_shard_index, self.locus_n_shards],
+            }
+        ).encode("utf-8")
 
         # THE ONLY THING THAT LEAVES THIS SITE.
         payload[KEY_MANIFEST] = torch.frombuffer(bytearray(manifest_blob), dtype=torch.uint8)
         self.model_state = payload
 
-        uplink_mb = sum(
-            t.numel() * t.element_size() for t in payload.values()
-        ) / (1024 * 1024)
+        uplink_mb = sum(t.numel() * t.element_size() for t in payload.values()) / (1024 * 1024)
         self.logger.info(
             f"{self.client_id}: {len(geno_meta)} genotype block(s), "
             f"{len(pheno_meta)} phenotype block(s), {uplink_mb:.1f} MB uplink"

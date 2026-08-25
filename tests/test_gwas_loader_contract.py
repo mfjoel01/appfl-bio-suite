@@ -81,9 +81,7 @@ def test_simulated_sites_have_the_expected_sample_counts(simulated: Path):
     scenario = load_scenario("ci-tiny")
     for index, expected in enumerate(scenario.sites, start=1):
         site_id = f"Site{index}"
-        dataset, _ = loader.get_dataset(
-            data_dir=str(simulated / site_id / "data"), site_id=site_id
-        )
+        dataset, _ = loader.get_dataset(data_dir=str(simulated / site_id / "data"), site_id=site_id)
         assert len(dataset) == expected, (
             f"{site_id} has {len(dataset)} samples, scenario declares {expected}"
         )

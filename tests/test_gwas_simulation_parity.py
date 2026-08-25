@@ -117,9 +117,7 @@ def test_port_matches_committed_golden(ported_run: Path, golden: dict, key: str)
 
 def test_no_unexpected_outputs(ported_run: Path, golden: dict):
     """The port must not quietly add or drop files a downstream consumer might rely on."""
-    produced = {
-        f"pooled/{p.name}" for p in (ported_run / "out").glob("*") if p.is_file()
-    }
+    produced = {f"pooled/{p.name}" for p in (ported_run / "out").glob("*") if p.is_file()}
     for site_dir in sorted((ported_run / "sites").glob("Site*")):
         produced |= {
             f"{site_dir.name}/{p.name}" for p in (site_dir / "data").glob("*") if p.is_file()

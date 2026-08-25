@@ -60,22 +60,35 @@ RG_COLORS = {0.5: "#9ecae1", 0.7: "#4292c6", 1.0: "#08519c"}  # light -> dark
 INK, MUTED, GRID = "#222222", "#666666", "#dddddd"
 
 CENTER_H2 = 0.001  # the star-design centre: rg arm is taken at this h2
-CENTER_RG = 1.0    # the h2 arm is taken at this rg
+CENTER_RG = 1.0  # the h2 arm is taken at this rg
 STRATUM_ORDER = ["high", "medium", "low"]  # inter-site LD divergence
 
 _ARCH_RE = re.compile(r"ncsl(\d+)_h2-([\d.]+)_rg([\d.]+)")
 
 
 def _apply_style() -> None:
-    plt.rcParams.update({
-        "figure.dpi": 120, "savefig.dpi": 300, "savefig.bbox": "tight",
-        "font.size": 11, "axes.titlesize": 12, "axes.labelsize": 11,
-        "axes.edgecolor": MUTED, "axes.labelcolor": INK, "text.color": INK,
-        "xtick.color": MUTED, "ytick.color": MUTED,
-        "axes.spines.top": False, "axes.spines.right": False,
-        "axes.grid": True, "grid.color": GRID, "grid.linewidth": 0.8,
-        "legend.frameon": False, "figure.facecolor": "white",
-    })
+    plt.rcParams.update(
+        {
+            "figure.dpi": 120,
+            "savefig.dpi": 300,
+            "savefig.bbox": "tight",
+            "font.size": 11,
+            "axes.titlesize": 12,
+            "axes.labelsize": 11,
+            "axes.edgecolor": MUTED,
+            "axes.labelcolor": INK,
+            "text.color": INK,
+            "xtick.color": MUTED,
+            "ytick.color": MUTED,
+            "axes.spines.top": False,
+            "axes.spines.right": False,
+            "axes.grid": True,
+            "grid.color": GRID,
+            "grid.linewidth": 0.8,
+            "legend.frameon": False,
+            "figure.facecolor": "white",
+        }
+    )
 
 
 def _parse_arch(df: pd.DataFrame) -> pd.DataFrame:
@@ -128,8 +141,17 @@ def fig_power_grid(df: pd.DataFrame, out: Path) -> None:
         lo = np.array([r[2] for r in rows])
         hi = np.array([r[3] for r in rows])
         c = NCSL_COLORS.get(int(ncsl), INK)
-        axh.errorbar(h2s, p, yerr=[p - lo, hi - p], marker="o", ms=7, lw=2,
-                     capsize=3, color=c, label=f"ncsl={int(ncsl)}")
+        axh.errorbar(
+            h2s,
+            p,
+            yerr=[p - lo, hi - p],
+            marker="o",
+            ms=7,
+            lw=2,
+            capsize=3,
+            color=c,
+            label=f"ncsl={int(ncsl)}",
+        )
     axh.set_xscale("log")
     h2_ticks = sorted(arm_h["h2"].dropna().unique())
     if h2_ticks:
@@ -155,17 +177,28 @@ def fig_power_grid(df: pd.DataFrame, out: Path) -> None:
         lo = np.array([r[2] for r in rows])
         hi = np.array([r[3] for r in rows])
         c = NCSL_COLORS.get(int(ncsl), INK)
-        axr.errorbar(rgs, p, yerr=[p - lo, hi - p], marker="o", ms=7, lw=2,
-                     capsize=3, color=c, label=f"ncsl={int(ncsl)}")
-    axr.set_xlabel(
-        f"cross-ancestry genetic correlation $r_g$  ($h^2$ = {CENTER_H2:.4g})"
-    )
+        axr.errorbar(
+            rgs,
+            p,
+            yerr=[p - lo, hi - p],
+            marker="o",
+            ms=7,
+            lw=2,
+            capsize=3,
+            color=c,
+            label=f"ncsl={int(ncsl)}",
+        )
+    axr.set_xlabel(f"cross-ancestry genetic correlation $r_g$  ($h^2$ = {CENTER_H2:.4g})")
     axr.set_title("(b)  Recall vs cross-ancestry $r_g$", loc="left")
     axr.set_ylim(-0.02, 1.02)
     axr.legend(title=None)
 
-    fig.suptitle("SuSiEx cross-ancestry fine-mapping — recall across the causal grid",
-                 fontsize=13, x=0.02, ha="left")
+    fig.suptitle(
+        "SuSiEx cross-ancestry fine-mapping — recall across the causal grid",
+        fontsize=13,
+        x=0.02,
+        ha="left",
+    )
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(out)
     plt.close(fig)
@@ -175,8 +208,7 @@ def fig_power_grid(df: pd.DataFrame, out: Path) -> None:
 # --------------------------------------------------------------------------- #
 # helper: box/strip distribution of a metric by h2 arm
 # --------------------------------------------------------------------------- #
-def _box_by_h2(df: pd.DataFrame, value: str, mask: pd.Series,
-               ax: plt.Axes, ylabel: str) -> None:
+def _box_by_h2(df: pd.DataFrame, value: str, mask: pd.Series, ax: plt.Axes, ylabel: str) -> None:
     arm = df[(df["rg"] == CENTER_RG) & mask]
     h2s = sorted(arm["h2"].dropna().unique())
     data, labels, colors = [], [], []
@@ -187,13 +219,26 @@ def _box_by_h2(df: pd.DataFrame, value: str, mask: pd.Series,
         labels.append(f"{h2:g}\n(n={len(v)})")
         colors.append(ramp[min(i, len(ramp) - 1)])
     if not any(len(d) for d in data):
-        ax.text(0.5, 0.5, "no captured instances", ha="center", va="center",
-                transform=ax.transAxes, color=MUTED)
+        ax.text(
+            0.5,
+            0.5,
+            "no captured instances",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+            color=MUTED,
+        )
         return
-    bp = ax.boxplot(data, patch_artist=True, widths=0.6, showfliers=False,
-                    medianprops=dict(color=INK, lw=1.6),
-                    whiskerprops=dict(color=MUTED), capprops=dict(color=MUTED),
-                    boxprops=dict(edgecolor=MUTED))
+    bp = ax.boxplot(
+        data,
+        patch_artist=True,
+        widths=0.6,
+        showfliers=False,
+        medianprops=dict(color=INK, lw=1.6),
+        whiskerprops=dict(color=MUTED),
+        capprops=dict(color=MUTED),
+        boxprops=dict(edgecolor=MUTED),
+    )
     for patch, c in zip(bp["boxes"], colors, strict=False):
         patch.set_facecolor(c)
         patch.set_alpha(0.85)
@@ -212,8 +257,13 @@ def _box_by_h2(df: pd.DataFrame, value: str, mask: pd.Series,
 def fig_cs_size(df: pd.DataFrame, out: Path) -> None:
     fig, ax = plt.subplots(figsize=(6.2, 4.6))
     captured = df["any_causal_captured"].fillna(False).astype(bool)
-    _box_by_h2(df, "best_cs_size", captured, ax,
-               "best credible-set size (variants)\n— smaller = sharper resolution")
+    _box_by_h2(
+        df,
+        "best_cs_size",
+        captured,
+        ax,
+        "best credible-set size (variants)\n— smaller = sharper resolution",
+    )
     ax.set_title("Fine-mapping resolution among captured causals", loc="left")
     ax.set_ylim(bottom=0)
     fig.tight_layout()
@@ -225,11 +275,17 @@ def fig_cs_size(df: pd.DataFrame, out: Path) -> None:
 def fig_causal_pip(df: pd.DataFrame, out: Path) -> None:
     fig, ax = plt.subplots(figsize=(6.2, 4.6))
     has_pip = df["causal_pip_max"].notna()
-    _box_by_h2(df, "causal_pip_max", has_pip, ax,
-               "causal-variant PIP (max over credible sets)")
+    _box_by_h2(df, "causal_pip_max", has_pip, ax, "causal-variant PIP (max over credible sets)")
     ax.axhline(0.95, color="#D55E00", lw=1.2, ls="--", zorder=1)
-    ax.text(0.02, 0.955, "0.95", color="#D55E00", va="bottom",
-            transform=ax.get_yaxis_transform(), fontsize=9)
+    ax.text(
+        0.02,
+        0.955,
+        "0.95",
+        color="#D55E00",
+        va="bottom",
+        transform=ax.get_yaxis_transform(),
+        fontsize=9,
+    )
     ax.set_title("Posterior confidence in the true causal variant", loc="left")
     ax.set_ylim(-0.02, 1.02)
     fig.tight_layout()
@@ -259,9 +315,17 @@ def fig_stratum_power(df: pd.DataFrame, out: Path) -> None:
             lo.append(point - low if not np.isnan(point) else 0)
             hi.append(high - point if not np.isnan(point) else 0)
         c = RG_COLORS.get(round(float(rg), 1), "#4292c6")
-        ax.bar(x + j * width - 0.4 + width / 2, p, width * 0.92,
-               color=c, label=f"$r_g$ = {rg:g}", yerr=[lo, hi],
-               capsize=2, ecolor=MUTED, error_kw=dict(lw=1))
+        ax.bar(
+            x + j * width - 0.4 + width / 2,
+            p,
+            width * 0.92,
+            color=c,
+            label=f"$r_g$ = {rg:g}",
+            yerr=[lo, hi],
+            capsize=2,
+            ecolor=MUTED,
+            error_kw=dict(lw=1),
+        )
     ax.set_xticks(x)
     ax.set_xticklabels([s.capitalize() for s in strata])
     ax.set_xlabel("inter-site LD-divergence stratum")
@@ -323,13 +387,15 @@ def main(argv=None) -> int:
         help="per-instance results TSV, from a federated or a centralized run",
     )
     ap.add_argument(
-        "--out-dir", default=None,
+        "--out-dir",
+        default=None,
         help="figure output directory (default: <results dir>/../graphs)",
     )
     args = ap.parse_args(argv)
 
     logging.basicConfig(
-        level=logging.INFO, format="[%(asctime)s %(levelname)s] %(message)s",
+        level=logging.INFO,
+        format="[%(asctime)s %(levelname)s] %(message)s",
         datefmt="%H:%M:%S",
     )
 
@@ -348,7 +414,8 @@ def main(argv=None) -> int:
     frame = pd.read_csv(results, sep="\t")
     log.info(
         "loaded %d instance(s), %d architecture(s)",
-        len(frame), frame["architecture_id"].nunique(),
+        len(frame),
+        frame["architecture_id"].nunique(),
     )
     write_figures(frame, out_dir)
     return 0

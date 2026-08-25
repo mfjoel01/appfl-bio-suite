@@ -252,9 +252,7 @@ def check_shipped_configs(report, experiment: str | None = None) -> None:
     from appfl_bio_suite.core.preflight import Level
 
     specs = (
-        [get_spec(experiment)]
-        if experiment
-        else [s for s in REGISTRY.values() if s.implemented]
+        [get_spec(experiment)] if experiment else [s for s in REGISTRY.values() if s.implemented]
     )
 
     for spec in specs:
@@ -286,10 +284,6 @@ def check_shipped_configs(report, experiment: str | None = None) -> None:
                 "scheduler queue wait, rather than here.",
             )
         elif not files:
-            report.add(
-                f"configs [{spec.name}]", Level.WARN, f"no .yaml files under {configs}"
-            )
+            report.add(f"configs [{spec.name}]", Level.WARN, f"no .yaml files under {configs}")
         else:
-            report.add(
-                f"configs [{spec.name}]", Level.OK, f"{len(files)} config file(s) parse"
-            )
+            report.add(f"configs [{spec.name}]", Level.OK, f"{len(files)} config file(s) parse")

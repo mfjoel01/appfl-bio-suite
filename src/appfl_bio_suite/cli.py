@@ -265,8 +265,13 @@ def identity_validate(
 
 @main.command("run")
 @click.argument("experiment", type=click.Choice(experiment_names()))
-@click.option("--config", "variant", default="default", show_default=True,
-              help="Server config variant, e.g. 'fedcompass' or 'loopback'.")
+@click.option(
+    "--config",
+    "variant",
+    default="default",
+    show_default=True,
+    help="Server config variant, e.g. 'fedcompass' or 'loopback'.",
+)
 @click.option(
     "--driver",
     type=click.Choice(["globus_compute", "serial"]),
@@ -274,11 +279,19 @@ def identity_validate(
     show_default=True,
     help="'serial' is the loopback path: all sites in one process, no Globus.",
 )
-@click.option("--out-dir", type=click.Path(path_type=Path), default=None,
-              help="Where to write the resolved configs.")
+@click.option(
+    "--out-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Where to write the resolved configs.",
+)
 @click.option("--dry-run", is_flag=True, help="Resolve and write configs, but do not launch.")
-@click.option("--data-root", type=click.Path(path_type=Path), default=None,
-              help="Loopback only: the --out directory `simulate` wrote per-site data to.")
+@click.option(
+    "--data-root",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Loopback only: the --out directory `simulate` wrote per-site data to.",
+)
 @click.option("--federation", "federation_path", default=None, help=_FEDERATION_HELP)
 def run_cmd(
     experiment: str,
@@ -351,10 +364,20 @@ def run_cmd(
 @main.command("simulate")
 @click.argument("experiment", type=click.Choice(experiment_names()))
 @click.option("--scenario", default=None, help="Scenario name or path to a scenario YAML.")
-@click.option("--out", "out_dir", type=click.Path(path_type=Path), default=None,
-              help="Output directory for the simulated per-site data.")
-@click.option("--verify", "verify_manifest", type=click.Path(path_type=Path), default=None,
-              help="Re-checksum outputs against a recorded run manifest and report drift.")
+@click.option(
+    "--out",
+    "out_dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output directory for the simulated per-site data.",
+)
+@click.option(
+    "--verify",
+    "verify_manifest",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Re-checksum outputs against a recorded run manifest and report drift.",
+)
 @click.option("--list-scenarios", is_flag=True, help="List available scenarios and exit.")
 @click.option("--federation", "federation_path", default=None, help=_FEDERATION_HELP)
 def simulate_cmd(
@@ -433,8 +456,13 @@ def simulate_cmd(
 @main.command("partner-bundle")
 @click.argument("experiment", type=click.Choice(experiment_names(implemented_only=True)))
 @click.option("--site", required=True, help="Site id or client id from federation.yaml.")
-@click.option("--out", "out_dir", type=click.Path(path_type=Path), default=None,
-              help="Where to write the bundle. Defaults to local/partner_bundles/.")
+@click.option(
+    "--out",
+    "out_dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Where to write the bundle. Defaults to local/partner_bundles/.",
+)
 @click.option("--federation", "federation_path", default=None, help=_FEDERATION_HELP)
 def partner_bundle_cmd(
     experiment: str, site: str, out_dir: Path | None, federation_path: str | None

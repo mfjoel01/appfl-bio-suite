@@ -95,9 +95,7 @@ def standalone(package, binaries):
 
     out, scenario = package
     cfg = scenario.to_pipeline_config(out)
-    run_fed_fine_mapping(
-        cfg, n_workers=1, level=LEVEL, pval_thresh=PVAL_THRESH, maf=MAF
-    )
+    run_fed_fine_mapping(cfg, n_workers=1, level=LEVEL, pval_thresh=PVAL_THRESH, maf=MAF)
     results = cfg.resolved_path("reports_dir") / "fed_fine_mapping" / "fed_fm_results.tsv"
     assert results.is_file(), "the standalone driver wrote no results"
     return pd.read_csv(results, sep="\t")
@@ -176,10 +174,7 @@ def test_every_statistic_is_identical(standalone, through_appfl):
     import numpy as np
 
     appfl, stand = _aligned(through_appfl, standalone)
-    compared = [
-        c for c in appfl.columns
-        if c in stand.columns and c not in _EXCLUDED_COLUMNS
-    ]
+    compared = [c for c in appfl.columns if c in stand.columns and c not in _EXCLUDED_COLUMNS]
     assert len(compared) > 15, "suspiciously few columns compared; did the schema change?"
 
     mismatched = []
@@ -192,9 +187,7 @@ def test_every_statistic_is_identical(standalone, through_appfl):
         else:
             same = left.astype(str).equals(right.astype(str))
         if not same:
-            mismatched.append(
-                f"{column}: appfl={left.tolist()} standalone={right.tolist()}"
-            )
+            mismatched.append(f"{column}: appfl={left.tolist()} standalone={right.tolist()}")
 
     assert not mismatched, "the APPFL path and the standalone driver disagree:\n" + "\n".join(
         mismatched

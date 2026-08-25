@@ -65,11 +65,13 @@ def _scenario_and_out(args) -> tuple:
 
 def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--scenario", required=True,
+        "--scenario",
+        required=True,
         help="scenario name or path, as `simulate --list-scenarios` reports",
     )
     parser.add_argument(
-        "--out", required=True,
+        "--out",
+        required=True,
         help="the run directory; the same value every stage of the run is given",
     )
 
@@ -87,16 +89,15 @@ def prepare_main(argv=None) -> int:
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     logging.basicConfig(
-        level=logging.INFO, format="[%(asctime)s %(levelname)s] %(message)s",
+        level=logging.INFO,
+        format="[%(asctime)s %(levelname)s] %(message)s",
         datefmt="%H:%M:%S",
     )
     scenario, out_dir = _scenario_and_out(args)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     cfg = scenario.to_pipeline_config(out_dir)
-    prefix = materialize_pool(
-        scenario.cohort, scenario.chromosome, scenario.pool_dir(out_dir)
-    )
+    prefix = materialize_pool(scenario.cohort, scenario.chromosome, scenario.pool_dir(out_dir))
     destination = _write_pipeline_config(scenario, cfg, out_dir)
 
     print(f"pool:   {prefix}")
@@ -124,17 +125,21 @@ def bundle_main(argv=None) -> int:
     )
     _add_common(parser)
     parser.add_argument(
-        "--n-shards", type=int, default=1,
+        "--n-shards",
+        type=int,
+        default=1,
         help="how many shards produced this run; recorded in the manifest",
     )
     parser.add_argument(
-        "--no-manifest", action="store_true",
+        "--no-manifest",
+        action="store_true",
         help="skip the run manifest (checksumming a large package is not free)",
     )
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     logging.basicConfig(
-        level=logging.INFO, format="[%(asctime)s %(levelname)s] %(message)s",
+        level=logging.INFO,
+        format="[%(asctime)s %(levelname)s] %(message)s",
         datefmt="%H:%M:%S",
     )
     started = datetime.now(UTC)
@@ -165,8 +170,7 @@ def bundle_main(argv=None) -> int:
             description=scenario.description,
             seed=int(scenario.pipeline.get("master_seed", 0)),
             sites=[
-                SiteAllocation(site_id=site, n_samples=int(cfg.sites[site].n))
-                for site in site_ids
+                SiteAllocation(site_id=site, n_samples=int(cfg.sites[site].n)) for site in site_ids
             ],
             parameters={"cohort": scenario.cohort.to_dict(), "pipeline": scenario.pipeline},
         ),

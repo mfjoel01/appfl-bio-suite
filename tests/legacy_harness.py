@@ -127,10 +127,7 @@ def build_scratch_tree(root: Path, site_sizes: list[int] | None = None) -> Path:
     # environment ships 0.02, a smoke fraction, which would leave most of the pipeline
     # untested.
     (config_dir / "gwas_env.env").write_text(
-        "Use_cuML=false\n"
-        "Variant_Scaling=1.0\n"
-        "Hit_P_Threshold=5e-8\n"
-        "Data_Sim_Scaling=1.0\n",
+        "Use_cuML=false\nVariant_Scaling=1.0\nHit_P_Threshold=5e-8\nData_Sim_Scaling=1.0\n",
         encoding="utf-8",
     )
 

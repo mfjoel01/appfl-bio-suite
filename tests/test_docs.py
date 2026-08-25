@@ -69,8 +69,13 @@ def test_shared_partner_doc_exists():
 
 @pytest.mark.parametrize(
     "name",
-    ["new-federation.md", "architecture.md", "troubleshooting.md",
-     "reference-deployment.md", "releasing.md"],
+    [
+        "new-federation.md",
+        "architecture.md",
+        "troubleshooting.md",
+        "reference-deployment.md",
+        "releasing.md",
+    ],
 )
 def test_coordinator_docs_exist(name: str):
     path = DOCS / "coordinator" / name
@@ -135,7 +140,7 @@ def test_python_version_in_partner_context_matches_pyproject():
     context = render_context(federation, "gwas", "site-north")
     pyproject = (repo_root() / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert f'>={context["python_version"]}' in pyproject, (
+    assert f">={context['python_version']}" in pyproject, (
         f"partner documents say Python {context['python_version']}, which does not match "
         "requires-python in pyproject.toml"
     )
@@ -145,14 +150,14 @@ def test_troubleshooting_covers_the_expensive_failures():
     """These cost days each. If one is dropped, the knowledge is gone."""
     text = (DOCS / "coordinator" / "troubleshooting.md").read_text(encoding="utf-8").lower()
     for topic in [
-        "anchor",            # ^ $ in identity mapping -- the most expensive one
-        "af_unix",           # TMPDIR overflow
+        "anchor",  # ^ $ in identity mapping -- the most expensive one
+        "af_unix",  # TMPDIR overflow
         "can't start new thread",  # BLAS thread fan-out
-        "idle_heartbeats",   # block teardown between rounds
-        "unknown opcode",    # Python minor mismatch
-        "login_manager",     # the appfl/SDK conflict
-        "403",               # unprivileged endpoint start
-        "422",               # mapping did not resolve
+        "idle_heartbeats",  # block teardown between rounds
+        "unknown opcode",  # Python minor mismatch
+        "login_manager",  # the appfl/SDK conflict
+        "403",  # unprivileged endpoint start
+        "422",  # mapping did not resolve
     ]:
         assert topic in text, f"troubleshooting.md no longer covers {topic!r}"
 
@@ -182,9 +187,7 @@ def test_bundle_reads_only_partner_docs(tmp_path):
         # Every rendered doc must derive from a docs/partner/ source. Compare on the
         # unrendered skeleton: template variables differ after rendering, so a structural
         # anchor from the source is the check that survives.
-        assert any(
-            _shares_structure(rendered, text) for text in source_texts
-        ), (
+        assert any(_shares_structure(rendered, text) for text in source_texts), (
             f"{produced.name} in the bundle does not correspond to any file under "
             f"{partner_root}. Bundle content must come from docs/partner/ and nowhere "
             "else."
@@ -193,11 +196,10 @@ def test_bundle_reads_only_partner_docs(tmp_path):
 
 def _shares_structure(rendered: str, source: str) -> bool:
     """Do these share enough literal headings to be the same document?"""
+
     def headings(text: str) -> set[str]:
         return {
-            line.strip()
-            for line in text.splitlines()
-            if line.startswith("#") and "{{" not in line
+            line.strip() for line in text.splitlines() if line.startswith("#") and "{{" not in line
         }
 
     source_headings = headings(source)

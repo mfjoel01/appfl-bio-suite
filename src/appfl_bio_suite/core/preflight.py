@@ -269,11 +269,7 @@ def _check_binaries(report: PreflightReport, experiment: str | None) -> None:
     from appfl_bio_suite.core.experiments import REGISTRY
 
     targeted = bool(experiment and experiment in REGISTRY)
-    specs = (
-        [REGISTRY[experiment]]
-        if targeted
-        else [s for s in REGISTRY.values() if s.implemented]
-    )
+    specs = [REGISTRY[experiment]] if targeted else [s for s in REGISTRY.values() if s.implemented]
     wanted = {name: spec.name for spec in specs for name in spec.required_binaries}
     if not wanted:
         report.add("external binaries", Level.SKIP, "no experiment here needs one")
@@ -294,7 +290,8 @@ def _check_binaries(report: PreflightReport, experiment: str | None) -> None:
         report.add(
             "external binaries",
             Level.FAIL if targeted else Level.WARN,
-            "not found on PATH or in vendor/bin: " + ", ".join(missing)
+            "not found on PATH or in vendor/bin: "
+            + ", ".join(missing)
             + ("" if targeted else "\n(only matters if you run that experiment)"),
             "These are C++ command-line tools the experiment shells out to; they are not\n"
             "pip-installable and no extra provides them. Vendor static builds with:\n"
@@ -515,9 +512,7 @@ def _required_input_files(experiment: str):
     import importlib
 
     try:
-        loader = importlib.import_module(
-            f"appfl_bio_suite.experiments.{spec.package}.dataset"
-        )
+        loader = importlib.import_module(f"appfl_bio_suite.experiments.{spec.package}.dataset")
     except ImportError:
         return None
 

@@ -66,7 +66,7 @@ from appfl_bio_suite.experiments.fine_mapping.trainer import (
 
 CHROM = 1
 START, END = 1_000_000, 1_400_000
-M = 40                      # variants in the window
+M = 40  # variants in the window
 POPS = ["EUR", "AFR"]
 INSTANCES = ["L0000_ncsl1_h2-0.005_rg1_rep0", "L0000_ncsl2_h2-0.005_rg1_rep0"]
 
@@ -78,8 +78,8 @@ SITES = {
     "mbzuai": {"EUR": 20, "AFR": 20},
 }
 FLIPPED_SITE = "covenant"
-FLIPPED_VARIANTS = (3, 11, 12)   # indices into the window
-MISSING_CELL = (2, 7)            # (individual index within anl, variant index)
+FLIPPED_VARIANTS = (3, 11, 12)  # indices into the window
+MISSING_CELL = (2, 7)  # (individual index within anl, variant index)
 
 
 def _snp(j: int) -> str:
@@ -121,14 +121,19 @@ def package(tmp_path_factory: pytest.TempPathFactory):
         for iid, pop in zip(iids, labels, strict=True):
             handle.write(f"{iid}\t{iid}\t{pop}\n")
 
-    reference = write_reference_variants(
-        pool_dir / f"chr{CHROM}", root / "reference_variants.tsv"
-    )
+    reference = write_reference_variants(pool_dir / f"chr{CHROM}", root / "reference_variants.tsv")
 
-    loci = pd.DataFrame([{
-        "locus_id": "L0000", "chrom": CHROM, "start_bp": START, "end_bp": END,
-        "stratum": "high",
-    }])
+    loci = pd.DataFrame(
+        [
+            {
+                "locus_id": "L0000",
+                "chrom": CHROM,
+                "start_bp": START,
+                "end_bp": END,
+                "stratum": "high",
+            }
+        ]
+    )
     (root / "loci").mkdir()
     loci.to_csv(root / "loci" / "selected_loci.tsv", sep="\t", index=False)
 
@@ -155,28 +160,37 @@ def package(tmp_path_factory: pytest.TempPathFactory):
         processed = root / "processed" / site
         processed.mkdir(parents=True)
         write_plink1(
-            processed / f"{site}_chr{CHROM}", site_geno, CHROM, positions,
-            site_iids, alleles,
+            processed / f"{site}_chr{CHROM}",
+            site_geno,
+            CHROM,
+            positions,
+            site_iids,
+            alleles,
         )
-        manifest = pd.DataFrame({
-            "FID": site_iids, "IID": site_iids,
-            "superpopulation": [labels[i] for i in rows],
-        })
+        manifest = pd.DataFrame(
+            {
+                "FID": site_iids,
+                "IID": site_iids,
+                "superpopulation": [labels[i] for i in rows],
+            }
+        )
         manifest.to_csv(processed / f"{site}_manifest.tsv", sep="\t", index=False)
 
         pheno_dir = root / "ground_truth" / "phenotypes" / site
         pheno_dir.mkdir(parents=True)
         for inst, values in phenotypes.items():
-            pd.DataFrame({
-                "FID": site_iids, "IID": site_iids, "y": values[rows],
-            }).to_csv(pheno_dir / f"{inst}.pheno", sep="\t", index=False)
+            pd.DataFrame(
+                {
+                    "FID": site_iids,
+                    "IID": site_iids,
+                    "y": values[rows],
+                }
+            ).to_csv(pheno_dir / f"{inst}.pheno", sep="\t", index=False)
 
         # -- bundle layout --------------------------------------------------
         bundle = root / site / "data"
         bundle.mkdir(parents=True)
-        write_plink1(
-            bundle / "site_genotypes", site_geno, CHROM, positions, site_iids, alleles
-        )
+        write_plink1(bundle / "site_genotypes", site_geno, CHROM, positions, site_iids, alleles)
         manifest.to_csv(bundle / "site_manifest.tsv", sep="\t", index=False)
         loci.to_csv(bundle / "selected_loci.tsv", sep="\t", index=False)
         (bundle / "reference_variants.tsv").write_text(
@@ -185,9 +199,13 @@ def package(tmp_path_factory: pytest.TempPathFactory):
         bundle_pheno = bundle / "phenotypes"
         bundle_pheno.mkdir()
         for inst, values in phenotypes.items():
-            pd.DataFrame({
-                "FID": site_iids, "IID": site_iids, "y": values[rows],
-            }).to_csv(bundle_pheno / f"{inst}.pheno", sep="\t", index=False)
+            pd.DataFrame(
+                {
+                    "FID": site_iids,
+                    "IID": site_iids,
+                    "y": values[rows],
+                }
+            ).to_csv(bundle_pheno / f"{inst}.pheno", sep="\t", index=False)
 
     cfg = SimulationConfig(
         repo_root=root,
@@ -204,30 +222,47 @@ def package(tmp_path_factory: pytest.TempPathFactory):
         chromosome=CHROM,
         tools={"plink": "plink", "plink2": "plink2", "king": "king"},
         sites={
-            site: {"n": sum(comp.values()), "composition": comp,
-                   "dominant": max(comp, key=comp.get)}
+            site: {
+                "n": sum(comp.values()),
+                "composition": comp,
+                "dominant": max(comp, key=comp.get),
+            }
             for site, comp in SITES.items()
         },
         superpopulations=POPS,
         locus_selection={
-            "window_size_bp": END - START + 1, "step_size_bp": 100_000, "n_loci": 3,
-            "strata": {"low": 1, "medium": 1, "high": 1}, "maf_filter": 0.01,
-            "ld_tag_snp_target": 10, "ld_r2_prune_threshold": 0.995,
-            "ld_prune_window_variants": 50, "ld_prune_step_variants": 5, "n_workers": 1,
+            "window_size_bp": END - START + 1,
+            "step_size_bp": 100_000,
+            "n_loci": 3,
+            "strata": {"low": 1, "medium": 1, "high": 1},
+            "maf_filter": 0.01,
+            "ld_tag_snp_target": 10,
+            "ld_r2_prune_threshold": 0.995,
+            "ld_prune_window_variants": 50,
+            "ld_prune_step_variants": 5,
+            "n_workers": 1,
         },
         architecture={
-            "ncsl": [1], "h2": [0.005], "rg": [1.0], "factorial_mode": "minimal",
+            "ncsl": [1],
+            "h2": [0.005],
+            "rg": [1.0],
+            "factorial_mode": "minimal",
             "replicates": 1,
             "ancestry_specific_causal": {
-                "enabled": False, "min_per_stratum": 0,
-                "common_maf_threshold": 0.05, "rare_maf_threshold": 0.01,
+                "enabled": False,
+                "min_per_stratum": 0,
+                "common_maf_threshold": 0.05,
+                "rare_maf_threshold": 0.01,
             },
         },
         phenotype={"model": "linear_additive", "h2_tolerance_relative": 0.5},
         qc={
-            "kinship_threshold": 0.05, "pca_n_components": 2,
-            "pca_reference": "1kg_phase3", "maf_tolerance_sd": 3.0,
-            "ld_decay_max_dist_kb": 1000, "ld_decay_n_loci_sample": 1,
+            "kinship_threshold": 0.05,
+            "pca_n_components": 2,
+            "pca_reference": "1kg_phase3",
+            "maf_tolerance_sd": 3.0,
+            "ld_decay_max_dist_kb": 1000,
+            "ld_decay_n_loci_sample": 1,
         },
         fine_mapping={"min_gwas_n": 0},
     )
@@ -260,9 +295,7 @@ def _shipped(root, site):
 
     import json
 
-    manifest = json.loads(
-        payload[KEY_MANIFEST].numpy().tobytes().decode("utf-8")
-    )
+    manifest = json.loads(payload[KEY_MANIFEST].numpy().tobytes().decode("utf-8"))
     return payload, manifest
 
 

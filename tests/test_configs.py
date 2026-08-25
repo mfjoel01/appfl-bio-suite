@@ -25,9 +25,7 @@ def _shipped_configs() -> list[Path]:
     return out
 
 
-@pytest.mark.parametrize(
-    "path", _shipped_configs(), ids=[p.name for p in _shipped_configs()]
-)
+@pytest.mark.parametrize("path", _shipped_configs(), ids=[p.name for p in _shipped_configs()])
 def test_shipped_config_parses(path: Path):
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert data is not None, f"{path} is empty"
@@ -148,9 +146,7 @@ def test_no_config_path_is_left_unresolved():
             if isinstance(node, dict):
                 for key, value in node.items():
                     if key.endswith("_path"):
-                        assert value is not None, (
-                            f"{experiment}: {trail}.{key} is still null"
-                        )
+                        assert value is not None, f"{experiment}: {trail}.{key} is still null"
                     walk(value, f"{trail}.{key}", experiment)
             elif isinstance(node, list):
                 for item in node:

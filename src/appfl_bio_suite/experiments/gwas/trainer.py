@@ -276,12 +276,12 @@ class SiteGWASTrainer(BaseTrainer):
         bmi_df.to_csv(self.data_dir / f"{self.client_id}_local_gwas_bmi.csv.gz", index=False)
         t2d_df.to_csv(self.data_dir / f"{self.client_id}_local_gwas_t2d.csv.gz", index=False)
         _write_hits_table(
-            bmi_df, t2d_df, self.hit_threshold,
+            bmi_df,
+            t2d_df,
+            self.hit_threshold,
             self.data_dir / f"{self.client_id}_local_gwas_hits.csv",
         )
-        pgs_metrics.to_csv(
-            self.data_dir / f"{self.client_id}_local_pgs_metrics.csv", index=False
-        )
+        pgs_metrics.to_csv(self.data_dir / f"{self.client_id}_local_pgs_metrics.csv", index=False)
 
         # How the server learns the variant axis. Sent as JSON bytes because the payload
         # is a tensor dict, and this is the only non-numeric field.
@@ -304,9 +304,7 @@ class SiteGWASTrainer(BaseTrainer):
             "maf": torch.from_numpy(bmi_df["MAF"].to_numpy(dtype=np.float64)),
             "gwas_n": torch.tensor([len(y_bmi_gwas)], dtype=torch.int64),
             "eval_n": torch.tensor([len(y_bmi_eval)], dtype=torch.int64),
-            "local_bmi_r2": torch.tensor(
-                [float(pgs_metrics.loc[0, "VALUE"])], dtype=torch.float64
-            ),
+            "local_bmi_r2": torch.tensor([float(pgs_metrics.loc[0, "VALUE"])], dtype=torch.float64),
             "local_t2d_auc": torch.tensor(
                 [float(pgs_metrics.loc[1, "VALUE"])], dtype=torch.float64
             ),
@@ -319,9 +317,7 @@ class SiteGWASTrainer(BaseTrainer):
 
     def _load_site_tables(self, G):
         """Merge phenotypes and covariates onto the genotype sample order."""
-        fam = pd.DataFrame(
-            {"FID": G.fid.values.astype(str), "IID": G.iid.values.astype(str)}
-        )
+        fam = pd.DataFrame({"FID": G.fid.values.astype(str), "IID": G.iid.values.astype(str)})
         pheno_gwas = pd.read_csv(self.train_dataset.pheno_gwas)
         pheno_eval = pd.read_csv(self.train_dataset.pheno_eval)
         cov = pd.read_csv(self.train_dataset.covariates)
@@ -407,19 +403,24 @@ class SiteGWASTrainer(BaseTrainer):
 
             ss_g = np.einsum("ij,ij->j", G_res, G_res)
             beta = np.divide(
-                G_res.T @ y_res, ss_g,
-                out=np.full(end - start, np.nan, dtype=np.float64), where=ss_g > 0,
+                G_res.T @ y_res,
+                ss_g,
+                out=np.full(end - start, np.nan, dtype=np.float64),
+                where=ss_g > 0,
             )
             resid = y_res[:, None] - G_res * beta[None, :]
             sigma2 = np.einsum("ij,ij->j", resid, resid) / df
             se = np.sqrt(
                 np.divide(
-                    sigma2, ss_g,
-                    out=np.full(end - start, np.nan, dtype=np.float64), where=ss_g > 0,
+                    sigma2,
+                    ss_g,
+                    out=np.full(end - start, np.nan, dtype=np.float64),
+                    where=ss_g > 0,
                 )
             )
             stat = np.divide(
-                beta, se,
+                beta,
+                se,
                 out=np.zeros(end - start, dtype=np.float64),
                 where=np.isfinite(se) & (se > 0),
             )
@@ -473,17 +474,22 @@ class SiteGWASTrainer(BaseTrainer):
 
             info = np.einsum("ij,i,ij->j", G_res, w, G_res)
             beta = np.divide(
-                G_res.T @ score_resid, info,
-                out=np.full(end - start, np.nan, dtype=np.float64), where=info > 0,
+                G_res.T @ score_resid,
+                info,
+                out=np.full(end - start, np.nan, dtype=np.float64),
+                where=info > 0,
             )
             se = np.sqrt(
                 np.divide(
-                    1.0, info,
-                    out=np.full(end - start, np.nan, dtype=np.float64), where=info > 0,
+                    1.0,
+                    info,
+                    out=np.full(end - start, np.nan, dtype=np.float64),
+                    where=info > 0,
                 )
             )
             stat = np.divide(
-                beta, se,
+                beta,
+                se,
                 out=np.zeros(end - start, dtype=np.float64),
                 where=np.isfinite(se) & (se > 0),
             )
