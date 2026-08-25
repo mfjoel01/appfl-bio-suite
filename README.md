@@ -27,7 +27,7 @@ No data movement, no shared credential, no VPN, no inbound network access.
 ## Quickstart
 
 ```bash
-git clone https://github.com/<your-org>/appfl-bio-suite.git
+git clone https://github.com/mfjoel01/appfl-bio-suite.git
 cd appfl-bio-suite
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[all]" -c constraints.txt
@@ -68,51 +68,44 @@ appfl-bio-suite partner-bundle EXPERIMENT --site X  a partner's complete setup p
 
 ---
 
-## What makes this usable by someone who is not its author
-
-That was the design constraint, and it ruled out a number of otherwise-natural shortcuts.
+## How it works
 
 **One config file.** `federation.yaml` declares who you are, who your partners are, and
 what each is doing. Every generator, config, document template and check reads from it.
-Nothing in `src/` contains a coordinator identity, an endpoint UUID, or a site name — and
-that is verified mechanically in CI, not by convention.
+Nothing in `src/` contains a coordinator identity, an endpoint UUID, or a site name, and
+CI verifies that.
 
-**Generated partner bundles, not templates.** `partner-bundle` emits a directory with that
+**Generated partner bundles, not templates.** `partner-bundle` emits a directory with a
 partner's configuration fully resolved — their site ID, their data assignment, *your*
 identity, their scheduler's provider block — plus their two setup documents with no
-placeholders left. Essentially every question partners used to ask was about which
-placeholder applied to them.
+placeholders left to interpret.
 
 **A closed set for partner-facing content.** Bundles are built from `docs/partner/` and
-nowhere else, enforced in code. "Did I accidentally include my internal notes" is not a
-judgment call made under time pressure.
+nowhere else, enforced in code, so nothing outside that tree can reach a partner.
 
-**Exact version pinning.** Every site must run byte-identical versions of the Globus
-Compute stack. Skew does not fail at install time; it fails as a deserialization error
-several rounds into a run on somebody else's cluster. `constraints.txt` pins it and
+**Exact version pinning.** Every site runs byte-identical versions of the Globus Compute
+stack. Skew does not fail at install time; it fails as a deserialization error several
+rounds into a run on somebody else's cluster. `constraints.txt` pins it and
 `preflight --check pins` verifies it.
 
 **Failures that name the fix.** The
-[troubleshooting registry](docs/coordinator/troubleshooting.md) gives the mechanism, not
-just the symptom, for every problem that cost real time — and where a check can replace a
-paragraph of documentation, it does.
+[troubleshooting registry](docs/coordinator/troubleshooting.md) is indexed by symptom and
+gives the mechanism alongside the fix.
 
 ## Reproducibility
 
-- **The GWAS simulation is frozen.** All 35 outputs are byte-identical to the pipeline
-  this replaces, for a fixed seed, verified against checksums captured by running the
-  original scripts unmodified.
 - **Every simulation run writes a manifest** recording the scenario, every seed, the suite
   commit, input and output checksums, and package versions.
   `simulate gwas --verify <manifest>` confirms a rerun mechanically.
-- **Known limits are documented, not papered over.**
-  [docs/experiments/gwas/DATA.md](docs/experiments/gwas/DATA.md) is explicit that the
-  original input cohort is not regenerable, and about what the shipped substitute does and
-  does not reproduce.
+- **The GWAS simulation is deterministic.** For a fixed seed, all 35 outputs are
+  byte-identical, verified against recorded checksums.
+- **Known limits are documented.**
+  [docs/experiments/gwas/DATA.md](docs/experiments/gwas/DATA.md) states which input cohort
+  is not regenerable, and what the shipped substitute does and does not reproduce.
 
 ## Documentation
 
-Organized by audience, because mixing audiences is how coordinator notes reach a partner.
+Organized by audience.
 
 | | |
 | --- | --- |
