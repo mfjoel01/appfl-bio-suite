@@ -1,0 +1,28 @@
+# Smallest scenario that exercises every stage. Used by CI and by anyone validating an
+# install. Runs in seconds and needs no downloaded data.
+#
+#   appfl-bio-suite simulate gwas --scenario ci-tiny --out /tmp/gwas-ci
+#
+# Not scientifically meaningful. Its only job is to prove the chain works end to end:
+# cohort -> phenotypes -> per-site bundles -> a loader that can read them.
+
+name: ci-tiny
+description: >-
+  Minimal end-to-end smoke scenario. Two sites, a few hundred samples. Proves the
+  pipeline runs; produces no meaningful genetics.
+
+cohort:
+  provider: synthetic_ld
+  n_samples: 400
+  n_variants: 600
+  seed: 20260101
+  n_chromosomes: 4
+  ld_block_size: 20
+  ld_correlation: 0.6
+  missing_rate: 0.002
+
+phenotypes:
+  data_sim_scaling: 1.0
+
+sites: [250, 150]
+split_seed: 42

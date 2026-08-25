@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check src tests
+      - run: ruff format --check src tests
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Installed with the constraints file, which is the configuration every site in a
+      # federation is supposed to be running. Testing anything else would test a
+      # configuration nobody deploys.
+      - name: Install
+        run: pip install -e ".[all,dev]" -c constraints.txt
+
+      # DoD #10. Version drift is the failure mode this whole project is organized
+      # against, so it is checked mechanically rather than by inspection.
+      - name: Pins match constraints.txt
+        run: appfl-bio-suite preflight --check pins
+
+      - name: Test suite
+        run: pytest -v -m "not slow and not needs_network and not needs_legacy_tree"
+
+  reusability:
+    # The primary acceptance criterion: the repo must work for someone who is not its
+    # author. Every hit outside the allowlist is a place where a stranger would have to
+    # edit code to stand up their own federation.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e "." -c constraints.txt
+      - name: No coordinator-specific values outside the allowlist
+        run: python scripts/check_reusability.py
+
+  loopback:
+    # A federation that runs end to end on one machine, with no external partner and no
+    # HPC scheduler. This is what lets a stranger validate their install before recruiting
+    # anyone, and it is the only part of the federated path CI can exercise at all.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[all,dev]" -c constraints.txt
+      - name: FLamby loopback is wired correctly
+        run: appfl-bio-suite preflight --experiment flamby-heart-disease --check configs
+      # Exactly the two commands the README and the new-federation guide give as
+      # "prove your install works". No federation config is created first, deliberately:
+      # that is the flow being tested, and CI has no local/federation.yaml (local/ is
+      # gitignored) any more than a stranger does five minutes after cloning.
+      - name: GWAS loopback, simulation through training
+        run: |
+          appfl-bio-suite simulate gwas --scenario ci-tiny --out /tmp/gwas-ci
+          appfl-bio-suite run gwas --config loopback --driver serial --data-root /tmp/gwas-ci
+
+      - name: The loopback run produced meta-analysis output
+        run: |
+          test -f local/output/gwas-loopback/data/appfl_meta_gwas_hits.csv
+          test -f local/output/gwas-loopback/data/appfl_meta_gwas_bmi.csv.gz
+          test -f local/output/gwas-loopback/graphs/appfl_meta_gwas_bmi_qq.png
+
+  fine-mapping-loopback:
+    # A separate job because this experiment needs two C++ binaries that pip cannot
+    # provide, and installing them is the slow part. Keeping it out of the GWAS job means
+    # a SuSiEx download failure cannot make the GWAS loopback look broken.
+    #
+    # Worth the minutes: this is the only test that exercises the LD panel the coordinator
+    # writes by hand against the real SuSiEx reader. That reader aborts on a size or
+    # allele mismatch rather than degrading, so nothing short of running it proves the
+    # bytes are right.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[all,dev]" -c constraints.txt
+
+      - name: Vendor PLINK and SuSiEx
+        run: |
+          scripts/fine-mapping/install_plink.sh
+          scripts/fine-mapping/install_susiex.sh
+
+      - name: Preflight finds them
+        run: appfl-bio-suite preflight --experiment fine-mapping --check env
+
+      # The same two commands the runbook gives as "prove your install works". No
+      # federation config is created first, deliberately: that is the flow being tested.
+      - name: Fine-mapping loopback, simulation through credible sets
+        run: |
+          appfl-bio-suite simulate fine-mapping --scenario ci-tiny --out /tmp/fm-ci
+          appfl-bio-suite run fine-mapping --config loopback --driver serial --data-root /tmp/fm-ci
+
+      - name: The loopback run produced scored credible sets
+        run: |
+          test -f local/output/fine-mapping-loopback/data/fed_fm_results.tsv
+          test -f local/output/fine-mapping-loopback/data/fed_fm_site_summary.csv
+          # Not just "a file exists": ci-tiny uses a deliberately enormous effect size so
+          # that credible sets actually come back, and an empty table would otherwise pass
+          # every check above while proving nothing about the statistics.
+          python - <<'CHECK'
+          import pandas as pd
+          d = pd.read_csv("local/output/fine-mapping-loopback/data/fed_fm_results.tsv", sep="\t")
+          assert len(d), "no instances were fine-mapped"
+          assert d["n_credible_sets"].sum() > 0, "no credible sets were produced"
+          assert d["any_causal_captured"].any(), "no causal variant was captured"
+          print(f"{len(d)} instance(s), {int(d.n_credible_sets.sum())} credible set(s)")
+          CHECK
+
+      # The exactness result, at test scale. Skipped without the binaries, which is
+      # exactly why this job installs them.
+      - name: Federated equals centralized
+        run: pytest tests/test_fine_mapping_federated.py -v -m "not needs_network"

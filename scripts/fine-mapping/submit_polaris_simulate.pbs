@@ -1,0 +1,182 @@
+#!/bin/bash
+# Build the fine-mapping data package on Polaris, sharded across nodes.
+#
+# For anything smaller than the published scenario, do not use this -- use
+#   appfl-bio-suite simulate fine-mapping --scenario <name> --out <dir>
+# which does the same five stages in one process and writes a stronger run manifest.
+#
+# This exists because the published scenario is not a single-process job: 100 loci x 15
+# architectures x 10 replicates over 150,000 individuals, with two stages that shard over
+# loci. It runs prepare -> sampling -> locus-selection -> phenotypes (sharded) -> merge
+# -> bundle, then QC and validation on the finished package.
+#
+# BEFORE YOU SUBMIT
+#   1. Stage HAPNEST once, on a login node with internet (~135 GB for chr1):
+#        scripts/fine-mapping/download_hapnest.sh
+#        export FEDFM_HAPNEST_DIR=/path/to/data/raw/hapnest
+#   2. Vendor PLINK once, on a login node:
+#        scripts/fine-mapping/install_plink.sh
+#   3. Set FM_RUN_DIR, and pass your allocation.
+#
+# SUBMIT
+#   qsub -A <your-allocation> -v FM_RUN_DIR=/lus/.../fm-run \
+#        scripts/fine-mapping/submit_polaris_simulate.pbs
+#
+# A command-line -A/-q/-l overrides the directive of the same name, so the defaults below
+# are a starting point rather than something to edit in a tracked file.
+
+# KEEP THE DIRECTIVE BLOCK PURE: no trailing comments on a #PBS line (qsub rejects them
+# with "directive error"), and no indented lines inside it -- PBS stops scanning at the
+# first line not starting with '#', silently dropping every directive after it, including
+# filesystems, -N, -o and -e.
+
+#PBS -A CHANGE_ME
+#PBS -q prod
+#PBS -l select=10:system=polaris
+#PBS -l place=scatter
+#PBS -l walltime=03:00:00
+#PBS -l filesystems=home:grand
+#PBS -N fm-simulate
+#PBS -o logs/fm-simulate.out
+#PBS -e logs/fm-simulate.err
+
+set -uo pipefail
+
+# ---------------------------------------------------------------------------
+# Configuration. Override with `qsub -v NAME=value,...`.
+# ---------------------------------------------------------------------------
+# The suite checkout. Derived from where this script lives, so a clone anywhere works and
+# no user's home directory is baked into a tracked file.
+: "${SUITE_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+# Where the data package is written. MUST be on a parallel filesystem, not $HOME.
+: "${FM_RUN_DIR:?set FM_RUN_DIR to the output directory, e.g. /lus/.../fm-run}"
+: "${FM_SCENARIO:=three-site-hapnest}"
+# Cores per node. Polaris compute nodes have 32 physical cores.
+: "${FM_WORKERS:=32}"
+
+cd "${SUITE_ROOT}" || exit 1
+mkdir -p logs/fm "${FM_RUN_DIR}"
+
+echo "==> fine-mapping simulate, job ${PBS_JOBID:-interactive} on $(hostname) @ $(date)"
+echo "==> suite    ${SUITE_ROOT}"
+echo "==> out      ${FM_RUN_DIR}"
+echo "==> scenario ${FM_SCENARIO}"
+
+module use /soft/modulefiles
+module load conda
+conda activate "${FM_CONDA_ENV:-base}"
+PYTHON="$(command -v python)"
+STAGE="${SUITE_ROOT}/scripts/fine-mapping/run_stage.py"
+CONFIG="${FM_RUN_DIR}/pipeline_config.yaml"
+
+if [ ! -x "${SUITE_ROOT}/vendor/bin/plink" ] && ! command -v plink >/dev/null 2>&1; then
+  echo "!! plink not found -- run scripts/fine-mapping/install_plink.sh on a login node"
+  exit 1
+fi
+export PATH="${SUITE_ROOT}/vendor/bin:${PATH}"
+export PYTHONPATH="${SUITE_ROOT}/src:${PYTHONPATH:-}"
+# matplotlib builds a font cache on first use; against a slow or read-only $HOME that
+# stalls the QC step for minutes or warns confusingly.
+export MPLBACKEND=Agg MPLCONFIGDIR="${SUITE_ROOT}/logs/.mplconfig"
+mkdir -p "${MPLCONFIGDIR}"
+
+mapfile -t HOSTS < <(awk '!seen[$0]++' "${PBS_NODEFILE}")
+NNODES=${#HOSTS[@]}
+echo "==> ${NNODES} node(s): ${HOSTS[*]}"
+
+# One rank per host, all its cores, single-threaded BLAS. Blocks until the rank exits.
+launch() {  # launch <host> <logfile> <args...>
+  local host="$1" log="$2"; shift 2
+  mpiexec --host "${host}" -n 1 --ppn 1 --depth="${FM_WORKERS}" --cpu-bind depth \
+    --env OMP_NUM_THREADS=1 --env OPENBLAS_NUM_THREADS=1 --env MKL_NUM_THREADS=1 \
+    --env NUMEXPR_NUM_THREADS=1 --env PYTHONPATH="${PYTHONPATH}" \
+    --env PATH="${PATH}" --env MPLBACKEND=Agg --env MPLCONFIGDIR="${MPLCONFIGDIR}" \
+    --env FEDFM_HAPNEST_DIR="${FEDFM_HAPNEST_DIR:-}" \
+    "${PYTHON}" "${STAGE}" "$@" > "${log}" 2>&1
+}
+
+step() {  # step <name> <args...> -- one rank on node 0, fatal on failure
+  local name="$1"; shift
+  echo "==> [${name}] @ $(date)"
+  launch "${HOSTS[0]}" "logs/fm/${name}.log" "$@" \
+    || { echo "!! [${name}] FAILED -- see logs/fm/${name}.log"; exit 1; }
+}
+
+# Fan a stage out over every node and wait. Returns nonzero if any shard failed.
+fan_out() {  # fan_out <name> <stage> <args...>  -- --shard-index/--n-shards appended
+  local name="$1" stage="$2"; shift 2
+  echo "==> [${name}] across ${NNODES} node(s) @ $(date)"
+  local pids=() rc=0
+  for i in "${!HOSTS[@]}"; do
+    launch "${HOSTS[$i]}" "logs/fm/${name}.shard${i}.log" \
+      "${stage}" "$@" --shard-index "${i}" --n-shards "${NNODES}" &
+    pids+=($!)
+  done
+  for p in "${pids[@]}"; do wait "${p}" || rc=1; done
+  if [ "${rc}" -ne 0 ]; then
+    echo "!! [${name}] a shard FAILED -- see logs/fm/${name}.shard*.log"
+    return 1
+  fi
+  echo "==> [${name}] done @ $(date)"
+}
+
+step prepare  prepare  --scenario "${FM_SCENARIO}" --out "${FM_RUN_DIR}"
+step sampling sampling --config "${CONFIG}"
+
+# Locus selection is map/reduce. `--score-only` scores this shard's candidate windows
+# into a shared cache; the plain invocation afterwards reads the whole cache and does the
+# stratify-and-select, which is cheap and must see every window. Scoring is the part that
+# reads genotypes at three sites per window, so it is the part worth spreading out.
+if [ "${NNODES}" -gt 1 ]; then
+  fan_out locus-scoring locus-selection --config "${CONFIG}" --score-only || exit 1
+fi
+step locus-selection locus-selection --config "${CONFIG}"
+
+# Phenotypes: the expensive stage, sharded over loci across every node.
+#
+# The --clean-only pass is NOT optional before a sharded run. An unsharded run wipes and
+# recreates the output directories itself; a sharded one deliberately does not, because
+# every shard would race to wipe the others' work. Skipping it leaves any previous run's
+# phenotype files in place, and the merge then produces a manifest describing a mixture
+# of two runs -- with nothing to indicate it.
+step phenotypes-clean phenotypes --config "${CONFIG}" --clean-only
+
+# A shard writes its manifest rows only when it FINISHES, so a walltime kill loses that
+# shard's whole share of the work. Over-provision walltime rather than shard count.
+fan_out phenotypes phenotypes --config "${CONFIG}" || exit 1
+
+if [ "${NNODES}" -gt 1 ]; then
+  step phenotypes-merge phenotypes --config "${CONFIG}" --merge --n-shards "${NNODES}"
+fi
+
+step bundle bundle --scenario "${FM_SCENARIO}" --out "${FM_RUN_DIR}" --n-shards "${NNODES}"
+
+# QC: one site per node, in parallel. Non-fatal -- the data package is already complete
+# and checksummed by this point, and an HTML report is not worth failing a job over.
+echo "==> [qc] @ $(date)"
+qc_pids=()
+i=0
+for site in anl covenant mbzuai; do
+  launch "${HOSTS[$((i % NNODES))]}" "logs/fm/qc_${site}.log" \
+    qc --config "${CONFIG}" --site "${site}" &
+  qc_pids+=($!)
+  i=$((i + 1))
+done
+for p in "${qc_pids[@]}"; do wait "${p}" || echo "!! [qc] a site failed (non-fatal)"; done
+
+# Validation: the five-check harness over the finished package. Also non-fatal, for the
+# same reason -- but read its summary before trusting the package.
+echo "==> [validation] @ $(date)"
+launch "${HOSTS[0]}" "logs/fm/validation.log" \
+  validation --config "${CONFIG}" --n-workers "${FM_WORKERS}" \
+  || echo "!! [validation] FAILED -- see logs/fm/validation.log"
+
+echo
+echo "==> data package complete @ $(date)"
+echo "==> bundles    ${FM_RUN_DIR}/{anl,covenant,mbzuai}/data"
+echo "==> answer key ${FM_RUN_DIR}/ground_truth/causal_manifest.tsv   (do NOT distribute)"
+echo "==> manifest   ${FM_RUN_DIR}/run_manifest.json"
+echo "==> validation ${FM_RUN_DIR}/reports/validation/SUMMARY.txt"
+echo
+cat "${FM_RUN_DIR}/reports/validation/SUMMARY.txt" 2>/dev/null \
+  || echo "(no validation summary -- see logs/fm/validation.log)"

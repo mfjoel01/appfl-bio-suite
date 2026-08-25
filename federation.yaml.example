@@ -1,0 +1,303 @@
+# =============================================================================
+# federation.yaml -- the one file you fill in to stand up your own federation
+# =============================================================================
+#
+# Everything in this file is FICTIONAL. It is a worked example, not anyone's real
+# federation, so that the format is reviewable in the open.
+#
+#     cp federation.yaml.example local/federation.yaml
+#     $EDITOR local/federation.yaml
+#     appfl-bio-suite preflight
+#
+# Your real file lives in local/ and is gitignored. Nothing else needs editing: every
+# generator, config, doc template, and preflight check in the suite reads from here.
+# If you find yourself editing code to describe your federation, that is a bug -- please
+# report it.
+#
+# Read docs/coordinator/new-federation.md alongside this file.
+# =============================================================================
+
+schema_version: 1
+
+
+# -----------------------------------------------------------------------------
+# WHO YOU ARE
+# -----------------------------------------------------------------------------
+# You are the coordinator: the one site that dispatches tasks. Your Globus identity is
+# what every partner authorizes in their endpoint's identity mapping.
+#
+# This is NOT a secret. Knowing it grants nothing -- each partner's own endpoint config
+# is what decides to honor it. You will hand this string to every partner, and the
+# partner-bundle generator fills it in for you so you never retype it.
+coordinator:
+  # Your Globus identity username. Run `globus whoami`, or check the Globus web app.
+  # Usually looks like an email address; it does not have to be one.
+  identity: a.researcher@example-university.edu
+
+  # Your Globus identity UUID. Optional but recommended: `identity validate` uses it to
+  # build a realistic identity record, and partner-facing docs quote it so a partner can
+  # confirm they mapped the right principal rather than a lookalike.
+  identity_id: 00000000-1111-2222-3333-444444444444
+
+  # Free text, used in generated partner documents so a partner knows who is contacting
+  # them and how to reply.
+  organization: Example University Institute for Computational Health
+  contact: a.researcher@example-university.edu
+
+  # Your own compute endpoint, if you also participate as a training site.
+  #
+  # Coordinators run a SINGLE-USER endpoint. A single-user endpoint accepts tasks only
+  # from the identity that registered it, which is exactly right here: you are the only
+  # one who dispatches. Partners run multi-user endpoints instead -- see `sites` below.
+  #
+  # Omit this whole block if you only drive and never train.
+  endpoint:
+    name: example-coordinator-ep
+    uuid: aaaaaaaa-0000-0000-0000-000000000001
+    scheduler: pbspro          # pbspro | slurm | none
+    queue: debug
+    account: EXAMPLE-ALLOC
+
+  # Optional guard: the driver refuses to launch unless the hostname matches.
+  #
+  # Worth setting if your cluster has more than one login node and only some can run the
+  # driver -- a common cause of confusing failures is a shared filesystem making the wrong
+  # host look correct. Leave it unset if any host will do; an unset guard is not checked.
+  #
+  # This is a WARNING by default, not a hard failure, because a coordinator elsewhere has
+  # different constraints. Set `host_check_enforce: true` to make it fatal.
+  host_check: "^example-login-\\d+"
+  host_check_enforce: false
+
+
+# -----------------------------------------------------------------------------
+# WHO ELSE IS IN THE FEDERATION
+# -----------------------------------------------------------------------------
+# One entry per participating institution. This is institution-level metadata only --
+# which experiments they run, and with which endpoint, is declared under `experiments`
+# below. That split exists because one institution can host both experiments, with
+# separate endpoints and separate service accounts, and their name and scheduler should
+# not be written down twice.
+#
+# Add or remove entries freely. Nothing in the suite assumes a site count.
+sites:
+  - id: site-north
+    name: Northern Institute of Technology
+    country: Canada
+    scheduler: slurm
+    partition: compute          # `partition` for SLURM; use `queue` for PBS
+    account: fedlearn
+    # The module that provides conda on their cluster, if any. Rendered into the
+    # worker_init of their endpoint template. Omit if conda is always on PATH.
+    conda_module: anaconda3
+    # Network interface facing their compute nodes. Only needed when the endpoint cannot
+    # auto-detect it -- the symptom is workers that start but never connect back.
+    # Leave unset unless a partner hits that.
+    interface: null
+
+  - id: site-south
+    name: Southern Research Council
+    country: Brazil
+    scheduler: slurm
+    partition: general
+    account: genomics
+    conda_module: miniconda
+    interface: eth0
+
+  - id: site-east
+    name: Eastern Technical University
+    country: Japan
+    scheduler: pbspro
+    queue: medium               # `queue` for PBS
+    account: bioinfo
+    conda_module: conda
+    interface: null
+
+
+# -----------------------------------------------------------------------------
+# WHAT EACH SITE IS DOING
+# -----------------------------------------------------------------------------
+# Per experiment: who participates, on which endpoint, as which local account, and with
+# which slice of the data.
+#
+# Each partner runs exactly one experiment at one data center, so each entry here is
+# everything the bundle generator needs to emit that partner's fully-filled-in config and
+# setup docs, with no placeholders left for them to interpret.
+experiments:
+
+  # ---------------------------------------------------------------------------
+  # FLamby Fed-Heart-Disease -- multi-round FedAvg on a public benchmark
+  # ---------------------------------------------------------------------------
+  # Partners download their own shard of a public dataset. There is no simulation step
+  # and nothing for you to distribute.
+  flamby-heart-disease:
+    enabled: true
+
+    # The local POSIX account partner endpoints map your identity to. Give each
+    # experiment its own, so a site hosting both keeps them separated with separate
+    # endpoints and separate scheduler accounting.
+    service_account: flamby_svc
+
+    # The endpoint name partners create. Also per-experiment, for the same reason.
+    endpoint_name: flamby-ep
+
+    # Fed-Heart-Disease has 4 natural centers (the collection sites of the original UCI
+    # study). `num_clients` is the dataset's split size, which the FLamby loader asserts
+    # against -- it is NOT your number of participating sites. Three sites drawing from a
+    # 4-center split is fine.
+    dataset: HeartDisease
+    num_clients: 4
+
+    rounds: 5                   # start small; prove the transport completes, then scale
+    client_weights_mode: equal  # equal | sample_size
+
+    sites:
+      - site: site-north
+        client_id: Site1
+        endpoint_uuid: bbbbbbbb-0000-0000-0000-000000000001
+        # Which FLamby center this site trains on. Must be unique across sites and
+        # less than num_clients.
+        center: 0
+        # Absolute path ON THEIR CLUSTER, writable by the service account.
+        output_dir: /home/flamby_svc/outputs
+        # Sample count they reported from the verification command in their setup guide.
+        # Recorded so preflight can catch a site that silently loaded the wrong center.
+        expected_train_samples: 199
+
+      - site: site-south
+        client_id: Site2
+        endpoint_uuid: bbbbbbbb-0000-0000-0000-000000000002
+        center: 1
+        output_dir: /scratch/flamby_svc/outputs
+        expected_train_samples: 172
+
+      - site: site-east
+        client_id: Site3
+        endpoint_uuid: bbbbbbbb-0000-0000-0000-000000000003
+        center: 2
+        output_dir: /work/flamby_svc/outputs
+        expected_train_samples: 30
+
+  # ---------------------------------------------------------------------------
+  # Federated GWAS -- single-round summary-statistic meta-analysis
+  # ---------------------------------------------------------------------------
+  # Unlike FLamby, you generate this data and distribute per-site bundles. Simulation is
+  # coordinator-side only and never reaches a partner: see docs/experiments/gwas/DATA.md.
+  gwas:
+    enabled: true
+    service_account: gwas_svc
+    endpoint_name: gwas-ep
+
+    # Which simulation scenario produced the per-site data you distributed. Recorded here
+    # so a run can be traced back to the data that fed it.
+    # Scenarios live in src/appfl_bio_suite/experiments/gwas/configs/simulation/.
+    simulation_scenario: three-site-skewed
+
+    variant_scaling: 1.0        # fraction of variants used at analysis time
+    hit_p_threshold: 5.0e-8     # genome-wide significance
+
+    sites:
+      - site: site-north
+        client_id: Site1
+        endpoint_uuid: cccccccc-0000-0000-0000-000000000001
+        # Absolute path ON THEIR CLUSTER where they unpacked the bundle you sent.
+        data_dir: /home/gwas_svc/data/site1
+        output_dir: /home/gwas_svc/outputs
+        expected_samples: 18032
+
+      - site: site-south
+        client_id: Site2
+        endpoint_uuid: cccccccc-0000-0000-0000-000000000002
+        data_dir: /scratch/gwas_svc/data/site2
+        output_dir: /scratch/gwas_svc/outputs
+        expected_samples: 9237
+
+      - site: site-east
+        client_id: Site3
+        endpoint_uuid: cccccccc-0000-0000-0000-000000000003
+        data_dir: /work/gwas_svc/data/site3
+        output_dir: /work/gwas_svc/outputs
+        expected_samples: 25028
+
+  # ---------------------------------------------------------------------------
+  # Federated cross-ancestry fine-mapping -- single-round aggregate exchange
+  # ---------------------------------------------------------------------------
+  # Like GWAS, you generate this data and distribute per-site bundles; simulation is
+  # coordinator-side only. Unlike GWAS, the coordinator also needs the SuSiEx and PLINK
+  # binaries -- see docs/experiments/fine-mapping/RUNBOOK.md.
+  #
+  # The site ids below are not free-form. The vendored cohort sampler enumerates exactly
+  # three, in a fixed order, and a scenario naming others is refused rather than silently
+  # producing a smaller cohort. See docs/experiments/fine-mapping/DATA.md.
+  fine-mapping:
+    enabled: true
+    service_account: finemap_svc
+    endpoint_name: finemap-ep
+
+    # Which simulation scenario produced the per-site bundles you distributed.
+    # Scenarios live in src/appfl_bio_suite/experiments/fine_mapping/configs/simulation/.
+    simulation_scenario: ci-tiny
+
+    # ---- locus sharding: the setting that decides whether the run completes ----
+    #
+    # A site's uplink is O(M^2) per (locus, ancestry). At a realistic locus that is
+    # ~32 MB per ancestry block, so a site holding five ancestries sends ~160 MB per
+    # locus and a 100-locus sweep does not finish. Split the run instead: launch it
+    # `locus_n_shards` times, bumping `locus_shard_index` each time, and concatenate the
+    # result tables.
+    #
+    # BOTH MUST BE THE SAME AT EVERY SITE, which is why they live here rather than in a
+    # per-site block. Two sites on different shards would each contribute to loci the
+    # other skipped, and every affected locus would be fine-mapped on a smaller cohort
+    # than its reported n -- with nothing downstream able to detect it.
+    locus_n_shards: 1
+    locus_shard_index: 0
+
+    # Smoke-test limits. Null for a real run.
+    locus_limit: null
+    instance_limit: null
+
+    # Ancestry columns to build. Empty means "whatever each site holds".
+    pops: []
+
+    # float32 is exact for this payload at any realistic cohort size and halves the
+    # uplink; float64 is the conservative default.
+    uplink_gram_dtype: float64
+
+    # ---- coordinator-side settings ----
+    #
+    # The ground-truth causal variants. Present only because this example describes a
+    # SIMULATED federation: the answer key is written by `simulate` and deliberately kept
+    # out of every site bundle. A real federation has no such file and leaves this null,
+    # in which case the run still produces credible sets -- it just cannot score them.
+    causal_manifest: null
+
+    credible_set_level: 0.95
+    pval_thresh: 1.0e-5
+    maf: 0.005
+    # Path to the SuSiEx binary. Null means PATH, then vendor/bin/, which is where
+    # scripts/fine-mapping/install_susiex.sh puts it.
+    susiex_binary: null
+
+    sites:
+      - site: site-north
+        client_id: anl
+        endpoint_uuid: dddddddd-0000-0000-0000-000000000001
+        # Absolute path ON THEIR CLUSTER where they unpacked the bundle you sent.
+        data_dir: /home/finemap_svc/data/anl
+        output_dir: /home/finemap_svc/outputs
+        expected_samples: 50000
+
+      - site: site-south
+        client_id: covenant
+        endpoint_uuid: dddddddd-0000-0000-0000-000000000002
+        data_dir: /scratch/finemap_svc/data/covenant
+        output_dir: /scratch/finemap_svc/outputs
+        expected_samples: 50000
+
+      - site: site-east
+        client_id: mbzuai
+        endpoint_uuid: dddddddd-0000-0000-0000-000000000003
+        data_dir: /work/finemap_svc/data/mbzuai
+        output_dir: /work/finemap_svc/outputs
+        expected_samples: 50000

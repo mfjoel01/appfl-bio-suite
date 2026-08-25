@@ -1,0 +1,147 @@
+# The published three-site fine-mapping design, over the real HAPNEST cohort.
+#
+# This is the scenario the experiment exists for: 150,000 individuals across three sites
+# with sharply different ancestry compositions, 100 chr1 loci stratified by how much their
+# LD structure diverges between sites, and a 15-point causal architecture grid at 10
+# replicates each.
+#
+#   appfl-bio-suite simulate fine-mapping --scenario three-site-hapnest --out <dir>
+#
+# IT NEEDS HAPNEST STAGED FIRST. Set `cohort.hapnest_dir` below to wherever you put it;
+# scripts/fine-mapping/download_hapnest.sh will fetch it (~135 GB for chr1 alone). Until
+# then this scenario refuses to run rather than silently substituting anything -- use
+# `ci-tiny` to exercise the pipeline without the download.
+#
+# Runtime is hours on a many-core node, not minutes. See docs/experiments/fine-mapping/
+# RUNBOOK.md, and scripts/fine-mapping/ for the PBS submissions the published run used.
+
+name: three-site-hapnest
+description: >-
+  The published design: ANL (EUR-dominant), Covenant (AFR-dominant) and MBZUAI
+  (MID-dominant), 50,000 individuals each, no individual shared. 100 chr1 loci across
+  three LD-divergence strata, 15 causal architectures, 10 replicates.
+
+cohort:
+  # The real thing. Left null on purpose: a staged pool is a fact about a machine, not
+  # about this scenario, and hardcoding one coordinator's path into a committed file
+  # means everyone else edits a tracked file to run it and then carries that edit.
+  #
+  # Point at your staged copy -- the directory holding chr1.{bed,bim,fam} and
+  # population_manifest.tsv -- either by setting FEDFM_HAPNEST_DIR in the environment, or
+  # by filling this in on your own copy of the scenario.
+  provider: hapnest
+  hapnest_dir: null
+
+# ---------------------------------------------------------------------------
+# Everything below is the upstream simulation config, verbatim.
+#
+# It is the vendored pipeline's own validated configuration object, carried here under
+# `pipeline:` rather than rewritten into the suite's idiom -- see simulation/schema.py for
+# why. Diff it against config/simulation_config.yaml in the standalone repository and the
+# only differences should be indentation and the absent `paths:` block, which the suite
+# supplies from `--out`.
+# ---------------------------------------------------------------------------
+pipeline:
+  master_seed: 20260601
+  chromosome: 1
+
+  # --- External Tools ---
+  tools:
+    plink: "plink"          # PLINK 1.9 binary on PATH
+    plink2: "plink2"        # PLINK 2.0 binary on PATH
+    king: "king"            # KING binary on PATH (optional; plink2 --make-king-table is fallback)
+
+  # --- Site Cohorts ---
+  sites:
+    anl:
+      n: 50000
+      composition:
+        EUR: 30000
+        AFR: 7500
+        AMR: 7500
+        EAS: 2500
+        CSA: 2500
+      dominant: EUR
+    covenant:
+      n: 50000
+      composition:
+        AFR: 47500
+        EUR: 1500
+        CSA: 1000
+      dominant: AFR
+    mbzuai:
+      n: 50000
+      composition:
+        MID: 25000
+        CSA: 15000
+        AFR: 5000
+        EUR: 5000
+      dominant: MID
+
+  # All HAPNEST superpopulations (defines the universe and the β index order)
+  superpopulations: [EUR, AFR, AMR, EAS, CSA, MID]
+
+  # --- Locus Selection ---
+  locus_selection:
+    window_size_bp: 1000000
+    step_size_bp: 500000
+    n_loci: 100
+    strata:
+      low: 33
+      medium: 33
+      high: 34
+    maf_filter: 0.01
+    ld_tag_snp_target: 500
+    ld_r2_prune_threshold: 0.995
+    # PLINK --indep-pairwise window/step (in variant count) used to thin tag SNPs
+    ld_prune_window_variants: 50
+    ld_prune_step_variants: 5
+    n_workers: 8
+
+  # --- Causal Architecture ---
+  architecture:
+    ncsl: [1, 2, 3]
+    h2: [0.0005, 0.001, 0.005]
+    rg: [0.5, 0.7, 1.0]
+    # minimal: 9 (ncsl × h2 at rg=1.0)
+    # extended: 15 (above + ncsl × rg at h2=0.001, deduped)
+    # full: 27 (ncsl × h2 × rg)
+    factorial_mode: "extended"
+    replicates: 10
+    ancestry_specific_causal:
+      enabled: true
+      min_per_stratum: 1
+      common_maf_threshold: 0.05
+      rare_maf_threshold: 0.01
+    # Distinct from ancestry_specific_causal above: this diverges the causal SET
+    # (a union of shared + per-superpop-private variants), not just one variant's
+    # MAF. Opt-in; default off so the current dataset stays valid until re-run.
+    ancestry_divergent_causal:
+      enabled: true
+      n_private_per_pop: 1
+      min_per_stratum: 1
+
+  # --- Phenotype ---
+  phenotype:
+    model: "linear_additive"
+    # h² tolerance check (relative): empirical h² must be within this fraction of target
+    h2_tolerance_relative: 0.20
+
+  # --- Fine-mapping (SuSiEx) ---
+  # Centralized baseline: one SuSiEx column per superpopulation, pooling that
+  # ancestry across all three sites (e.g. AFR = 7500 ANL + 47500 Covenant + 5000
+  # MBZUAI = 60000). Six columns covering all 150,000 individuals exactly once.
+  fine_mapping:
+    # Drop an ancestry whose POOLED cohort is below this. At 1000 all six are kept
+    # (pooled: AFR 60000, EUR 36500, MID 25000, CSA 18500, AMR 7500, EAS 2500);
+    # raise it to prune the small single-site ancestries (EAS, then AMR).
+    min_gwas_n: 1000
+
+  # --- QC ---
+  qc:
+    kinship_threshold: 0.05
+    pca_n_components: 20
+    pca_reference: "1kg_phase3"
+    maf_tolerance_sd: 3.0
+    ld_decay_max_dist_kb: 1000
+    ld_decay_n_loci_sample: 5

@@ -1,0 +1,155 @@
+#!/bin/bash
+# Run a fine-mapping analysis stage on Polaris, sharded over loci across nodes.
+#
+# WHICH STAGE, AND WHY YOU WOULD WANT EACH
+#   FM_STAGE=centralized  the SuSiEx baseline -- one column per ancestry, pooling that
+#                         ancestry across every site. This is the fit you would get with
+#                         all the data in one place. It is the reference point, not a
+#                         method, and it is what a federated result is judged against.
+#   FM_STAGE=federated    the same statistics the APPFL aggregator runs, driven from one
+#                         process. Use it to reproduce a federated result locally, and to
+#                         run more loci than one APPFL exchange can carry.
+#
+# NEITHER IS THE FEDERATION. The federation is `appfl-bio-suite run fine-mapping`, which
+# dispatches to partner endpoints. This job runs entirely on the coordinator's allocation
+# and reads the coordinator's own copy of every site's data -- which is exactly why it is
+# the comparator and not the experiment.
+#
+# BEFORE YOU SUBMIT
+#   1. A data package must exist: submit_polaris_simulate.pbs, or `simulate --out`.
+#   2. Vendor SuSiEx once, on a login node with internet:
+#        scripts/fine-mapping/install_susiex.sh
+#
+# SUBMIT
+#   qsub -A <your-allocation> -v FM_RUN_DIR=/lus/.../fm-run,FM_STAGE=centralized \
+#        scripts/fine-mapping/submit_polaris_finemap.pbs
+#
+# SIZING. `prod` is a ROUTING queue and the request must fit a destination:
+#   small 10-24 nodes, max 3h    medium 25-99 nodes, max 6h    large 100+, 24h
+# 10 nodes at 4h fits NOTHING -- too long for small, too few nodes for medium -- and is
+# rejected by every destination. The default below is 25 nodes at 6h, which routes to
+# medium. For small, use `-l select=24 -l walltime=03:00:00`.
+#
+# WALLTIME. SuSiEx runs 1.5-3 min per instance under 32-way concurrency; an uncontended
+# smoke suggesting ~15s does NOT hold at scale. A shard writes its results only when it
+# FINISHES, so a walltime kill loses that shard's entire run -- over-provision.
+
+#PBS -A CHANGE_ME
+#PBS -q prod
+#PBS -l select=25:system=polaris
+#PBS -l place=scatter
+#PBS -l walltime=06:00:00
+#PBS -l filesystems=home:grand
+#PBS -N fm-finemap
+#PBS -o logs/fm-finemap.out
+#PBS -e logs/fm-finemap.err
+
+set -uo pipefail
+
+: "${SUITE_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+: "${FM_RUN_DIR:?set FM_RUN_DIR to the data package directory}"
+: "${FM_STAGE:=centralized}"
+: "${FM_WORKERS:=32}"
+
+case "${FM_STAGE}" in
+  centralized) RESULTS_SUBDIR=fine_mapping ;;
+  federated)   RESULTS_SUBDIR=fed_fine_mapping ;;
+  *) echo "!! FM_STAGE must be 'centralized' or 'federated', got '${FM_STAGE}'"; exit 2 ;;
+esac
+
+cd "${SUITE_ROOT}" || exit 1
+mkdir -p logs/fm
+
+echo "==> fine-mapping ${FM_STAGE}, job ${PBS_JOBID:-interactive} on $(hostname) @ $(date)"
+echo "==> suite ${SUITE_ROOT}"
+echo "==> data  ${FM_RUN_DIR}"
+
+module use /soft/modulefiles
+module load conda
+conda activate "${FM_CONDA_ENV:-base}"
+PYTHON="$(command -v python)"
+STAGE="${SUITE_ROOT}/scripts/fine-mapping/run_stage.py"
+CONFIG="${FM_RUN_DIR}/pipeline_config.yaml"
+RESULTS="${FM_RUN_DIR}/reports/${RESULTS_SUBDIR}"
+
+if [ ! -f "${CONFIG}" ]; then
+  echo "!! no ${CONFIG} -- build the data package first (submit_polaris_simulate.pbs)"
+  exit 1
+fi
+if [ ! -x "${SUITE_ROOT}/vendor/bin/SuSiEx" ] && ! command -v SuSiEx >/dev/null 2>&1; then
+  echo "!! SuSiEx not found -- run scripts/fine-mapping/install_susiex.sh on a login node"
+  exit 1
+fi
+
+export PATH="${SUITE_ROOT}/vendor/bin:${PATH}"
+export PYTHONPATH="${SUITE_ROOT}/src:${PYTHONPATH:-}"
+export MPLBACKEND=Agg MPLCONFIGDIR="${SUITE_ROOT}/logs/.mplconfig"
+mkdir -p "${MPLCONFIGDIR}" "${RESULTS}"
+
+mapfile -t HOSTS < <(awk '!seen[$0]++' "${PBS_NODEFILE}")
+NNODES=${#HOSTS[@]}
+echo "==> ${NNODES} node(s), ${FM_WORKERS} workers each"
+
+launch() {  # launch <host> <logfile> <args...>
+  local host="$1" log="$2"; shift 2
+  mpiexec --host "${host}" -n 1 --ppn 1 --depth="${FM_WORKERS}" --cpu-bind depth \
+    --env OMP_NUM_THREADS=1 --env OPENBLAS_NUM_THREADS=1 --env MKL_NUM_THREADS=1 \
+    --env NUMEXPR_NUM_THREADS=1 --env PYTHONPATH="${PYTHONPATH}" \
+    --env PATH="${PATH}" --env MPLBACKEND=Agg --env MPLCONFIGDIR="${MPLCONFIGDIR}" \
+    "${PYTHON}" "${STAGE}" "$@" > "${log}" 2>&1
+}
+
+FM_ARGS=(--config "${CONFIG}" --n-workers "${FM_WORKERS}")
+
+# MAP: shard loci across every node.
+echo "==> [map] ${FM_STAGE} across ${NNODES} node(s) @ $(date)"
+pids=()
+for i in "${!HOSTS[@]}"; do
+  launch "${HOSTS[$i]}" "logs/fm/${FM_STAGE}.shard${i}.log" \
+    "${FM_STAGE}" "${FM_ARGS[@]}" --shard-index "${i}" --n-shards "${NNODES}" &
+  pids+=($!)
+done
+rc=0
+for p in "${pids[@]}"; do wait "${p}" || rc=1; done
+if [ "${rc}" -ne 0 ]; then
+  echo "!! [map] a shard FAILED -- see logs/fm/${FM_STAGE}.shard*.log"
+  echo "   Re-run just that shard, then merge:"
+  echo "     run_stage.py ${FM_STAGE} --config ${CONFIG} --shard-index <i> --n-shards ${NNODES}"
+  echo "     run_stage.py ${FM_STAGE} --config ${CONFIG} --merge --n-shards ${NNODES}"
+  exit 1
+fi
+echo "==> [map] done @ $(date)"
+
+# REDUCE: concatenate the per-shard parts and write the rollups.
+if [ "${NNODES}" -gt 1 ]; then
+  echo "==> [merge] @ $(date)"
+  launch "${HOSTS[0]}" "logs/fm/${FM_STAGE}_merge.log" \
+    "${FM_STAGE}" "${FM_ARGS[@]}" --merge --n-shards "${NNODES}" \
+    || { echo "!! [merge] FAILED -- see logs/fm/${FM_STAGE}_merge.log"; exit 1; }
+fi
+
+# FIGURES: deliberately NON-FATAL. The expensive results are already on disk, so a
+# plotting hiccup must not mark the whole job failed -- it just says how to redo them.
+RESULTS_TSV="${RESULTS}/$([ "${FM_STAGE}" = federated ] && echo fed_fm_results.tsv || echo fm_results.tsv)"
+echo "==> [figures] @ $(date)"
+if launch "${HOSTS[0]}" "logs/fm/${FM_STAGE}_figures.log" \
+     figures --results "${RESULTS_TSV}" --out-dir "${RESULTS}/figures"; then
+  echo "==> [figures] done"
+else
+  echo "!! [figures] FAILED (results are safe) -- see logs/fm/${FM_STAGE}_figures.log"
+  echo "   redo standalone:  run_stage.py figures --results ${RESULTS_TSV}"
+fi
+
+echo
+echo "==> ${FM_STAGE} complete @ $(date)"
+echo "==> results ${RESULTS_TSV}"
+echo "==> rollups ${RESULTS}/*rollup*.tsv"
+echo "==> figures ${RESULTS}/figures/*.png"
+echo
+echo "---- rollup by architecture ----"
+column -t "${RESULTS}"/*rollup_by_architecture.tsv 2>/dev/null \
+  || echo "(missing -- check logs/fm/*.log)"
+echo
+echo "---- rollup by stratum x rg ----"
+column -t "${RESULTS}"/*rollup_by_stratum_rg.tsv 2>/dev/null \
+  || echo "(missing -- check logs/fm/*.log)"

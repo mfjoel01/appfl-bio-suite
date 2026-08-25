@@ -1,0 +1,32 @@
+# Client defaults for Fed-Heart-Disease.
+#
+# This is a TEMPLATE, not a runnable config. `appfl-bio-suite run` merges it with your
+# federation.yaml to produce one fully-resolved client entry per participating site.
+# You should not need to edit it to stand up a federation -- if you do, that is a bug.
+#
+# Per-site values (endpoint UUID, center, output directory) come from federation.yaml.
+# Everything here is federation-wide.
+
+client_defaults:
+  dataset_name: get_dataset
+
+  train_configs:
+    device: cpu
+    trainer: VanillaTrainer
+    mode: step
+    num_local_steps: 100
+    optim: Adam
+    optim_args:
+      lr: 0.001
+
+    do_validation: true
+    do_pre_validation: true
+
+    train_batch_size: 4
+    val_batch_size: 4
+    train_data_shuffle: true
+    val_data_shuffle: false
+
+    use_dp: false
+
+  dataset_kwargs: {}

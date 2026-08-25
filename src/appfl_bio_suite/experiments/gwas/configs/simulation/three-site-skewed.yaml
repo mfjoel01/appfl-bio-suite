@@ -1,0 +1,24 @@
+# Three sites of deliberately unequal size, mirroring the first three sites of the
+# published five-site split. Cross-site heterogeneity is the thing federated analysis has
+# to cope with, so a scenario where every site is the same size tests the easy case.
+
+name: three-site-skewed
+description: >-
+  Three unequal sites (18032 / 9237 / 25028), matching the first three of the published
+  five-site split. Exercises inverse-variance weighting under real size imbalance.
+
+cohort:
+  provider: synthetic_ld
+  n_samples: 55000
+  n_variants: 60000
+  seed: 20260101
+  n_chromosomes: 22
+  ld_block_size: 25
+  ld_correlation: 0.65
+  missing_rate: 0.001
+
+phenotypes:
+  data_sim_scaling: 1.0
+
+sites: [18032, 9237, 25028]
+split_seed: 42

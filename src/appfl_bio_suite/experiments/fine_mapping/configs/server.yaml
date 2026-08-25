@@ -1,0 +1,99 @@
+# Server config for federated cross-ancestry fine-mapping.
+#
+# `appfl-bio-suite run` overlays your federation.yaml: num_clients comes from the number
+# of participating sites, and every *_path is resolved to an absolute path inside the
+# installed package. You should not need to edit this to run your own federation.
+
+client_configs:
+  train_configs:
+    trainer: SiteFineMappingTrainer
+    trainer_path: null        # resolved at run time; read on the DRIVER, shipped as source
+    device: cpu
+
+    # Which loci this exchange covers. THE MOST IMPORTANT SETTING IN THIS FILE.
+    #
+    # A site's uplink is O(M^2) per (locus, ancestry): at a realistic locus M is around
+    # 2,000 variants after the MAF filter, so one ancestry block is ~32 MB and a site
+    # holding five ancestries sends ~160 MB per locus. Sweeping all 100 loci in one
+    # exchange is tens of gigabytes per site and will not complete.
+    #
+    # So a production run is sharded: launch it `locus_n_shards` times, once per
+    # `locus_shard_index`, and concatenate the result tables. That mirrors how the
+    # standalone pipeline shards, and the RUNBOOK has the loop.
+    locus_n_shards: 1
+    locus_shard_index: 0
+
+    # Stop after this many loci / this many instances per locus. Both null in a real run;
+    # they exist for smoke tests, and they are the fastest way to find out whether a
+    # federation works before committing to a full sweep.
+    locus_limit: null
+    instance_limit: null
+
+    # Ancestry columns to build. Empty means "whatever each site holds", which is right
+    # for a first run. Naming them explicitly is what you do once you know the
+    # composition and want every run to build the same columns.
+    pops: []
+
+    # Wire format for the genotype Gram. Its entries are integers bounded by 4n, so at
+    # any realistic cohort size float32 carries them exactly and halves the dominant term
+    # in the uplink. The trainer verifies the bound before downcasting and falls back to
+    # float64 if it does not hold, so this is safe to turn on; it is off by default
+    # because an exact byte match with the standalone path is the more useful default
+    # while the port is young.
+    uplink_gram_dtype: float64
+
+  data_readiness_configs:
+    generate_dr_report: false
+
+  comm_configs:
+    compressor_configs:
+      # Left off deliberately. The payload is dense float64 second moments with no
+      # exploitable structure, so a general-purpose compressor spends CPU at both ends to
+      # win a few percent. Shard by locus instead -- that is the lever that matters.
+      enable_compression: false
+
+server_configs:
+  num_clients: 3            # overridden from federation.yaml
+
+  # ONE round. This is aggregate federated learning: each site computes its moments once
+  # and reports. There is no iterative weight exchange to converge, and asking for more
+  # rounds would recompute identical aggregates at full cost.
+  num_global_epochs: 1
+
+  scheduler: SyncScheduler
+  scheduler_kwargs:
+    same_init_model: true
+
+  aggregator: FineMappingAggregator
+  aggregator_path: null     # resolved at run time; loaded LOCALLY, never shipped
+  aggregator_kwargs:
+    # SuSiEx settings. Defaults match the standalone driver's, so a run launched through
+    # APPFL and one launched from the command line fine-map identically.
+    level: 0.95             # credible-set coverage level
+    pval_thresh: 1.0e-5     # marginal p-value filter for credible sets
+    maf: 0.005              # applied at the coordinator, to POOLED frequencies
+
+    # The answer key. Coordinator-only and deliberately absent from every site bundle:
+    # a benchmark whose answers travel with its inputs is not measuring what it claims.
+    # Point this at the simulation's ground_truth/causal_manifest.tsv to score a run.
+    # Left null, the run still produces credible sets -- it just cannot score them, which
+    # is the correct behaviour for a real federation where nobody knows the truth.
+    causal_manifest: null
+
+    # Where to find the SuSiEx and PLINK binaries. Null means "PATH, then
+    # <vendor_root>/vendor/bin", which is where install_susiex.sh puts them.
+    susiex_binary: null
+    plink_binary: null
+    vendor_root: .
+
+    # SuSiEx runs once per instance and instances are independent, so this is the one
+    # place in the experiment where more cores straightforwardly means less wall time.
+    n_workers: 8
+
+    keep_work: false        # keep per-instance sumstats and LD scratch (debug only)
+    make_figures: true
+    output_dir: ./local/output/fine-mapping
+
+  device: cpu
+  logging_output_dirname: ./local/output/fine-mapping/logs
+  logging_output_filename: appfl_fine_mapping

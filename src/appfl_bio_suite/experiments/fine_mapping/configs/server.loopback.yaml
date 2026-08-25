@@ -1,0 +1,65 @@
+# Loopback config: the full fine-mapping federation on one machine, no Globus, no
+# scheduler.
+#
+#   appfl-bio-suite simulate fine-mapping --scenario ci-tiny --out /tmp/fm-ci
+#   appfl-bio-suite run fine-mapping --config loopback --driver serial --data-root /tmp/fm-ci
+#
+# Run this before recruiting anyone. If it completes, the install is correct end to end:
+# the simulation produced bundles in the layout the loader expects, each site computed its
+# second moments from them, the coordinator pooled and standardized those, SuSiEx read the
+# LD panels the coordinator wrote by hand, and credible sets came back.
+#
+# It exercises the one thing no unit test can: that the LD panel the coordinator writes
+# from summed moments is byte-compatible with what the SuSiEx C++ reader expects. That
+# reader aborts on a size or allele mismatch rather than degrading, so "SuSiEx ran at all"
+# is a real signal.
+
+client_configs:
+  train_configs:
+    trainer: SiteFineMappingTrainer
+    trainer_path: null
+    device: cpu
+    locus_n_shards: 1
+    locus_shard_index: 0
+    locus_limit: null
+    instance_limit: null
+    pops: []
+    uplink_gram_dtype: float64
+
+  data_readiness_configs:
+    generate_dr_report: false
+
+  comm_configs:
+    compressor_configs:
+      enable_compression: false
+
+server_configs:
+  num_clients: 3
+  num_global_epochs: 1
+  scheduler: SyncScheduler
+  scheduler_kwargs:
+    same_init_model: true
+  aggregator: FineMappingAggregator
+  aggregator_path: null
+  aggregator_kwargs:
+    level: 0.95
+    pval_thresh: 1.0e-5
+    # Lower than production. The ci-tiny pool is small enough that a 0.005 filter can
+    # leave a pooled column with too few variants for SuSiEx to have anything to do.
+    maf: 0.001
+    # Filled in by `run --driver serial` from --data-root: a loopback run is the one case
+    # where the coordinator legitimately has the answer key, because it just simulated it.
+    causal_manifest: null
+    susiex_binary: null
+    plink_binary: null
+    vendor_root: .
+    # Serial by default. A loopback run is a correctness check, and a traceback from a
+    # loky worker is markedly harder to read than one from this process.
+    n_workers: 1
+    keep_work: false
+    make_figures: false
+    output_dir: ./local/output/fine-mapping-loopback
+
+  device: cpu
+  logging_output_dirname: ./local/output/fine-mapping-loopback/logs
+  logging_output_filename: appfl_fine_mapping_loopback

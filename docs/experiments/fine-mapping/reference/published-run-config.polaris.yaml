@@ -1,0 +1,90 @@
+paths:
+  hapnest_dir: data/raw/hapnest
+  population_manifest: data/raw/hapnest/population_manifest.tsv
+  processed_dir: data/processed
+  loci_dir: data/loci
+  ground_truth_dir: data/ground_truth
+  reports_dir: reports
+  logs_dir: logs
+master_seed: 20260601
+chromosome: 1
+tools:
+  plink: plink
+  plink2: plink2
+  king: king
+sites:
+  anl:
+    n: 50000
+    composition:
+      EUR: 30000
+      AFR: 7500
+      AMR: 7500
+      EAS: 2500
+      CSA: 2500
+    dominant: EUR
+  covenant:
+    n: 50000
+    composition:
+      AFR: 47500
+      EUR: 1500
+      CSA: 1000
+    dominant: AFR
+  mbzuai:
+    n: 50000
+    composition:
+      MID: 25000
+      CSA: 15000
+      AFR: 5000
+      EUR: 5000
+    dominant: MID
+superpopulations:
+- EUR
+- AFR
+- AMR
+- EAS
+- CSA
+- MID
+locus_selection:
+  window_size_bp: 1000000
+  step_size_bp: 500000
+  n_loci: 100
+  strata:
+    low: 33
+    medium: 33
+    high: 34
+  maf_filter: 0.01
+  ld_tag_snp_target: 500
+  ld_r2_prune_threshold: 0.995
+  ld_prune_window_variants: 50
+  ld_prune_step_variants: 5
+  n_workers: 32
+architecture:
+  ncsl:
+  - 1
+  - 2
+  - 3
+  h2:
+  - 0.0005
+  - 0.001
+  - 0.005
+  rg:
+  - 0.5
+  - 0.7
+  - 1.0
+  factorial_mode: extended
+  replicates: 10
+  ancestry_specific_causal:
+    enabled: true
+    min_per_stratum: 1
+    common_maf_threshold: 0.05
+    rare_maf_threshold: 0.01
+phenotype:
+  model: linear_additive
+  h2_tolerance_relative: 0.2
+qc:
+  kinship_threshold: 0.05
+  pca_n_components: 20
+  pca_reference: 1kg_phase3
+  maf_tolerance_sd: 3.0
+  ld_decay_max_dist_kb: 1000
+  ld_decay_n_loci_sample: 5

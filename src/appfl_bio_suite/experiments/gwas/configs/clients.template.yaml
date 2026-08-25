@@ -1,0 +1,30 @@
+# Client defaults for the federated GWAS experiment.
+#
+# A TEMPLATE, not a runnable config: `appfl-bio-suite run` merges it with your
+# federation.yaml to produce one fully-resolved entry per participating site. Per-site
+# values (endpoint UUID, data directory, output directory) come from there.
+
+client_defaults:
+  dataset_name: get_dataset
+
+  train_configs:
+    device: cpu
+    trainer: SiteGWASTrainer
+
+    # Variants loaded per pass. Trades memory against the number of passes; the full
+    # genotype matrix does not fit in a worker's memory at real cohort sizes.
+    gwas_chunk_size: 256
+
+    # Fraction of variants used at ANALYSIS time. Compounds with the simulation-time
+    # scaling. Must be identical at every site: the aggregator requires all sites to be
+    # on the same variant set and will refuse to combine mismatched payloads.
+    variant_scaling: 1.0
+    variant_scaling_seed: 42
+
+    hit_p_threshold: 5.0e-8
+
+    # Opt-in GPU regression via cuML. Off by default and lazily imported, so cuML is
+    # never a requirement for a partner.
+    use_cuml: false
+
+  dataset_kwargs: {}

@@ -1,0 +1,51 @@
+{
+  "data_sim_scaling": 1.0,
+  "description": "Checksums of the PRE-MIGRATION GWAS simulation pipeline, captured by running the unmodified legacy scripts against the deterministic fixture in make_fixture.py. The ported pipeline must reproduce these exactly. See tests/legacy_harness.py.",
+  "fixture": {
+    "n_samples": 240,
+    "n_variants": 300,
+    "seed": 20260814
+  },
+  "outputs": {
+    "Site1/EUR.synthetic.100k.ld.maf.bed": "4d2f73a5490275cb834c95db0503f78c7cbed353fb5e7fc08ee884366d96e62b",
+    "Site1/EUR.synthetic.100k.ld.maf.bim": "b3460345c926e3f4c969626a3049e2c73632ac76058f753befaf4bdd52a34724",
+    "Site1/EUR.synthetic.100k.ld.maf.fam": "879f5243fa5fc30b4275fbdc454eb28cee84bb5aac1a3fb5875b07fa8f260400",
+    "Site1/covariates.csv": "ef69c7dac057b673b4000d68baa9e4ddf9d09a79298d1a7282775289a1b3aec4",
+    "Site1/pgs_scores.csv": "9f52745d3ab2927837742e14cccc6e41d507cb9da457a8c55db73beee32cb058",
+    "Site1/phenotypes_gwas.csv": "41fb412c77f077067ce271c380c028b945998510136fa93f5f849296cdf1def0",
+    "Site1/phenotypes_pgs_eval.csv": "4f4c4c6a811a70dad62871f70f640f9cc93c321a48b82d9ddcfe8459069310f1",
+    "Site1/score_bmi.txt": "5ddc2394ca2329b14c2fa4e6525a86f8dee1377320977c0c7e6cb619ad55dad8",
+    "Site1/score_t2d.txt": "ffcad3c54a81fb301786db6acae4391c25d246d65a066072ce0ed780e8396a77",
+    "Site2/EUR.synthetic.100k.ld.maf.bed": "9743cd41d3d455ed6a5f306936192f0cea7e30cd854c68d1b908335985e82687",
+    "Site2/EUR.synthetic.100k.ld.maf.bim": "b3460345c926e3f4c969626a3049e2c73632ac76058f753befaf4bdd52a34724",
+    "Site2/EUR.synthetic.100k.ld.maf.fam": "70902d3bcff563ad5a13a604b82275f31d2629a5b1950f4d9cdd318382b50300",
+    "Site2/covariates.csv": "06a571159d9576c2d3919ea0b53a18b5ed106b4034cc3a47925e0f97bcffabf4",
+    "Site2/pgs_scores.csv": "062397e7e5e695132862f7665a58893f8a433f338a1a8572bda592a9d2fd8797",
+    "Site2/phenotypes_gwas.csv": "aa6593af8233e08f0efd951c2643588c47fa97a32b1891f47dde14c63d2c7c5b",
+    "Site2/phenotypes_pgs_eval.csv": "b28f7634ba853e618f2cea98fac4ea1afcf8589275b1bd7684966575019fccdc",
+    "Site2/score_bmi.txt": "5ddc2394ca2329b14c2fa4e6525a86f8dee1377320977c0c7e6cb619ad55dad8",
+    "Site2/score_t2d.txt": "ffcad3c54a81fb301786db6acae4391c25d246d65a066072ce0ed780e8396a77",
+    "Site3/EUR.synthetic.100k.ld.maf.bed": "87dd1812c47e6c383a34c23717a5b1774abdb37bedd323269ed8b2208a301170",
+    "Site3/EUR.synthetic.100k.ld.maf.bim": "b3460345c926e3f4c969626a3049e2c73632ac76058f753befaf4bdd52a34724",
+    "Site3/EUR.synthetic.100k.ld.maf.fam": "f55b377ce4f96c9ca4408f671147500b2c17ceb0231ae99bc98612a704abddaa",
+    "Site3/covariates.csv": "52e20de3aae7603e845a46966ebccac8ad12aa505a3a90965cd6663716e0062f",
+    "Site3/pgs_scores.csv": "db5b2050b5b967189fb8dd38d4ed5fc13805c93f55f2670d5437c1badf281f6d",
+    "Site3/phenotypes_gwas.csv": "7e2b36a087d5683eee6c1a8c1c286be6e1358e3922418253251ac6b09375a9f0",
+    "Site3/phenotypes_pgs_eval.csv": "c16a0ba959ada9d893ee2604e1ed639d582676bc322e149dd70b0e09791f10d8",
+    "Site3/score_bmi.txt": "5ddc2394ca2329b14c2fa4e6525a86f8dee1377320977c0c7e6cb619ad55dad8",
+    "Site3/score_t2d.txt": "ffcad3c54a81fb301786db6acae4391c25d246d65a066072ce0ed780e8396a77",
+    "pooled/covariates.csv": "f33a15ea8d4307304fc7b513e156c68edfe534f63e7e66946048e5f9c4c9bc6d",
+    "pooled/pgs_scores.csv": "17499f1c4a2170b7644d9ee005a865386030e1d4845de25f5e3bc8499ad64956",
+    "pooled/phenotypes_gwas.csv": "a051ae68e7a893e89980f083cc8fb81b2e847a5e479a7f1ce555492b02413a5f",
+    "pooled/phenotypes_pgs_eval.csv": "fdbbd056a6c6794fd7d9931f2453ab73d314ca05fc6c6a4362614b8e01a770b0",
+    "pooled/score_bmi.txt": "5ddc2394ca2329b14c2fa4e6525a86f8dee1377320977c0c7e6cb619ad55dad8",
+    "pooled/score_t2d.txt": "ffcad3c54a81fb301786db6acae4391c25d246d65a066072ce0ed780e8396a77",
+    "pooled/simulation_summary.csv": "03db9817a719617e2ac212cbfa3b29a9514c26ce72339ac6613b7f88ab344534",
+    "pooled/variant_counts.csv": "27b76fe50b111330c910bb9524c79db7b3e33acca59f3995ada4531bcd0d4605"
+  },
+  "site_sizes": [
+    80,
+    40,
+    120
+  ]
+}

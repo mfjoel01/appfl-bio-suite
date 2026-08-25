@@ -1,0 +1,24 @@
+# Two sites of equal size. The simplest scenario that is still a real federation, and a
+# good first target when standing one up: an imbalance in the results cannot be blamed on
+# an imbalance in the data.
+
+name: two-site-balanced
+description: >-
+  Two equally-sized sites over a moderate synthetic cohort. A clean baseline for checking
+  that federated results track a pooled analysis.
+
+cohort:
+  provider: synthetic_ld
+  n_samples: 20000
+  n_variants: 30000
+  seed: 20260101
+  n_chromosomes: 22
+  ld_block_size: 25
+  ld_correlation: 0.65
+  missing_rate: 0.001
+
+phenotypes:
+  data_sim_scaling: 1.0
+
+sites: [10000, 10000]
+split_seed: 42

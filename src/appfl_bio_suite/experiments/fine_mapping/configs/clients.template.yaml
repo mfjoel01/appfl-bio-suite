@@ -1,0 +1,37 @@
+# Client defaults for the federated fine-mapping experiment.
+#
+# A TEMPLATE, not a runnable config: `appfl-bio-suite run` merges it with your
+# federation.yaml to produce one fully-resolved entry per participating site. Per-site
+# values (endpoint UUID, data directory, output directory) come from there.
+
+client_defaults:
+  dataset_name: get_dataset
+
+  train_configs:
+    device: cpu
+    trainer: SiteFineMappingTrainer
+
+    # Locus sharding. MUST be identical at every site: the coordinator pools one locus's
+    # blocks across sites, and two sites on different shards would contribute to
+    # different loci while both reporting success. `run` sets these from federation.yaml
+    # for exactly that reason -- see core/launch.py -- so that "identical at every site"
+    # is structural rather than something the coordinator has to remember.
+    locus_n_shards: 1
+    locus_shard_index: 0
+
+    # Smoke-test limits. Also federation-wide: a site that stopped after two loci while
+    # the others did ten would have its blocks pooled for two and silently absent from
+    # the rest, shrinking those loci's cohorts without any check firing.
+    locus_limit: null
+    instance_limit: null
+
+    # Ancestry columns to build. A site skips any it does not hold, so this is a request
+    # rather than a requirement, and an empty list means "whatever you have".
+    pops: []
+
+    # See server.yaml. float32 is exact for this payload at any realistic cohort size and
+    # halves the uplink; float64 is the default while an exact byte match against the
+    # standalone path is the more useful property.
+    uplink_gram_dtype: float64
+
+  dataset_kwargs: {}

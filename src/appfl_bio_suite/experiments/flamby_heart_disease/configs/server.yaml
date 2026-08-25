@@ -1,0 +1,80 @@
+# FedAvg server config for Fed-Heart-Disease.
+#
+# `appfl-bio-suite run` overlays your federation.yaml on top of this: num_clients,
+# num_global_epochs, and client_weights_mode all come from there, and the *_path entries
+# are resolved to absolute paths inside the installed package. You should not need to
+# edit this file to run your own federation.
+#
+# For the asynchronous variant, see server.fedcompass.yaml.
+
+client_configs:
+  train_configs:
+    trainer: VanillaTrainer
+    mode: step
+    num_local_steps: 100
+    optim: Adam
+    optim_args:
+      lr: 0.001
+
+    # Resolved to an absolute path in the installed package at run time. Read on the
+    # DRIVER -- its source is shipped to the worker.
+    loss_fn_path: null
+    loss_fn_name: BaselineLoss
+    metric_path: null
+    metric_name: metric
+
+    do_validation: true
+    do_pre_validation: true
+
+    train_batch_size: 4
+    val_batch_size: 4
+    train_data_shuffle: true
+    val_data_shuffle: false
+
+    use_dp: false
+    epsilon: 1
+    clip_grad: false
+    clip_value: 1
+    clip_norm: 1
+
+  # Off by default. The readiness report costs an extra round trip to every site and
+  # needs matplotlib and seaborn on each worker -- both of which are avoidable failure
+  # surface on a first run. Turn it on once a plain run is green.
+  data_readiness_configs:
+    generate_dr_report: false
+
+  model_configs:
+    model_path: null      # resolved at run time
+    model_name: Baseline
+
+  comm_configs:
+    compressor_configs:
+      enable_compression: false
+      lossy_compressor: SZ2Compressor
+      lossless_compressor: blosc
+      error_bounding_mode: REL
+      error_bound: 1.0e-3
+      param_cutoff: 1024
+
+server_configs:
+  num_clients: 2          # overridden from federation.yaml
+  scheduler: SyncScheduler
+  scheduler_kwargs:
+    same_init_model: true
+  aggregator: FedAvgAggregator
+  aggregator_kwargs:
+    # `equal` weights every site the same; `sample_size` weights by dataset size. The
+    # FLamby centers are quite unbalanced (199 vs 30 training samples), so sample_size is
+    # usually the more defensible choice for a write-up -- but it needs one extra round
+    # trip to collect the counts. Set it in federation.yaml, and record which was used.
+    client_weights_mode: equal
+  device: cpu
+
+  # Deliberately small. Multi-round training exercises the transport
+  # num_global_epochs x num_clients times, so anything flaky about an intercontinental
+  # link shows up repeatedly rather than never. Prove a run completes before asking for
+  # twenty rounds. Overridden from federation.yaml.
+  num_global_epochs: 5
+
+  logging_output_dirname: ./local/output
+  logging_output_filename: flamby_heart_disease_fedavg

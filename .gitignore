@@ -1,0 +1,81 @@
+# ---------------------------------------------------------------------------
+# The coordinator's working directory. NEVER committed.
+#
+# This holds real endpoint UUIDs, partner configs mid-negotiation, run outputs,
+# and coordinator notes that quote partner correspondence. Sensitive material in
+# git history is not really removable, so this rule exists from the first commit,
+# before any content landed. See local/README.md and docs/coordinator/new-federation.md.
+#
+# The README is the one tracked file, so a collaborator who clones the repo can
+# see why the directory exists and what belongs in it.
+# ---------------------------------------------------------------------------
+local/*
+!local/README.md
+
+# The real federation config: coordinator identity, live endpoint UUIDs, per-site
+# assignments. The committed, fictional counterpart is federation.yaml.example.
+federation.yaml
+!federation.yaml.example
+
+# Vendored non-Python binaries (SuSiEx, PLINK) installed by
+# scripts/fine-mapping/install_*.sh. May be a real directory or a symlink into
+# local/vendor/, so no trailing slash.
+vendor
+
+# Data. No experiment's inputs or outputs belong in git.
+data/
+outputs/
+output/
+*.bed
+*.bim
+*.fam
+*.pgen
+*.pvar
+*.psam
+*.vcf
+*.vcf.gz
+*.tar.gz
+*.tgz
+
+# Logs and run artifacts
+*.log
+.jobid
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.tox/
+.nox/
+
+# Test / coverage / type-check caches
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Downloaded wheels. The offline installer drops these in the tree; they are
+# install artifacts, not source, and constraints.txt already pins the versions.
+*.whl

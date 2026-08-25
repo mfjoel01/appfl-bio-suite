@@ -1,0 +1,53 @@
+# The published five-site design.
+#
+# ============================================================================
+# IMPORTANT: this scenario reproduces the published PIPELINE, not the published
+# NUMBERS.
+# ============================================================================
+#
+# The original results were produced from a specific 100,000-sample cohort that was
+# generated in a notebook that is no longer recoverable. That cohort cannot be
+# regenerated, so a run of this scenario with the default `synthetic_ld` provider uses a
+# DIFFERENT cohort and will produce DIFFERENT numbers.
+#
+# It is still the right scenario to run, because the site split, the genetic
+# architecture, the covariate effects and every seed are the published ones -- everything
+# except the genotypes themselves.
+#
+# If you hold a copy of the original cohort, switch the provider:
+#
+#   cohort:
+#     provider: plink_prefix
+#     plink_prefix: /path/to/EUR.synthetic.100k.ld.maf     # no file extension
+#
+# Read docs/experiments/gwas/DATA.md before citing any output of this scenario.
+
+name: published-five-site
+description: >-
+  The published five-site design: 100,000 samples split 18032 / 9237 / 25028 / 40752 /
+  6951. Reproduces the pipeline and the parameters, NOT the original genotypes.
+
+cohort:
+  provider: synthetic_ld
+  n_samples: 100000
+  n_variants: 240000
+  seed: 20260101
+  n_chromosomes: 22
+  ld_block_size: 25
+  ld_correlation: 0.65
+  missing_rate: 0.001
+
+phenotypes:
+  # All published values. Changing any of these changes what the experiment measures.
+  h2_t2d: 0.20
+  h2_bmi: 0.25
+  t2d_prevalence: 0.119
+  effect_scale_t2d: 0.50
+  effect_scale_bmi: 0.50
+  seed_covariates: 42
+  seed_gwas_replicate: 42
+  seed_pgs_replicate: 43
+  data_sim_scaling: 1.0
+
+sites: [18032, 9237, 25028, 40752, 6951]
+split_seed: 42

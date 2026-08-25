@@ -1,0 +1,57 @@
+# Loopback config: a real federation on one machine, no Globus Compute, no scheduler.
+#
+#   appfl-bio-suite run flamby-heart-disease --config loopback --driver serial
+#
+# Run this first, before recruiting anyone. If it completes, the install is correct: the
+# configs are valid, the shipped modules import, FLamby resolves its data, the trainer
+# runs, and FedAvg produces a global model. What it does NOT exercise is the transport --
+# serialization, identity mapping, and scheduler behaviour are precisely what a loopback
+# run cannot test. Use `endpoint smoke` for those.
+#
+# Two rounds, because the point is that the loop closes, not that the model is good.
+
+client_configs:
+  train_configs:
+    trainer: VanillaTrainer
+    mode: step
+    num_local_steps: 20
+    optim: Adam
+    optim_args:
+      lr: 0.001
+    loss_fn_path: null
+    loss_fn_name: BaselineLoss
+    metric_path: null
+    metric_name: metric
+    do_validation: true
+    do_pre_validation: false
+    train_batch_size: 4
+    val_batch_size: 4
+    train_data_shuffle: true
+    val_data_shuffle: false
+    use_dp: false
+
+  data_readiness_configs:
+    generate_dr_report: false
+
+  model_configs:
+    model_path: null
+    model_name: Baseline
+
+  comm_configs:
+    compressor_configs:
+      enable_compression: false
+
+server_configs:
+  num_clients: 2
+  # Must be synchronous: a serial run executes clients one after another, so an
+  # asynchronous scheduler has nothing to overlap. The serial driver refuses one.
+  scheduler: SyncScheduler
+  scheduler_kwargs:
+    same_init_model: true
+  aggregator: FedAvgAggregator
+  aggregator_kwargs:
+    client_weights_mode: equal
+  device: cpu
+  num_global_epochs: 2
+  logging_output_dirname: ./local/output/loopback
+  logging_output_filename: flamby_loopback

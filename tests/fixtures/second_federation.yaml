@@ -1,0 +1,78 @@
+# A SECOND, entirely fictional federation, unrelated to federation.yaml.example.
+#
+# Its whole purpose is to prove the reusability claim mechanically: a different
+# coordinator, at a different institution, with a different number of sites, different
+# schedulers and different service accounts, gets correct configs and correct partner
+# bundles from this repository with NO code change.
+#
+# Everything works fine on the original author's machine either way -- which is exactly
+# why this has to be a test rather than a belief.
+#
+# Deliberately different from the shipped example in every dimension that could be
+# accidentally hardcoded: identity, organization, site count, scheduler mix, service
+# account names, endpoint names, and which experiments are enabled.
+
+schema_version: 1
+
+coordinator:
+  identity: dr.k.tanaka@marine-genomics.example.org
+  identity_id: 99999999-8888-7777-6666-555555555555
+  organization: Marine Genomics Consortium
+  contact: coordination@marine-genomics.example.org
+  # No `endpoint:` block at all -- this coordinator only dispatches and never trains.
+  # A federation must work without one.
+
+sites:
+  - id: harbour-lab
+    name: Harbour Institute of Marine Biology
+    country: Iceland
+    scheduler: pbspro
+    queue: research
+    account: MARINE01
+    conda_module: miniforge
+
+  - id: reef-station
+    name: Coral Reef Research Station
+    country: Australia
+    scheduler: slurm
+    partition: batch
+    account: reef-compute
+    conda_module: anaconda
+    interface: ib0
+
+experiments:
+  # Only GWAS enabled here, and with two sites rather than three -- nothing may assume
+  # the shipped example's shape.
+  gwas:
+    enabled: true
+    service_account: marine_gwas
+    endpoint_name: marine-gwas-ep
+    simulation_scenario: two-site-balanced
+    variant_scaling: 1.0
+    hit_p_threshold: 5.0e-8
+    sites:
+      - site: harbour-lab
+        client_id: Harbour
+        endpoint_uuid: 11111111-2222-3333-4444-555555555555
+        data_dir: /data/marine_gwas/harbour
+        output_dir: /data/marine_gwas/harbour/out
+        expected_samples: 10000
+
+      - site: reef-station
+        client_id: Reef
+        endpoint_uuid: 66666666-7777-8888-9999-000000000000
+        data_dir: /scratch/marine_gwas/reef
+        output_dir: /scratch/marine_gwas/reef/out
+        expected_samples: 10000
+
+  flamby-heart-disease:
+    enabled: false
+    service_account: marine_flamby
+    endpoint_name: marine-flamby-ep
+    sites: []
+
+  fine-mapping:
+    enabled: false
+    service_account: marine_finemap
+    endpoint_name: marine-finemap-ep
+    sites: []

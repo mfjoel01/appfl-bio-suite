@@ -1,0 +1,151 @@
+# Smallest scenario that exercises every stage. Used by CI and by anyone validating an
+# install. Runs in seconds, needs no downloaded data.
+#
+#   appfl-bio-suite simulate fine-mapping --scenario ci-tiny --out /tmp/fm-ci
+#   appfl-bio-suite run fine-mapping --config loopback --driver serial --data-root /tmp/fm-ci
+#
+# NOT SCIENTIFICALLY MEANINGFUL. Its only job is to prove the chain works end to end:
+# pool -> disjoint site cohorts -> loci -> phenotypes -> bundles -> site aggregates ->
+# pooled columns -> SuSiEx -> credible sets -> scored against the answer key. The
+# genotypes are a substitute, the cohorts are two orders of magnitude too small, and the
+# causal effect is roughly a hundred times stronger than anything real -- deliberately, so
+# that a credible set actually comes back and "the pipeline works" is distinguishable from
+# "the fit is broken". Nothing it reports means anything about genetics.
+#
+# It still needs PLINK (the site cut) and SuSiEx (the fit). Both are vendored by
+# scripts/fine-mapping/install_plink.sh and install_susiex.sh -- there is no way to
+# exercise this experiment without them, because shelling out to SuSiEx IS the experiment.
+
+name: ci-tiny
+description: >-
+  Minimal end-to-end smoke scenario. Three sites, 1,500 enrolled individuals, up to 3
+  non-overlapping loci, one architecture, one replicate. Proves the pipeline runs;
+  produces no meaningful genetics.
+
+cohort:
+  provider: synthetic_hapnest
+  n_individuals: 4000
+  n_variants: 4000
+  seed: 20260101
+  # Enough divergence that the three LD-divergence strata are actually distinguishable.
+  # At 0 the locus-selection stage has nothing to stratify on and picks arbitrarily.
+  ld_divergence: 0.35
+  ld_block_size: 20
+  ld_correlation: 0.7
+  # Real HAPNEST chr1 has a missing-call rate around 2e-7, which costs about four
+  # variants in two thousand. Scaled naively to a 500-individual block that would drop
+  # nothing at all and leave the complete-case path in the site stage untested -- but the
+  # obvious "just use a bigger rate" overshoots badly: at 5e-4 roughly a QUARTER of every
+  # window is dropped, the exactness warning fires on every locus, and a smoke test that
+  # cries wolf teaches people to ignore it. 5e-6 drops a handful, which is the point.
+  missing_rate: 0.000005
+  # 4,000 variants x 2 kb = an 8 Mb chromosome, which fits 4 non-overlapping 1 Mb windows
+  # comfortably at the 500 kb step below.
+  bp_spacing: 2000
+  superpopulation_weights:
+    EUR: 0.30
+    AFR: 0.30
+    AMR: 0.10
+    EAS: 0.08
+    CSA: 0.14
+    MID: 0.08
+
+pipeline:
+  master_seed: 20260601
+  chromosome: 1
+
+  tools:
+    plink: plink
+    plink2: plink2
+    king: king
+
+  # The same three sites and the same shape of imbalance as the published design --
+  # EUR-dominant, AFR-dominant, MID-dominant -- at 1/100 the size. The shape is what the
+  # pipeline exercises; the size is what makes it fast.
+  #
+  # The site ids are not free: the vendored sampler enumerates exactly these three in a
+  # fixed order. See simulation/schema.py.
+  sites:
+    anl:
+      n: 500
+      composition:
+        EUR: 300
+        AFR: 75
+        AMR: 75
+        EAS: 25
+        CSA: 25
+      dominant: EUR
+    covenant:
+      n: 500
+      composition:
+        AFR: 475
+        EUR: 15
+        CSA: 10
+      dominant: AFR
+    mbzuai:
+      n: 500
+      composition:
+        MID: 250
+        CSA: 150
+        AFR: 50
+        EUR: 50
+      dominant: MID
+
+  superpopulations: [EUR, AFR, AMR, EAS, CSA, MID]
+
+  locus_selection:
+    window_size_bp: 1000000
+    step_size_bp: 500000
+    n_loci: 3
+    strata:
+      low: 1
+      medium: 1
+      high: 1
+    maf_filter: 0.01
+    ld_tag_snp_target: 100
+    ld_r2_prune_threshold: 0.995
+    ld_prune_window_variants: 50
+    ld_prune_step_variants: 5
+    n_workers: 2
+
+  architecture:
+    ncsl: [1]
+    # Deliberately enormous. A real per-locus h2 is 5e-4 to 5e-3; at this cohort size
+    # that produces no detectable signal, SuSiEx correctly returns no credible sets, and
+    # the smoke test cannot tell "the pipeline works" from "the fit is broken". 0.3 puts
+    # the causal variant far above the p-value filter so a credible set actually comes
+    # back, which is the thing being smoke-tested.
+    h2: [0.3]
+    rg: [1.0]
+    # 'minimal' is ncsl x h2 at rg=1.0, which here is a single architecture.
+    factorial_mode: minimal
+    replicates: 1
+    ancestry_specific_causal:
+      enabled: false
+      min_per_stratum: 0
+      common_maf_threshold: 0.05
+      rare_maf_threshold: 0.01
+    ancestry_divergent_causal:
+      enabled: false
+      n_private_per_pop: 1
+      min_per_stratum: 1
+
+  phenotype:
+    model: linear_additive
+    # Loose, deliberately. At 500 individuals per site the empirical heritability of a
+    # single-causal-variant locus is noisy enough that the production 20% tolerance would
+    # fail on nothing but sample size.
+    h2_tolerance_relative: 0.95
+
+  # No ancestry is dropped: at this size every pooled column is small, and pruning them
+  # would leave the multi-ancestry path untested, which is the path that matters.
+  fine_mapping:
+    min_gwas_n: 0
+
+  qc:
+    kinship_threshold: 0.05
+    pca_n_components: 5
+    pca_reference: 1kg_phase3
+    maf_tolerance_sd: 3.0
+    ld_decay_max_dist_kb: 1000
+    ld_decay_n_loci_sample: 2

@@ -1,0 +1,42 @@
+# Loopback config: the full GWAS federation on one machine, no Globus, no scheduler.
+#
+#   appfl-bio-suite simulate gwas --scenario ci-tiny --out /tmp/gwas-ci
+#   appfl-bio-suite run gwas --config loopback --driver serial --data-root /tmp/gwas-ci
+#
+# Run this before recruiting anyone. If it completes, the install is correct end to end:
+# simulation produced data in the layout the loader expects, the trainer computed
+# summary statistics from it, and the aggregator pooled them.
+
+client_configs:
+  train_configs:
+    trainer: SiteGWASTrainer
+    trainer_path: null
+    device: cpu
+    gwas_chunk_size: 128
+    variant_scaling: 1.0
+    hit_p_threshold: 5.0e-8
+    use_cuml: false
+
+  data_readiness_configs:
+    generate_dr_report: false
+
+  comm_configs:
+    compressor_configs:
+      enable_compression: false
+
+server_configs:
+  num_clients: 2
+  num_global_epochs: 1
+  scheduler: SyncScheduler
+  scheduler_kwargs:
+    same_init_model: true
+  aggregator: MetaAnalysisAggregator
+  aggregator_path: null
+  aggregator_kwargs:
+    hit_p_threshold: 5.0e-8
+    qq_max_points: 50000
+    output_dir: ./local/output/gwas-loopback
+    plot_per_site: true
+  device: cpu
+  logging_output_dirname: ./local/output/gwas-loopback/logs
+  logging_output_filename: appfl_meta_gwas_loopback

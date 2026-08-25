@@ -1,0 +1,69 @@
+#!/bin/bash
+#
+# ARCHIVED RECORD. Two substitutions were made when this was copied into the suite:
+#   /lus/.../<coordinator>/fedfm-simulation  ->  ${FEDFM_REPO}
+#   #PBS -A <the allocation>                 ->  #PBS -A <allocation>
+# Everything else is exactly as submitted. The portable equivalents, which run against
+# this repository rather than the standalone one, are in scripts/fine-mapping/.
+#
+# Finish an FM run that hit walltime with only shard 0 (part000of010) missing.
+#
+# The 10-node prod job (submit_polaris_fm_prod.pbs) wrote 9/10 shard parts
+# (part001..009of010) before the 2 h walltime killed the slowest shard (index 0).
+# This job runs ONLY that one shard on a single node, then merges all 10 parts
+# into reports/fine_mapping/{fm_results.tsv, fm_rollup_*.tsv}.
+#
+# 1 node -> preemptable (prod needs >=10 nodes). Generous walltime because a
+# single shard's ~1200 instances took >2 h at 32 workers. No mid-shard
+# checkpoint, so if preemptable evicts, just re-qsub (shard 0 restarts clean;
+# the other 9 parts are untouched).
+#
+# Usage (Polaris login node):
+#   qsub scripts/submit_polaris_fm_finish.pbs
+#   qstat -u $USER ; tail -f logs/fedfm-fm-finish.out
+#   python scripts/plot_fine_mapping.py     # after it completes
+
+#PBS -A <allocation>
+#PBS -q preemptable
+#PBS -l select=1:system=polaris
+#PBS -l place=scatter
+#PBS -l walltime=04:00:00
+#PBS -l filesystems=home:grand
+#PBS -N fedfm-fm-finish
+#PBS -o ${FEDFM_REPO}/logs/fedfm-fm-finish.out
+#PBS -e ${FEDFM_REPO}/logs/fedfm-fm-finish.err
+
+WORKDIR=${FEDFM_REPO}
+cd "${WORKDIR}"
+mkdir -p logs/fm reports/fine_mapping
+
+echo "==> Polaris FM-finish job ${PBS_JOBID} on $(hostname) @ $(date)"
+
+module use /soft/modulefiles
+module load conda
+conda activate base
+PYTHON="$(command -v python)"
+CONFIG="${WORKDIR}/config/simulation_config.yaml"
+
+if [ ! -x "${WORKDIR}/vendor/bin/SuSiEx" ]; then
+  echo "!! vendor/bin/SuSiEx missing — run scripts/install_susiex.sh first"; exit 1
+fi
+
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
+export PYTHONPATH="${WORKDIR}" PATH="${WORKDIR}/vendor/bin:${PATH}"
+FM="${PYTHON} ${WORKDIR}/scripts/run_fine_mapping.py --config ${CONFIG} --n-workers 32"
+
+set -uo pipefail
+# MAP: the one missing shard (index 0 of the 10-way split).
+echo "==> [fm-finish] running shard 0/10 @ $(date)"
+${FM} --shard-index 0 --n-shards 10 > logs/fm/fm.shard0.finish.log 2>&1 \
+  || { echo "!! shard 0 FAILED — see logs/fm/fm.shard0.finish.log"; exit 1; }
+
+# REDUCE: merge all 10 parts (part000..009of010) -> fm_results.tsv + rollups.
+echo "==> [fm-merge] @ $(date)"
+${FM} --merge --n-shards 10 > logs/fm/fm_merge.log 2>&1 \
+  || { echo "!! merge FAILED — see logs/fm/fm_merge.log"; exit 1; }
+
+echo "==> FM stage complete @ $(date)"
+column -t reports/fine_mapping/fm_rollup_by_architecture.tsv 2>/dev/null \
+  || echo "(rollup missing — check logs/fm/*.log)"

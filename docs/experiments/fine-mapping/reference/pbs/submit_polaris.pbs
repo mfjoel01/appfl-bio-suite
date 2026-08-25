@@ -1,0 +1,85 @@
+#!/bin/bash
+#
+# ARCHIVED RECORD. Two substitutions were made when this was copied into the suite:
+#   /lus/.../<coordinator>/fedfm-simulation  ->  ${FEDFM_REPO}
+#   #PBS -A <the allocation>                 ->  #PBS -A <allocation>
+# Everything else is exactly as submitted. The portable equivalents, which run against
+# this repository rather than the standalone one, are in scripts/fine-mapping/.
+#
+# Polaris PBS Pro submission script for the FedFM data-simulation pipeline.
+#
+# Runs the three remaining post-sampling stages on a single Polaris compute
+# node. Sampling has already been completed on Sophia, so the per-site PLINK
+# binaries are expected to exist under data/processed/{anl,covenant,mbzuai}/.
+#
+# Patterned after the working APPFL_GWAS PBS scripts in
+#   <a sibling project>/local/scripts/*.pbs
+#
+# Usage:
+#   qsub scripts/submit_polaris.pbs
+#   qstat -u $USER
+#   tail -f logs/fedfm-sim.o<jobid>
+
+#PBS -A <allocation>
+# `preemptable`: up to 72h walltime, 1-10 nodes, can be interrupted.
+# Earlier `debug` run got 386/496 windows in 47 min and timed out at 1h.
+# Pipeline writes per-stage outputs so worst-case preemption costs one stage.
+#PBS -q preemptable
+#PBS -l select=1:system=polaris
+#PBS -l walltime=06:00:00
+#PBS -l filesystems=home:grand
+#PBS -N fedfm-sim
+#PBS -o ${FEDFM_REPO}/logs/fedfm-sim.out
+#PBS -e ${FEDFM_REPO}/logs/fedfm-sim.err
+
+cd ${FEDFM_REPO}
+mkdir -p logs
+
+echo "==> Polaris job ${PBS_JOBID} starting on $(hostname)"
+echo "==> Date: $(date)"
+echo "==> Cores: $(nproc)"
+
+# Polaris conda module is exposed via /soft/modulefiles, not the default
+# module path. This is the same incantation used by APPFL_GWAS.
+module use /soft/modulefiles
+module load conda
+conda activate base
+
+# Pin BLAS thread counts; joblib uses n_workers, and each numpy call also
+# spawns OpenMP — without pinning you get N×N oversubscription.
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+# Polaris-tuned config: bump locus_selection.n_workers 8 -> 32.
+POLARIS_CONFIG="${PBS_O_WORKDIR}/config/simulation_config_polaris.yaml"
+python - <<PY
+import yaml, pathlib
+src = pathlib.Path("config/simulation_config.yaml")
+dst = pathlib.Path("${POLARIS_CONFIG}")
+cfg = yaml.safe_load(src.read_text())
+cfg["locus_selection"]["n_workers"] = 32
+dst.write_text(yaml.safe_dump(cfg, sort_keys=False))
+print(f"Wrote Polaris config: {dst} (n_workers=32)")
+PY
+
+set -euo pipefail
+
+echo "==> [1/4] Locus selection"
+time ./scripts/run_locus_selection.sh "${POLARIS_CONFIG}"
+
+echo "==> [2/4] Phenotype simulation"
+time ./scripts/run_phenotype_sim.sh "${POLARIS_CONFIG}"
+
+echo "==> [3/4] Cohort QC"
+time ./scripts/run_qc.sh "${POLARIS_CONFIG}"
+
+echo "==> [4/4] Exhaustive validation (full data package, 32 workers)"
+time ./scripts/run_validation.sh \
+    --config "${POLARIS_CONFIG}" \
+    --n-workers 32 \
+    --out reports/validation
+
+echo "==> FedFM pipeline + validation complete on Polaris (job ${PBS_JOBID})"
+echo "==> Read reports/validation/SUMMARY.txt for the pass/fail rollup"
+echo "==> Done at: $(date)"

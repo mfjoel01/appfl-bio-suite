@@ -1,0 +1,92 @@
+# FedCompass server config for Fed-Heart-Disease -- the asynchronous fallback.
+#
+# Use this when synchronous FedAvg stalls on the slowest site: SyncScheduler waits for
+# every site each round, so one preempted or queue-stuck endpoint blocks the whole
+# federation. CompassScheduler profiles per-site speed and assigns each site its own
+# local-step budget so fast sites are not held hostage by slow ones.
+#
+# `appfl-bio-suite run` overlays your federation.yaml on top of this the same way it
+# does for server.yaml: num_clients and num_global_epochs come from there, and the
+# *_path entries are resolved to absolute paths inside the installed package.
+#
+# One overlay difference: FedCompassAggregator weights sites via `weights` plus the
+# staleness function below, not `client_weights_mode` -- a client_weights_mode set in
+# federation.yaml is ignored by this aggregator. Record the weighting choice here.
+
+client_configs:
+  train_configs:
+    trainer: VanillaTrainer
+    mode: step
+    # Upper bound only -- CompassScheduler assigns each site a per-round step count
+    # between min_local_steps and max_local_steps based on its observed speed.
+    num_local_steps: 100
+    optim: Adam
+    optim_args:
+      lr: 0.001
+
+    # Resolved to an absolute path in the installed package at run time. Read on the
+    # DRIVER -- its source is shipped to the worker.
+    loss_fn_path: null
+    loss_fn_name: BaselineLoss
+    metric_path: null
+    metric_name: metric
+
+    do_validation: true
+    do_pre_validation: true
+
+    train_batch_size: 4
+    val_batch_size: 4
+    train_data_shuffle: true
+    val_data_shuffle: false
+
+    use_dp: false
+    epsilon: 1
+    clip_grad: false
+    clip_value: 1
+    clip_norm: 1
+
+  # Off by default, same rationale as server.yaml: extra round trip, extra worker-side
+  # matplotlib/seaborn failure surface. Turn it on once a plain run is green.
+  data_readiness_configs:
+    generate_dr_report: false
+
+  model_configs:
+    model_path: null      # resolved at run time
+    model_name: Baseline
+
+  comm_configs:
+    compressor_configs:
+      enable_compression: false
+      lossy_compressor: SZ2Compressor
+      lossless_compressor: blosc
+      error_bounding_mode: REL
+      error_bound: 1.0e-3
+      param_cutoff: 1024
+
+server_configs:
+  num_clients: 2          # overridden from federation.yaml
+  scheduler: CompassScheduler
+  scheduler_kwargs:
+    same_init_model: true
+    max_local_steps: 100
+    min_local_steps: 20
+    speed_momentum: 0.9
+    latest_time_factor: 1.5
+  aggregator: FedCompassAggregator
+  aggregator_kwargs:
+    weights: equal
+    # Contributions from stale models are down-weighted polynomially: weight ~ (1+s)^-a
+    # where s is staleness in global steps. a=0.5 is the upstream default and a sane
+    # starting point for a two-to-five site federation.
+    staleness_fn: polynomial
+    staleness_fn_kwargs:
+      a: 0.5
+    alpha: 0.9
+  device: cpu
+
+  # Same rationale as server.yaml: prove a short run completes before asking for more.
+  # Overridden from federation.yaml.
+  num_global_epochs: 5
+
+  logging_output_dirname: ./local/output
+  logging_output_filename: flamby_heart_disease_fedcompass

@@ -1,0 +1,52 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "appfl-bio-suite: cross-silo federated learning experiments in computational biology"
+abstract: >-
+  A downstream extension package for APPFL that packages federated learning
+  experiments in computational biology -- a FLamby Fed-Heart-Disease benchmark and a
+  federated GWAS with polygenic-score evaluation -- together with the operational
+  tooling, partner-onboarding workflow, and reproducible data-simulation pipeline
+  needed to run them across independently administered HPC centers over Globus Compute.
+type: software
+license: MIT
+version: 0.1.0
+
+# TODO before the first public release: add ORCID and affiliation for each author, and
+# add any co-authors from the partner sites who should be credited.
+authors:
+  - family-names: "Joel"
+    given-names: "Matthew"
+
+keywords:
+  - federated learning
+  - genome-wide association study
+  - polygenic risk score
+  - differential privacy
+  - Globus Compute
+  - APPFL
+  - reproducible research
+
+references:
+  - type: article
+    title: >-
+      Simulation Benchmarking of Differential Privacy and Federated Learning for
+      Secure Genetic Analysis and Polygenic Risk Scoring
+    authors:
+      - family-names: "Joel"
+        given-names: "Matthew"
+    notes: >-
+      The GWAS experiment reproduces this paper's simulation design. See
+      docs/experiments/gwas/ABOUT.md, and read docs/experiments/gwas/DATA.md for the
+      documented limits on reproducing the published figures from this repository alone.
+
+  - type: software
+    title: "APPFL: An open-source package for privacy-preserving federated learning"
+    repository-code: "https://github.com/APPFL/APPFL"
+    license: MIT
+
+  - type: article
+    title: >-
+      FLamby: Datasets and Benchmarks for Cross-Silo Federated Learning in Realistic
+      Healthcare Settings
+    year: 2022
+    notes: "NeurIPS 2022 Datasets and Benchmarks track. https://arxiv.org/abs/2210.04620"

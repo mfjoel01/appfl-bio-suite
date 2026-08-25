@@ -1,0 +1,180 @@
+{
+  "config": "<run>/pipeline_config.yaml",
+  "n_manifest_rows": 11850,
+  "rederivation": {
+    "instances_ok": 35550,
+    "instances_bad_status": 0,
+    "h2_match": 35550,
+    "h2_match_frac": 1.0,
+    "worst_h2_relerr": 1.6052127978658697e-07,
+    "median_h2_relerr": 2.440377159781014e-08,
+    "wrong_model_materially_off": 14728,
+    "wrong_model_off_frac_by_rg": {
+      "0.5": 0.999,
+      "0.7": 0.999,
+      "1.0": 0.024
+    },
+    "rtol": 1e-05,
+    "pass": true
+  },
+  "h2_calibration": {
+    "per_site": [
+      {
+        "site": "anl",
+        "median": 0.004165684461649999,
+        "p95": 0.012576946199700078,
+        "max": 0.024564499912600013,
+        "tolerance": 0.2,
+        "pass": true
+      },
+      {
+        "site": "covenant",
+        "median": 0.004246295844899994,
+        "p95": 0.012292923245084828,
+        "max": 0.02855929536748003,
+        "tolerance": 0.2,
+        "pass": true
+      },
+      {
+        "site": "mbzuai",
+        "median": 0.004328409050549986,
+        "p95": 0.012396521694329993,
+        "max": 0.027141847081699977,
+        "tolerance": 0.2,
+        "pass": true
+      }
+    ],
+    "pass": true
+  },
+  "effect_size_correlation": {
+    "per_rg": [
+      {
+        "rg": 0.5,
+        "n_beta_rows": 4730,
+        "mean_offdiag_corr": 0.48998630487058514,
+        "min_offdiag_corr": 0.47455361342561114,
+        "max_offdiag_corr": 0.5022775902650155,
+        "abs_err_vs_rg": 0.010013695129414857
+      },
+      {
+        "rg": 0.7,
+        "n_beta_rows": 4730,
+        "mean_offdiag_corr": 0.6994453025867184,
+        "min_offdiag_corr": 0.6858209902553135,
+        "max_offdiag_corr": 0.7078386085992883,
+        "abs_err_vs_rg": 0.000554697413281513
+      },
+      {
+        "rg": 1.0,
+        "n_beta_rows": 14210,
+        "mean_offdiag_corr": 0.9999999998995813,
+        "min_offdiag_corr": 0.9999999998976165,
+        "max_offdiag_corr": 0.9999999999015522,
+        "abs_err_vs_rg": 1.0041867337662325e-10
+      }
+    ],
+    "pass": true
+  },
+  "structural": {
+    "invariants": [
+      {
+        "invariant": "selected_loci",
+        "observed": 79,
+        "expected": "<=100 after dedup",
+        "pass": true
+      },
+      {
+        "invariant": "effect_size_npy_files",
+        "observed": 11850,
+        "expected": 11850,
+        "pass": true
+      },
+      {
+        "invariant": "manifest_rows",
+        "observed": 11850,
+        "expected": "79*15*10=11850",
+        "pass": true
+      },
+      {
+        "invariant": "pheno_files_anl",
+        "observed": 11850,
+        "expected": 11850,
+        "pass": true
+      },
+      {
+        "invariant": "pheno_files_covenant",
+        "observed": 11850,
+        "expected": 11850,
+        "pass": true
+      },
+      {
+        "invariant": "pheno_files_mbzuai",
+        "observed": 11850,
+        "expected": 11850,
+        "pass": true
+      },
+      {
+        "invariant": "ncsl_matches_|causal_snp_ids|",
+        "observed": "11850/11850",
+        "expected": 11850,
+        "pass": true
+      },
+      {
+        "invariant": "ancestry_divergent_sparsity",
+        "observed": "30/30",
+        "expected": 30,
+        "pass": true
+      },
+      {
+        "invariant": "ancestry_divergent_sets_differ",
+        "observed": "30/30",
+        "expected": 30,
+        "pass": true
+      },
+      {
+        "invariant": "causal_bp_within_window",
+        "observed": "11850/11850",
+        "expected": 11850,
+        "pass": true
+      },
+      {
+        "invariant": "pheno_rows_anl==n",
+        "observed": "11850/11850",
+        "expected": 50000,
+        "pass": true
+      },
+      {
+        "invariant": "pheno_rows_covenant==n",
+        "observed": "11850/11850",
+        "expected": 50000,
+        "pass": true
+      },
+      {
+        "invariant": "pheno_rows_mbzuai==n",
+        "observed": "11850/11850",
+        "expected": 50000,
+        "pass": true
+      },
+      {
+        "invariant": "phenotype_y_no_nan",
+        "observed": "0 NaN files",
+        "expected": 0,
+        "pass": true
+      }
+    ],
+    "pass": true
+  },
+  "ld_sanity": {
+    "n_files": 1374,
+    "median_diag_dev": 0.0004612952470779419,
+    "max_diag_dev": 0.005432248115539551,
+    "max_abs_value": 1.0043233633041382,
+    "abs_tolerance": 1.01,
+    "files_with_nan": 0,
+    "files_exceeding_tol": 0,
+    "files_with_any_overshoot": 1374,
+    "pass": true
+  },
+  "wall_seconds": 39.8,
+  "sampled": "all"
+}

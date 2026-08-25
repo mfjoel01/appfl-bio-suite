@@ -1,0 +1,153 @@
+#!/bin/bash
+#
+# ARCHIVED RECORD. Two substitutions were made when this was copied into the suite:
+#   /lus/.../<coordinator>/fedfm-simulation  ->  ${FEDFM_REPO}
+#   #PBS -A <the allocation>                 ->  #PBS -A <allocation>
+# Everything else is exactly as submitted. The portable equivalents, which run against
+# this repository rather than the standalone one, are in scripts/fine-mapping/.
+#
+# Polaris PROD multi-node run of the downstream SuSiEx fine-mapping stage.
+#
+# This is a STANDALONE stage that runs AFTER the pipeline has produced the data
+# package (data/ground_truth/{causal_manifest.tsv, phenotypes/}). For each
+# (locus × architecture × replicate) instance it runs one GWAS per ancestry
+# (each ancestry pooled across all three sites -> 6 columns), then SuSiEx across
+# those columns, then evaluates the credible sets against ground truth. This is
+# the CENTRALIZED baseline (see paper/algo.md §8.1).
+# Writes reports/fine_mapping/{fm_results.tsv, fm_rollup_*.tsv}.
+#
+# Fine-mapping is one embarrassingly-parallel stage sharded by locus across all
+# allocated nodes (each node: 32 joblib workers, single-threaded SuSiEx/plink);
+# bash `wait` is the barrier. No QC / no clean step.
+#
+# PRE-REQ: SuSiEx must be vendored once (login node, has internet):
+#   scripts/install_susiex.sh
+#
+# Usage:
+#   scripts/install_susiex.sh                 # once
+#   qsub scripts/submit_polaris_fm_prod.pbs
+#   qstat -u $USER ; tail -f logs/fedfm-fm.out
+#   column -t reports/fine_mapping/fm_rollup_by_architecture.tsv
+
+# SIZING NOTE: `prod` is a ROUTING queue; the request must fit a destination:
+#   small  10-24 nodes, max 3h    medium  25-99 nodes, max 6h    large  100+, 24h
+# 10 nodes @ 4h fits NOTHING (too long for small, too few nodes for medium) and
+# is rejected by all destinations. We use 25 nodes @ 6h -> medium.
+#
+# WALLTIME NOTE: SuSiEx runs ~1.5-3 min/instance at scale (a quick uncontended
+# smoke suggests ~15s, which does NOT hold under 32-way concurrency); 2h killed
+# the slowest shard at 1200 instances/shard when there were only 3 columns.
+# With 6 ancestry columns and 25 shards (~475 instances/shard) 6h is ample.
+# A shard writes its results only when it FINISHES, so a walltime kill loses
+# that shard's whole run -- prefer over-provisioning walltime here.
+#
+# To run in `small` instead: select=24 and walltime=03:00:00 (nearly the same
+# per-shard work, but only a 3h ceiling).
+#
+# KEEP THE DIRECTIVE BLOCK BELOW PURE: no trailing comments on a #PBS line
+# (qsub rejects them: "directive error"), and no indented lines inside the block
+# (PBS stops scanning directives at the first line not starting with '#', which
+# would silently drop every directive after it -- including filesystems, -N,
+# -o and -e).
+
+#PBS -A <allocation>
+#PBS -q prod
+#PBS -l select=25:system=polaris
+#PBS -l place=scatter
+#PBS -l walltime=06:00:00
+#PBS -l filesystems=home:grand
+#PBS -N fedfm-fm
+#PBS -o ${FEDFM_REPO}/logs/fedfm-fm.out
+#PBS -e ${FEDFM_REPO}/logs/fedfm-fm.err
+
+WORKDIR=${FEDFM_REPO}
+cd "${WORKDIR}"
+# .mplconfig: give matplotlib a writable cache dir so the figures step doesn't
+# stall or warn building its font cache against a slow/read-only $HOME.
+mkdir -p logs/fm reports/fine_mapping logs/.mplconfig
+
+echo "==> Polaris FM job ${PBS_JOBID} on $(hostname) @ $(date)"
+
+module use /soft/modulefiles
+module load conda
+conda activate base
+PYTHON="$(command -v python)"
+CONFIG="${WORKDIR}/config/simulation_config.yaml"
+
+# Fine-mapping resolves SuSiEx/plink/plink2 from vendor/bin (repo_root), so no
+# PATH edits are needed. Sanity-check the binary exists up front.
+if [ ! -x "${WORKDIR}/vendor/bin/SuSiEx" ]; then
+  echo "!! vendor/bin/SuSiEx missing — run scripts/install_susiex.sh on a login node first"; exit 1
+fi
+
+mapfile -t HOSTS < <(awk '!seen[$0]++' "${PBS_NODEFILE}")
+NNODES=${#HOSTS[@]}
+echo "==> ${NNODES} nodes: ${HOSTS[*]}"
+if [ "${NNODES}" -lt 2 ]; then
+  echo "Need >=2 nodes so the sharded path is taken; got ${NNODES}"; exit 1
+fi
+
+# Launch one rank on a host with 32 cores, single-threaded BLAS + vendor/bin on
+# PATH (belt-and-suspenders; the code also resolves via repo vendor/bin). Blocks.
+launch() {  # launch <host> <logfile> <python-args...>
+  local host="$1" log="$2"; shift 2
+  mpiexec --host "${host}" -n 1 --ppn 1 --depth=32 --cpu-bind depth \
+    --env OMP_NUM_THREADS=1 --env OPENBLAS_NUM_THREADS=1 --env MKL_NUM_THREADS=1 \
+    --env NUMEXPR_NUM_THREADS=1 --env PYTHONPATH="${WORKDIR}" \
+    --env PATH="${WORKDIR}/vendor/bin:${PATH}" \
+    --env MPLBACKEND=Agg --env MPLCONFIGDIR="${WORKDIR}/logs/.mplconfig" \
+    "${PYTHON}" "$@" > "${log}" 2>&1
+}
+
+set -uo pipefail
+# Thin entry (not `-m`) so src.fine_mapping is a normal import for loky workers.
+FM="${WORKDIR}/scripts/run_fine_mapping.py --config ${CONFIG} --n-workers 32"
+
+# MAP: shard loci across all nodes.
+echo "==> [fm-map] mapping across ${NNODES} nodes @ $(date)"
+pids=()
+for i in "${!HOSTS[@]}"; do
+  launch "${HOSTS[$i]}" "logs/fm/fm.shard${i}.log" \
+    ${FM} --shard-index "${i}" --n-shards "${NNODES}" &
+  pids+=($!)
+done
+rc=0
+for p in "${pids[@]}"; do wait "${p}" || rc=1; done
+if [ "${rc}" -ne 0 ]; then echo "!! [fm-map] a shard FAILED — see logs/fm/fm.shard*.log"; exit 1; fi
+echo "==> [fm-map] done @ $(date)"
+
+# REDUCE: merge per-shard result parts (+ write rollups) on node 0.
+echo "==> [fm-merge] @ $(date)"
+launch "${HOSTS[0]}" "logs/fm/fm_merge.log" ${FM} --merge --n-shards "${NNODES}" \
+  || { echo "!! [fm-merge] FAILED — see logs/fm/fm_merge.log"; exit 1; }
+
+# FIGURES: the 4 paper PNGs, on node 0. Deliberately NON-FATAL — the expensive
+# results are already on disk by this point, so a plotting hiccup must not mark
+# the whole job failed; it just prints how to re-run plotting standalone.
+echo "==> [fm-figures] @ $(date)"
+if launch "${HOSTS[0]}" "logs/fm/fm_figures.log" \
+     "${WORKDIR}/scripts/plot_fine_mapping.py" \
+     --results "${WORKDIR}/reports/fine_mapping/fm_results.tsv"; then
+  echo "==> [fm-figures] done @ $(date)"
+else
+  echo "!! [fm-figures] FAILED (results are safe) — see logs/fm/fm_figures.log"
+  echo "   re-run standalone:  scripts/_env.sh && python scripts/plot_fine_mapping.py"
+fi
+
+echo
+echo "==> FM stage complete @ $(date)"
+echo "==> results : reports/fine_mapping/fm_results.tsv"
+echo "==> rollups : reports/fine_mapping/fm_rollup_{by_architecture,by_stratum_rg}.tsv"
+echo "==> figures : reports/fine_mapping/figures/*.png"
+echo
+echo "---- rollup by architecture ----"
+column -t reports/fine_mapping/fm_rollup_by_architecture.tsv 2>/dev/null \
+  || echo "(rollup missing — check logs/fm/*.log)"
+echo
+echo "---- rollup by stratum x rg ----"
+column -t reports/fine_mapping/fm_rollup_by_stratum_rg.tsv 2>/dev/null \
+  || echo "(rollup missing — check logs/fm/*.log)"
+echo
+echo "---- figures ----"
+ls -1 reports/fine_mapping/figures/*.png 2>/dev/null \
+  || echo "(no figures — see logs/fm/fm_figures.log)"

@@ -1,0 +1,48 @@
+# Server config for the federated GWAS meta-analysis.
+#
+# `appfl-bio-suite run` overlays your federation.yaml: num_clients comes from the number
+# of participating sites, and every *_path is resolved to an absolute path inside the
+# installed package. You should not need to edit this to run your own federation.
+
+client_configs:
+  train_configs:
+    trainer: SiteGWASTrainer
+    trainer_path: null        # resolved at run time; read on the DRIVER, shipped as source
+    device: cpu
+    gwas_chunk_size: 256
+    variant_scaling: 1.0
+    hit_p_threshold: 5.0e-8
+    use_cuml: false
+
+  data_readiness_configs:
+    generate_dr_report: false
+
+  comm_configs:
+    compressor_configs:
+      enable_compression: false
+
+server_configs:
+  num_clients: 3            # overridden from federation.yaml
+
+  # ONE round. This is summary-statistic federated learning: each site computes a full
+  # local GWAS once and reports. There is no iterative weight exchange, and asking for
+  # more rounds would recompute identical results at full cost.
+  num_global_epochs: 1
+
+  scheduler: SyncScheduler
+  scheduler_kwargs:
+    same_init_model: true
+
+  aggregator: MetaAnalysisAggregator
+  aggregator_path: null     # resolved at run time; loaded LOCALLY, never shipped
+  aggregator_kwargs:
+    hit_p_threshold: 5.0e-8
+    qq_max_points: 250000
+    output_dir: ./local/output/gwas
+    # Per-site Manhattan and QQ plots, rendered here from the returned summary
+    # statistics rather than at each site -- which keeps matplotlib off partner clusters.
+    plot_per_site: true
+
+  device: cpu
+  logging_output_dirname: ./local/output/gwas/logs
+  logging_output_filename: appfl_meta_gwas

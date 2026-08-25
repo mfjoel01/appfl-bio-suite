@@ -1,0 +1,133 @@
+# Federation-wide version constraints for appfl-bio-suite.
+#
+# READ THIS BEFORE CHANGING A NUMBER.
+#
+# Version pinning here is a correctness requirement, not a preference. Every site in a
+# federation ships function bytecode to every other site. Version skew does not fail at
+# install time on somebody's laptop; it fails as a deserialization error several rounds
+# into a run on a partner's cluster, in a different country, hours after you launched.
+# That is the most expensive class of bug this project has.
+#
+# Use it:
+#     pip install -e ".[flamby]" -c constraints.txt
+#
+# Verify it (do not verify by reading):
+#     pip freeze | sort > /tmp/actual.txt
+#     appfl-bio-suite preflight --check pins
+#
+# Upgrading is a deliberate, tested change: bump one line, run the full test suite, run a
+# loopback federation, then re-run the partner smoke test at every site BEFORE the next
+# real run. This is the cost of depending on `appfl` rather than forking it -- and it is
+# the point. The value is not "automatically stays current"; that would reintroduce
+# exactly the bug this file exists to prevent. The value is that an upgrade is a one-line
+# change you chose, instead of a merge you inherited.
+#
+# See docs/coordinator/troubleshooting.md for what each of these actually protects against.
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+# Python 3.12 -- MINOR version, not patch.
+#
+# Dill ships function bytecode, so a 3.12 driver against 3.10 workers fails at decode,
+# before any user code runs (SystemError: unknown opcode). The minor version must match
+# everywhere.
+#
+# Patch level need NOT match, and you should not make partners chase it. CPython's
+# bytecode magic number is frozen across a minor series (verified: MAGIC_NUMBER = 3531 on
+# 3.12.11, the 3.12 value), so bytecode is portable across 3.12.x. A driver on 3.12.11
+# against workers on 3.12.13 prints a scary SDK warning and works correctly. Forcing
+# patch alignment is real operational cost for no benefit.
+#
+# This is enforced in pyproject.toml as requires-python = ">=3.12,<3.13".
+
+# ---------------------------------------------------------------------------
+# The Globus Compute stack -- exact pins, no exceptions
+# ---------------------------------------------------------------------------
+# APPFL's own setup.py declares globus-compute-sdk>=4.7.0 and globus-compute-endpoint
+# >=4.7.0. Those lower bounds resolve to 4.12.x today, which is actively broken for us:
+# 4.12 redesigned `endpoint start` to always launch the multi-user manager, which then
+# rejects the single-user `engine`-in-config layout with "Configuration contains an
+# 'engine' field; endpoint will not start."
+#
+# So a naive `pip install appfl` silently desynchronizes the federation. That is the whole
+# reason this file exists.
+globus-compute-sdk==4.9.0
+globus-compute-endpoint==4.9.0
+globus-compute-common==0.7.1
+globus-sdk==4.4.1
+globus-identity-mapping==0.5.0
+
+# Dill is the serializer. Driver and workers must agree on it -- it is one of the two
+# factors (with the Python minor version) that actually determine whether a payload
+# deserializes. The SDK warns on any Python version-string difference, but the warning is
+# only meaningful when dill differs too.
+dill==0.3.9
+
+# click is pinned because globus-compute-endpoint 4.9.0 requires click<8.2.0, and it is
+# the package most likely to be moved out from under you by an unrelated `pip install`.
+# Installing globus-cli into a working environment once upgraded click 8.1.8 -> 8.4.2 and
+# globus-sdk 4.4.1 -> 4.8.0, breaking the endpoint on its next restart. Install one-off
+# tools in a throwaway venv, never into the environment that runs the endpoint.
+click==8.1.8
+
+# ---------------------------------------------------------------------------
+# APPFL
+# ---------------------------------------------------------------------------
+# NOTE: appfl 1.10.0 as published on PyPI does a module-level
+#   from globus_compute_sdk.sdk.login_manager import AuthorizerLoginManager
+# and that module does not exist in globus-compute-sdk 4.9.0. Importing APPFL's
+# GlobusComputeServerCommunicator therefore raises ModuleNotFoundError on the exact
+# version combination pinned above.
+#
+# appfl_bio_suite.core.compat works around this with a narrow shim. It is a no-op on any
+# release where the problem is gone. See that module and docs/coordinator/releasing.md.
+appfl==1.10.0
+
+# ---------------------------------------------------------------------------
+# Numeric / scientific core
+# ---------------------------------------------------------------------------
+# torch is unpinned in APPFL's setup.py. It must be pinned here: it is large, its resolver
+# is aggressive, and a partner whose torch differs is a partner whose weights may not
+# round-trip.
+torch==2.8.0
+numpy==2.2.6
+pandas==2.2.2
+scipy==1.16.2
+scikit-learn==1.7.2
+
+# ---------------------------------------------------------------------------
+# Support
+# ---------------------------------------------------------------------------
+omegaconf==2.3.0
+parsl==2026.4.20
+PyYAML==6.0.3
+pydantic==2.11.10
+Jinja2==3.1.6
+
+# ---------------------------------------------------------------------------
+# Coordinator-only (the [gwas-sim] extra) -- never installed at a partner site
+# ---------------------------------------------------------------------------
+# Simulation runs on the coordinator's hardware and produces per-site bundles that are
+# then distributed. Partners train on data; they never generate it. Keeping these out of
+# the [gwas] extra keeps a partner's install smaller and its failure surface narrower.
+pandas-plink==2.3.2
+xarray==2025.9.1
+dask==2024.9.0
+
+# ---------------------------------------------------------------------------
+# Plotting (trainer and aggregator emit Manhattan/QQ plots)
+# ---------------------------------------------------------------------------
+matplotlib==3.10.6
+
+# ---------------------------------------------------------------------------
+# NOT dependencies -- recorded here so nobody adds them back
+# ---------------------------------------------------------------------------
+# plink2: the GWAS simulation writes score_bmi.txt / score_t2d.txt in plink2's --score
+# input format, but nothing in this repo ever invokes plink2. PGS scoring is done in
+# numpy. Those files are emitted for optional external use only. Do not add a plink2
+# preflight check; it would hard-fail a correct install.
+#
+# flamby: not on PyPI and its setup.py is hostile (it hooks egg_info to shell out to an
+# external package index). It is installed from a GitHub checkout by a documented
+# procedure that bypasses setup.py. See docs/partner/experiments/flamby-heart-disease.md.

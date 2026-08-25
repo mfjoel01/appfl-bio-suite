@@ -1,0 +1,68 @@
+#!/bin/bash
+#
+# ARCHIVED RECORD. Two substitutions were made when this was copied into the suite:
+#   /lus/.../<coordinator>/fedfm-simulation  ->  ${FEDFM_REPO}
+#   #PBS -A <the allocation>                 ->  #PBS -A <allocation>
+# Everything else is exactly as submitted. The portable equivalents, which run against
+# this repository rather than the standalone one, are in scripts/fine-mapping/.
+#
+# Polaris PBS Pro job: exhaustive validation of the realised FedFM data package.
+#
+# Runs every check in paper/design.md §10 over the FULL data package (no
+# sampling) on a single Polaris compute node, and writes machine-readable
+# results under reports/validation/ for inspection from chat:
+#
+#   reports/validation/SUMMARY.txt                      <- read this first
+#   reports/validation/summary.json
+#   reports/validation/rederivation_per_instance.csv    (35,100 rows)
+#   reports/validation/h2_calibration_per_instance.csv
+#   reports/validation/h2_calibration_summary.csv
+#   reports/validation/effect_size_correlation.csv
+#   reports/validation/effect_size_correlation_matrices.json
+#   reports/validation/structural_completeness.csv
+#   reports/validation/ld_matrix_per_file.csv
+#
+# Patterned after scripts/submit_polaris.pbs.
+#
+# Usage:
+#   qsub scripts/submit_polaris_validation.pbs
+#   qstat -u $USER
+#   tail -f logs/fedfm-validation.out
+
+#PBS -A <allocation>
+#PBS -q preemptable
+#PBS -l select=1:system=polaris
+#PBS -l walltime=03:00:00
+#PBS -l filesystems=home:grand
+#PBS -N fedfm-validation
+#PBS -o ${FEDFM_REPO}/logs/fedfm-validation.out
+#PBS -e ${FEDFM_REPO}/logs/fedfm-validation.err
+
+cd ${FEDFM_REPO}
+mkdir -p logs reports/validation
+
+echo "==> Polaris validation job ${PBS_JOBID} starting on $(hostname)"
+echo "==> Date: $(date)"
+echo "==> Cores: $(nproc)"
+
+# Polaris conda module lives under /soft/modulefiles (same as APPFL_GWAS).
+module use /soft/modulefiles
+module load conda
+conda activate base
+
+# One BLAS thread per process; joblib provides the parallelism via --n-workers.
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+set -euo pipefail
+
+echo "==> Running exhaustive validation (full data package, 32 workers)"
+time ./scripts/run_validation.sh \
+    --config config/simulation_config.yaml \
+    --n-workers 32 \
+    --out reports/validation
+
+echo "==> Validation complete (job ${PBS_JOBID})"
+echo "==> Results under reports/validation/ ; read reports/validation/SUMMARY.txt"
+echo "==> Done at: $(date)"

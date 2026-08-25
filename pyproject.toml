@@ -1,0 +1,196 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "appfl-bio-suite"
+version = "0.1.0"
+description = "Cross-silo federated learning experiments in computational biology, built on APPFL and Globus Compute"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.12,<3.13"
+keywords = [
+    "federated-learning",
+    "globus-compute",
+    "appfl",
+    "gwas",
+    "polygenic-score",
+    "fine-mapping",
+    "susiex",
+    "flamby",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+
+# Runtime dependencies common to every experiment and every role.
+#
+# The Globus Compute stack is pinned exactly here as well as in constraints.txt.
+# Duplication is intentional: constraints.txt only applies when a user remembers to pass
+# `-c constraints.txt`, and the one thing that must never depend on someone remembering is
+# the version alignment that keeps a federation deserializable.
+dependencies = [
+    "appfl==1.10.0",
+    "globus-compute-sdk==4.9.0",
+    "globus-compute-endpoint==4.9.0",
+    "globus-sdk==4.4.1",
+    "globus-identity-mapping==0.5.0",
+    "click==8.1.8",
+    "PyYAML>=6.0",
+    "pydantic>=2.7,<3",
+    "Jinja2>=3.1,<4",
+    "numpy==2.2.6",
+    "torch==2.8.0",
+]
+
+[project.optional-dependencies]
+# What a partner needs to train on the FLamby benchmark.
+#
+# `flamby` itself is deliberately NOT listed. It is not published on PyPI, and its
+# setup.py hooks install/develop/egg_info to unconditionally shell out to an external
+# package index -- the egg_info hook means it fires on mere metadata generation, so even
+# a dependency resolver touching it can move your pinned packages. It is installed from a
+# GitHub checkout by a documented procedure that bypasses setup.py entirely.
+# See docs/partner/experiments/flamby-heart-disease.md.
+flamby = [
+    "pandas==2.2.2",
+    "scikit-learn==1.7.2",
+    "wget",
+]
+
+# What a PARTNER needs to train on the GWAS experiment. Deliberately minimal: no
+# simulation dependencies, because partners never simulate.
+gwas = [
+    "pandas==2.2.2",
+    "scipy==1.16.2",
+    "scikit-learn==1.7.2",
+    "pandas-plink==2.3.2",
+]
+# NOTE: no matplotlib. The shipped trainer computes and returns summary statistics; it
+# does not plot. Plotting happens on the coordinator, which receives per-variant effect
+# sizes from every site and can render each site's own figures from them. That keeps a
+# partner's install smaller and its failure surface narrower, and it is why plotting was
+# moved out of the trainer during the migration.
+
+# COORDINATOR-ONLY. Generating the synthetic cohort and splitting it into per-site
+# bundles. This never reaches a partner cluster, so it is free to be heavy.
+#
+# The split from [gwas] is load-bearing rather than cosmetic: it is what keeps a partner's
+# install surface small, and it is what makes "simulation is coordinator-side only" a
+# packaging fact rather than a documentation promise.
+#
+# No plink2 binary is required. The pipeline writes plink2 --score input files but never
+# invokes plink2; PGS scoring is done in numpy.
+gwas-sim = [
+    "appfl-bio-suite[gwas]",
+    "xarray==2025.9.1",
+    "dask==2024.9.0",
+    # Coordinator-side plotting: Manhattan and QQ figures, for the meta-analysis and for
+    # each site. Never installed at a partner.
+    "matplotlib==3.10.6",
+]
+
+# What a PARTNER needs for the fine-mapping experiment. Strikingly small, and that is
+# the point: the site stage reads a genotype window straight out of the .bed with a
+# hand-rolled reader and forms three matrix products. No pandas-plink, no scikit-learn,
+# no SuSiEx, no PLINK.
+#
+# scipy is here for the trainer's own use, not the statistics: the site emits raw moments
+# and every distribution comes out at the coordinator.
+finemapping = [
+    "pandas==2.2.2",
+    "scipy==1.16.2",
+]
+
+# COORDINATOR-ONLY. Simulating the cohort, and doing the fine-mapping itself.
+#
+# The split from [finemapping] is load-bearing in the same way the GWAS one is, and
+# carries more: SuSiEx and PLINK are C++ binaries this experiment shells out to, and they
+# live entirely on the coordinator. A partner never fits anything -- which is why
+# "partners install two pip packages" is a fact about the packaging rather than a promise
+# in a setup guide.
+#
+# joblib parallelizes SuSiEx across instances; jinja2 renders the per-site QC reports;
+# matplotlib draws the four result figures. All three are coordinator-side.
+finemapping-sim = [
+    "appfl-bio-suite[finemapping]",
+    "joblib==1.4.2",
+    "matplotlib==3.10.6",
+    "Jinja2>=3.1,<4",
+]
+
+dev = [
+    "pytest>=8.0",
+    "pytest-cov",
+    "ruff>=0.6",
+]
+
+# Everything a coordinator running every experiment needs.
+#
+# Not everything an experiment needs, though: fine-mapping also wants the SuSiEx and
+# PLINK binaries, which pip cannot provide. ./scripts/fine-mapping/install_susiex.sh and
+# install_plink.sh vendor them, and preflight checks for them.
+all = [
+    "appfl-bio-suite[flamby]",
+    "appfl-bio-suite[gwas]",
+    "appfl-bio-suite[gwas-sim]",
+    "appfl-bio-suite[finemapping]",
+    "appfl-bio-suite[finemapping-sim]",
+]
+
+[project.scripts]
+appfl-bio-suite = "appfl_bio_suite.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+appfl_bio_suite = [
+    "experiments/*/configs/*.yaml",
+    "experiments/*/configs/**/*.yaml",
+    "experiments/*/configs/**/*.json",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: exercises the real cohort or a full-scale run; deselect with -m 'not slow'",
+    "needs_network: requires outbound network access",
+    "needs_legacy_tree: requires the pre-migration APPFL_GWAS/APPFL_FLamby source trees",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+# VENDORED CODE. Not linted, and deliberately so.
+#
+# `experiments/fine_mapping/fedfm/` is a byte-for-byte copy of the standalone FedFM
+# simulation repository, and tests/test_fine_mapping_configs.py asserts that with `cmp`.
+# The value of the copy is that the code producing the numbers is provably the code the
+# derivation and proofs are about -- so a `ruff --fix` pass over it, however harmless
+# each individual edit, destroys the one property it is here for.
+#
+# The six ported test files are excluded for the same reason: they are the upstream test
+# suite with nothing changed but their import paths, and they are what holds the vendored
+# code to its guarantees. Reformatting them makes it harder to tell whether a test was
+# ported faithfully or quietly altered.
+#
+# Everything this repository actually wrote -- trainer.py, aggregator.py, dataset.py,
+# simulation/, plotting.py, and the three new test files -- is linted normally.
+exclude = [
+    "src/appfl_bio_suite/experiments/fine_mapping/fedfm/",
+    "tests/test_fine_mapping_utils.py",
+    "tests/test_fine_mapping_sampling.py",
+    "tests/test_fine_mapping_locus_selection.py",
+    "tests/test_fine_mapping_phenotypes.py",
+    "tests/test_fine_mapping_centralized.py",
+    "tests/test_fine_mapping_federated.py",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

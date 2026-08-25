@@ -1,0 +1,146 @@
+#!/bin/bash
+#
+# ARCHIVED RECORD. Two substitutions were made when this was copied into the suite:
+#   /lus/.../<coordinator>/fedfm-simulation  ->  ${FEDFM_REPO}
+#   #PBS -A <the allocation>                 ->  #PBS -A <allocation>
+# Everything else is exactly as submitted. The portable equivalents, which run against
+# this repository rather than the standalone one, are in scripts/fine-mapping/.
+#
+# Polaris PROD multi-node run of the full FedFM pipeline + validation.
+#
+# Why this exists: the preemptable-queue job kept getting evicted. prod is
+# non-preemptable but bills a >=10-node minimum, so this script actually
+# *uses* the nodes by sharding every embarrassingly-parallel stage across them
+# (no MPI in the Python — each node runs a sharded single-node task with 32
+# joblib workers; bash `wait` is the barrier). Sharded output has been verified
+# bit-for-bit identical to a single-node run.
+#
+# Node plan (with N allocated nodes):
+#   * 3 nodes  -> per-site QC, run CONCURRENTLY (it only reads the cohorts +
+#                 the already-written loci, so it overlaps pheno+validation).
+#   * N-3 nodes -> the dependent pipeline shards (locus -> pheno -> validation).
+# Reduce/clean/merge steps are cheap and run on one pipeline node.
+#
+# Stage flow:
+#   locus MAP (N-3 shards) -> locus REDUCE
+#   [launch QC on 3 nodes, in background]
+#   pheno CLEAN -> pheno MAP (N-3 shards) -> pheno MERGE
+#   validation MAP (N-3 shards) -> validation REDUCE  (writes SUMMARY.txt)
+#   wait for QC
+#
+# PRE-REQ (run once before qsub, to force a genuine LD recompute — legacy cache
+# lacks the n_variants field): rm -rf data/loci/ld_matrices/*
+#
+# Usage:
+#   rm -rf data/loci/ld_matrices/*
+#   qsub scripts/submit_polaris_prod.pbs
+#   qstat -u $USER ; tail -f logs/fedfm-prod.out
+
+#PBS -A <allocation>
+#PBS -q prod
+#PBS -l select=10:system=polaris
+#PBS -l place=scatter
+#PBS -l walltime=02:00:00
+#PBS -l filesystems=home:grand
+#PBS -N fedfm-prod
+#PBS -o ${FEDFM_REPO}/logs/fedfm-prod.out
+#PBS -e ${FEDFM_REPO}/logs/fedfm-prod.err
+
+WORKDIR=${FEDFM_REPO}
+cd "${WORKDIR}"
+mkdir -p logs/prod reports/validation
+
+echo "==> Polaris PROD job ${PBS_JOBID} on $(hostname) @ $(date)"
+
+module use /soft/modulefiles
+module load conda
+conda activate base
+PYTHON="$(command -v python)"
+CONFIG="${WORKDIR}/config/simulation_config.yaml"
+
+# Unique allocated hosts (one rank per node; place=scatter guarantees distinct).
+mapfile -t HOSTS < <(awk '!seen[$0]++' "${PBS_NODEFILE}")
+NNODES=${#HOSTS[@]}
+echo "==> ${NNODES} nodes: ${HOSTS[*]}"
+# Need >=2 pipeline nodes so the sharded path (n_shards>1) is actually taken;
+# with 3 reserved for QC that means >=5 nodes total. prod's minimum is 10.
+if [ "${NNODES}" -lt 5 ]; then
+  echo "Need >=5 nodes (3 QC + >=2 pipeline shards); got ${NNODES}"; exit 1
+fi
+
+NSITES=3
+QC_HOSTS=("${HOSTS[@]:0:NSITES}")          # first 3 nodes -> QC (concurrent)
+PIPE_HOSTS=("${HOSTS[@]:NSITES}")          # rest -> dependent pipeline shards
+NPIPE=${#PIPE_HOSTS[@]}
+echo "==> pipeline nodes: ${NPIPE} ; QC nodes: ${#QC_HOSTS[@]}"
+
+# Launch one rank on a specific host with 32 cores; single-threaded BLAS so the
+# 32 joblib workers don't oversubscribe. Logs to the given file. Blocks.
+launch() {  # launch <host> <logfile> <python-args...>
+  local host="$1" log="$2"; shift 2
+  mpiexec --host "${host}" -n 1 --ppn 1 --depth=32 --cpu-bind depth \
+    --env OMP_NUM_THREADS=1 --env OPENBLAS_NUM_THREADS=1 --env MKL_NUM_THREADS=1 \
+    --env NUMEXPR_NUM_THREADS=1 --env PYTHONPATH="${WORKDIR}" \
+    "${PYTHON}" "$@" > "${log}" 2>&1
+}
+
+# Fan a sharded stage across all pipeline hosts; barrier on completion.
+run_pipe_stage() {  # run_pipe_stage <name> <logprefix> <python-args-before-shard...>
+  local name="$1" logp="$2"; shift 2
+  local pids=() i
+  echo "==> [${name}] mapping across ${NPIPE} nodes @ $(date)"
+  for i in "${!PIPE_HOSTS[@]}"; do
+    launch "${PIPE_HOSTS[$i]}" "${logp}.shard${i}.log" \
+      "$@" --shard-index "${i}" --n-shards "${NPIPE}" &
+    pids+=($!)
+  done
+  local rc=0 p
+  for p in "${pids[@]}"; do wait "${p}" || rc=1; done
+  if [ "${rc}" -ne 0 ]; then echo "!! [${name}] a shard FAILED — see ${logp}.shard*.log"; exit 1; fi
+  echo "==> [${name}] done @ $(date)"
+}
+
+# Single-node helper on a pipeline node (avoids the QC nodes).
+solo() {  # solo <name> <logfile> <python-args...>
+  local name="$1" log="$2"; shift 2
+  echo "==> [${name}] @ $(date)"
+  launch "${PIPE_HOSTS[0]}" "${log}" "$@" || { echo "!! [${name}] FAILED — see ${log}"; exit 1; }
+}
+
+set -uo pipefail
+LS="-m src.locus_selection --config ${CONFIG}"
+PS="-m src.phenotype_sim   --config ${CONFIG}"
+VAL="scripts/run_validation.py --config ${CONFIG} --n-workers 32 --out reports/validation"
+
+# 1) Locus selection: MAP (score shards -> shared cache) then REDUCE (select).
+run_pipe_stage "locus-map"    logs/prod/locus     ${LS} --score-only
+solo           "locus-reduce" logs/prod/locus_reduce.log ${LS}
+
+# 2) Launch per-site QC concurrently (reads the now-stable loci + cohorts).
+#    QC is independent of phenotypes and its result is unchanged by this re-run,
+#    so it is best-effort: a QC failure warns but does not fail the job.
+QC_PIDS=(); QC_HOSTLIST=()
+SITES=(anl covenant mbzuai)
+for i in "${!SITES[@]}"; do
+  h="${QC_HOSTS[$(( i % ${#QC_HOSTS[@]} ))]}"
+  echo "==> [qc:${SITES[$i]}] launching on ${h} @ $(date)"
+  launch "${h}" "logs/prod/qc_${SITES[$i]}.log" -m src.qc --config "${CONFIG}" --site "${SITES[$i]}" &
+  QC_PIDS+=($!)
+done
+
+# 3) Phenotype sim: CLEAN once, MAP locus shards, MERGE manifests.
+solo           "pheno-clean" logs/prod/pheno_clean.log ${PS} --clean-only
+run_pipe_stage "pheno-map"   logs/prod/pheno          ${PS}
+solo           "pheno-merge" logs/prod/pheno_merge.log ${PS} --merge --n-shards "${NPIPE}"
+
+# 4) Validation: MAP re-derivation shards, REDUCE (merge + cheap checks + SUMMARY).
+run_pipe_stage "val-map"    logs/prod/val            ${VAL}
+solo           "val-reduce" logs/prod/val_reduce.log ${VAL} --merge --n-shards "${NPIPE}"
+
+echo "==> waiting on concurrent QC @ $(date)"
+QC_RC=0; for p in "${QC_PIDS[@]}"; do wait "${p}" || QC_RC=1; done
+[ "${QC_RC}" -ne 0 ] && echo "!! QC reported a failure (non-fatal); see logs/prod/qc_*.log"
+
+echo "==> PROD pipeline complete @ $(date)"
+echo "==> Read reports/validation/SUMMARY.txt"
+cat reports/validation/SUMMARY.txt 2>/dev/null || echo "(SUMMARY.txt missing — check logs/prod/val.*)"
