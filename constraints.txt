@@ -91,7 +91,11 @@ appfl==1.10.0
 # is aggressive, and a partner whose torch differs is a partner whose weights may not
 # round-trip.
 torch==2.8.0
-numpy==2.2.6
+# numpy is pinned BY appfl 1.10.0, which requires exactly 1.26.4. Raising it here makes
+# the pinned set unresolvable -- pip cannot satisfy appfl's ==1.26.4 and ours at once,
+# and `pip install -e '.[all,dev]' -c constraints.txt` fails outright. Bump this only
+# when appfl's own pin moves.
+numpy==1.26.4
 pandas==2.2.2
 scipy==1.16.2
 scikit-learn==1.7.2
@@ -100,7 +104,10 @@ scikit-learn==1.7.2
 # Support
 # ---------------------------------------------------------------------------
 omegaconf==2.3.0
-parsl==2026.4.20
+# parsl is pinned BY globus-compute-endpoint 4.9.0, which requires exactly 2026.2.23.
+# Same rule as numpy: a higher pin here makes the set unresolvable. Bump it only when
+# the endpoint's own pin moves.
+parsl==2026.2.23
 PyYAML==6.0.3
 pydantic==2.11.10
 Jinja2==3.1.6
