@@ -17,7 +17,7 @@ from pathlib import Path
 
 import click
 
-from appfl_bio_suite import __version__
+from appfl_bio_suite import __version__, install_spec
 from appfl_bio_suite.core.config import FederationError, load_federation
 from appfl_bio_suite.core.experiments import REGISTRY, experiment_names, get_spec
 
@@ -506,7 +506,7 @@ def experiments_cmd() -> None:
         click.echo(f"\n{name}")
         click.echo(f"  {spec.title}")
         click.echo(f"  status: {state}   |   data: {sim}")
-        click.echo(f"  install: pip install 'appfl-bio-suite[{','.join(spec.partner_extras)}]'")
+        click.echo(f"  install: pip install '{install_spec(','.join(spec.partner_extras))}'")
         for line in _wrap(spec.summary, 74):
             click.echo(f"  {line}")
 

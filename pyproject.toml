@@ -47,6 +47,11 @@ dependencies = [
     "torch==2.8.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/mfjoel01/appfl-bio-suite"
+Repository = "https://github.com/mfjoel01/appfl-bio-suite"
+Documentation = "https://github.com/mfjoel01/appfl-bio-suite/tree/main/docs"
+
 [project.optional-dependencies]
 # What a partner needs to train on the FLamby benchmark.
 #

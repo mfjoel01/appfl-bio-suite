@@ -62,6 +62,36 @@ no longer needed**. That failure is the signal, not a regression. When it fires:
 Until then, be aware that a clean install of the pinned set is *functional* only because
 of that shim. It is a real constraint, not a tidiness issue.
 
+## Cutting a release
+
+Partners install from a git tag, not from PyPI and not from `main`
+(`docs/partner/endpoint-setup.md`, Step 1). `main` moves; a tag does not. Two sites that
+installed from `main` a week apart are running different code with no way to say which,
+which is the same failure mode `constraints.txt` exists to prevent — just one level up.
+
+Three things carry the version and must move together:
+
+| | |
+| --- | --- |
+| `pyproject.toml` | `version` |
+| `src/appfl_bio_suite/__init__.py` | `__version__` — `INSTALL_TAG` is derived from it |
+| `CITATION.cff` | `version` |
+
+Then tag and push:
+
+```bash
+git tag -a v0.1.0 -m "appfl-bio-suite 0.1.0"
+git push origin v0.1.0
+```
+
+**Push the tag before you send a bundle that references it.** A partner whose bundle names
+`v0.1.0` while the tag exists only on your machine gets a bare
+`fatal: Remote branch v0.1.0 not found`, on step one, with nothing in it to act on.
+
+Do not move a tag once a partner has installed from it. `git tag -f` gives two sites the
+same version string over different code — worse than skew, because nothing detects it.
+Cut a new version instead.
+
 ## Release checklist
 
 - [ ] `pytest` passes, including the slow and legacy-tree marked tests where the old
@@ -70,6 +100,9 @@ of that shim. It is a real constraint, not a tidiness issue.
 - [ ] A loopback federation runs for both implemented experiments
 - [ ] `pip freeze` in a clean 3.12 environment matches `constraints.txt`
 - [ ] Every experiment still has all four documents, non-empty
-- [ ] `CITATION.cff` version matches `pyproject.toml`
+- [ ] `CITATION.cff` version matches `pyproject.toml` and `__version__`
+- [ ] The `vX.Y.Z` tag is pushed to `origin`, and
+      `pip install "appfl-bio-suite[gwas] @ git+<repo>.git@vX.Y.Z"` succeeds in a clean
+      3.12 environment — this is literally a partner's step one, so run it as one
 - [ ] No live endpoint UUID, coordinator identity, or partner name appears in the tracked
       tree or in git history

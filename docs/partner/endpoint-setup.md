@@ -46,8 +46,13 @@ bytecode is only portable within a minor version — a mismatch fails before any
 code runs. The patch level does not need to match ours.
 
 ```bash
-pip install "appfl-bio-suite[{{ partner_extras }}]"
+pip install "{{ install_spec }}"
 ```
+
+The suite is installed from a git tag, not from PyPI. Every site in this federation
+installs that same tag, so every site is running identical source. Please do not
+substitute a branch, a newer tag, or `pip install --upgrade` — if you think you need a
+different version, tell us and we will move the whole federation at once.
 
 Verify:
 
