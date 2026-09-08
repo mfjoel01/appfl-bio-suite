@@ -63,6 +63,33 @@ The `data` group reports each site honestly: validated where the path resolves h
 skipped where it does not, because `data_dir` is a path on a partner's cluster and from
 here it is not merely absent but unknowable.
 
+### The GA4GH checks
+
+```bash
+appfl-bio-suite preflight --check ga4gh --experiment fine-mapping
+```
+
+Offline, in about a second, and each prevents a failure that otherwise costs a scheduler
+queue wait:
+
+| check | fails when |
+| --- | --- |
+| `duo ontology` | the vendored DUO release will not load |
+| `data use` | a site's declared terms do not permit this study |
+| `drs` | a site's `drs_uri` does not resolve, or names a file rather than a bundle |
+| `trs pin` | the installed site stage is not the version this federation pinned |
+
+`data use` is the one that stops a launch. It is the same evaluation each site's worker
+performs on its own copy of its terms — a site that refuses here will refuse there — so
+this is how you find out before spending three sites' allocations to be told.
+
+`appfl-bio-suite ga4gh duo check` runs just that one, and prints the study alongside the
+per-site verdict. A site whose terms you have no copy of is reported as unchecked rather
+than as permitted; its own worker still enforces them.
+
+Skipped entirely when the experiment declares no `ga4gh` block.
+**→ [../../coordinator/ga4gh.md](../../coordinator/ga4gh.md)**
+
 ## 3. Size the run before you launch it
 
 **This is the step that decides whether the run completes.** Read it even if you skip the
@@ -197,7 +224,9 @@ local/output/fine-mapping/
 │   ├── fed_fm_results.tsv              one row per (locus, architecture, replicate)
 │   ├── fed_fm_rollup_by_architecture.tsv
 │   ├── fed_fm_rollup_by_stratum_rg.tsv
-│   └── fed_fm_site_summary.csv         what each site sent
+│   ├── fed_fm_site_summary.csv         what each site sent
+│   ├── ga4gh_provenance.json           what was dispatched, and what each site attests to
+│   └── drs_outputs.json                a DRS object per results file
 ├── graphs/                             the four figures
 └── logs/
 ```
@@ -217,6 +246,17 @@ The columns that matter, per instance:
 `fed_fm_site_summary.csv` is the only place the per-site uplink and harmonization counts
 survive after a run.
 
+`ga4gh_provenance.json` carries the two halves of the record and keeps them apart, because
+they are attested by different parties. `dispatched` is what this coordinator sent — the
+data use request, the tool pin, the DRS object it expected each site to hold. `attested` is
+what each site says it actually did: its DUO decision term by term, the object it verified
+its bundle against, the pin it was handed. The coordinator can only record the first; the
+site is the only witness to the second.
+
+They are compared on arrival. A site that computed over a **different DRS object** than the
+run names is a hard failure, because every number it contributed would otherwise be
+attributed to data it did not read.
+
 **The comparison that matters** is this table against the centralized baseline's, column
 for column. They have identical schemas precisely so that they can be diffed. Produce the
 baseline with:
@@ -234,6 +274,22 @@ qsub -A <allocation> -v FM_RUN_DIR=/scratch/fm-run,FM_STAGE=centralized \
 
 Any disagreement beyond floating-point summation order is a bug in the federated path. See
 [ABOUT.md](ABOUT.md).
+
+Two things about that diff are worth knowing before you read one as a failure:
+
+**The `min_p_*` columns agree only to about 1e-6, and that is expected.** The centralized
+path reads its marginal p-values out of plink2's `.glm.linear` text, which carries roughly
+six significant figures; the federated path computes them in-process at full double
+precision. Every other column is exact. Compare `min_p_*` with a tolerance, not with
+`diff` — a relative difference around 1e-6 in those six columns and nowhere else is the
+signature of agreement, not of drift.
+
+**Both sides must use the same MAF filter, and by default they do.** It comes from the
+scenario's `fine_mapping.maf`, which `simulate` writes into `pipeline_config.yaml`; the
+centralized stage, the standalone federated stage, and a `--driver serial` loopback run
+all read it from there. Passing `--maf` to one side and not the other fine-maps two
+different variant sets, and the resulting credible-set disagreement looks exactly like the
+bug this comparison exists to find.
 
 ## Validating without partners
 

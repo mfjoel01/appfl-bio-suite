@@ -29,6 +29,18 @@ variation before the coordinator could see it. algo.md A.10 works the example wh
 mistake yields 0.866 against a truth of 0.816.
 
 Single round. Sites compute once and report; there is no iterative exchange to converge.
+
+GA4GH: THE TWO HALVES OF THE PROVENANCE MEET HERE
+-------------------------------------------------
+The coordinator knows what it dispatched -- the data use request, the DRS object it
+expected each site to hold, the TRS tool pin it sent. Each site knows what it actually
+did, and says so in its manifest. This is the only place both are in one process, so
+this is where they are compared and where the merged record is written
+(``ga4gh_provenance.json``, beside the results).
+
+A DRS mismatch is fatal here rather than a warning. If a site computed over an object
+other than the one this run's provenance claims, every number in the results table is
+attributed to the wrong data, and no downstream reader could tell.
 """
 
 from __future__ import annotations
@@ -77,6 +89,18 @@ DEFAULT_PVAL_THRESH = 1e-5
 DEFAULT_MAF = 0.005
 
 
+def _plain(value):
+    """OmegaConf node -> plain dict/list. A no-op for anything already plain."""
+    try:
+        from omegaconf import OmegaConf
+
+        if OmegaConf.is_config(value):
+            return OmegaConf.to_container(value, resolve=True)
+    except ImportError:  # pragma: no cover - omegaconf ships with appfl
+        pass
+    return value
+
+
 def _to_numpy(value):
     if torch.is_tensor(value):
         return value.detach().cpu().numpy()
@@ -117,6 +141,16 @@ class FineMappingAggregator(BaseAggregator):
         self.n_workers = int(cfg.get("n_workers", 1))
         self.keep_work = bool(cfg.get("keep_work", False))
         self.make_figures = bool(cfg.get("make_figures", True))
+
+        # What this coordinator dispatched, from federation.yaml via launch.py. Absent
+        # for a federation not using GA4GH, in which case the checks below no-op and no
+        # provenance file is written.
+        #
+        # Forced to plain containers: APPFL hands the aggregator an OmegaConf node, and a
+        # DictConfig that reads exactly like a dict is not JSON-serializable -- which
+        # surfaces at the very end of a run, while writing the provenance, after the
+        # expensive part is done.
+        self.ga4gh = _plain(cfg.get("ga4gh", {}) or {})
 
         self.output_dir = Path(cfg.get("output_dir", "local/output/fine-mapping")).resolve()
         self.data_dir = self.output_dir / "data"
@@ -276,6 +310,7 @@ class FineMappingAggregator(BaseAggregator):
         self.logger.info(f"fine-mapping across {len(client_ids)} site(s)")
 
         geno_by_locus, pheno_by_instance, loci, manifests = self._decode(client_ids, local_models)
+        self._check_ga4gh(client_ids, manifests)
         truth_map = self._truth_map()
 
         # The ancestry columns to build, in a stable order. Union across sites, ordered by
@@ -428,6 +463,126 @@ class FineMappingAggregator(BaseAggregator):
                 f"{manifest['n_flipped']} variant(s) recoded to reference allele order"
             )
 
+    # -- GA4GH -------------------------------------------------------------
+
+    def _check_ga4gh(self, client_ids, manifests) -> None:
+        """Compare what each site reports doing against what this run dispatched.
+
+        Three comparisons, in decreasing severity:
+
+        * **DRS object identity.** A site that verified its bundle against a different
+          object than this run's provenance names has computed over different data than
+          the results will claim. Fatal.
+        * **Data use.** A site whose decision was not ``permitted`` should never have
+          reached this point -- enforcement is on by default -- so arriving here means it
+          was explicitly disabled. The results are still produced, and the fact is
+          recorded and logged, because a result computed under a waived consent check
+          must not look identical to one computed under a satisfied check.
+        * **Tool pin.** A site that echoes a different pin than the coordinator holds was
+          dispatched by something else, which usually means two drivers ran against one
+          federation.
+        """
+        expected_objects = (self.ga4gh.get("drs") or {}).get("objects", {}) or {}
+        expected_tool = self.ga4gh.get("tool") or {}
+
+        for cid in client_ids:
+            reported = manifests[cid].get("ga4gh") or {}
+            if not reported:
+                if self.ga4gh:
+                    self.logger.warning(
+                        f"  {cid}: returned no GA4GH provenance. It is running a trainer "
+                        "from before this was recorded; its results cannot be attributed "
+                        "to a tool version or a data object."
+                    )
+                continue
+
+            drs = reported.get("drs") or {}
+            expected_uri = expected_objects.get(str(cid))
+            actual_uri = drs.get("self_uri") or ""
+            if expected_uri and actual_uri and expected_uri != actual_uri:
+                raise ValueError(
+                    f"site {cid} computed over DRS object {actual_uri}, but this run "
+                    f"expects {expected_uri}.\n"
+                    "Every number this site contributed would be attributed to data it "
+                    "did not read. Fix federation.yaml's `drs_uri` for this site, or "
+                    "re-send the bundle this run is about."
+                )
+
+            data_use = reported.get("data_use") or {}
+            status = data_use.get("status") or data_use.get("outcome")
+            if status in ("denied", "undetermined"):
+                self.logger.warning(
+                    f"  {cid}: DATA USE {status.upper()} -- this site's terms do not "
+                    "permit this study, and enforcement was disabled. Its contribution "
+                    "is in these results and the decision is recorded in "
+                    "ga4gh_provenance.json."
+                )
+            elif status == "no-profile":
+                self.logger.info(f"  {cid}: no data use profile in its bundle; nothing checked")
+            elif status == "permitted":
+                self.logger.info(
+                    f"  {cid}: data use permitted "
+                    f"({len(data_use.get('reasons', []))} DUO term(s) satisfied)"
+                )
+
+            tool = reported.get("tool") or {}
+            if expected_tool and tool and tool.get("id") != expected_tool.get("id"):
+                self.logger.warning(
+                    f"  {cid}: ran tool {tool.get('id')}@{tool.get('version')}, but this "
+                    f"run pins {expected_tool.get('id')}@{expected_tool.get('version')}. "
+                    "Two drivers against one federation is the usual cause."
+                )
+
+    def _write_ga4gh_provenance(self, results_path: Path, client_ids, manifests) -> Path | None:
+        """Merge dispatched intent with site attestation, and address the outputs.
+
+        Written even when a site reported nothing, because "this site attested to
+        nothing" is itself the fact a reader needs. Skipped entirely when the run carries
+        no GA4GH configuration at all.
+        """
+        if not self.ga4gh:
+            return None
+
+        from appfl_bio_suite.core.ga4gh.drs import registry_for_files
+
+        record = {
+            "run": {
+                "experiment": "fine-mapping",
+                "finished_at": pd.Timestamp.utcnow().isoformat(),
+                "sites": len(client_ids),
+            },
+            "dispatched": self.ga4gh,
+            "attested": {
+                str(cid): (manifests[cid].get("ga4gh") or {"status": "not-reported"})
+                for cid in client_ids
+            },
+        }
+
+        hostname = (self.ga4gh.get("drs") or {}).get("hostname")
+        if hostname:
+            # The two provenance files are about the outputs rather than among them, and
+            # neither can contain its own checksum. Including them would also make a
+            # rerun's registry list the previous run's leftovers -- the same trap
+            # core/simulation.py's checksum_tree avoids by excluding the run manifest.
+            outputs = sorted(
+                path
+                for path in self.data_dir.glob("*")
+                if path.is_file()
+                and path.name not in ("drs_outputs.json", "ga4gh_provenance.json")
+            )
+            registry = registry_for_files(
+                outputs, hostname, description="fine-mapping results"
+            )
+            registry.save(self.data_dir / "drs_outputs.json")
+            record["outputs"] = {
+                obj.name: obj.self_uri for obj in registry.objects.values() if not obj.is_bundle
+            }
+
+        path = self.data_dir / "ga4gh_provenance.json"
+        path.write_text(json.dumps(record, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+        self.logger.info(f"wrote GA4GH provenance -> {path}")
+        return path
+
     def _write_outputs(self, results: pd.DataFrame, client_ids, manifests) -> None:
         results_path = self.data_dir / "fed_fm_results.tsv"
         results.to_csv(results_path, sep="\t", index=False)
@@ -449,9 +604,14 @@ class FineMappingAggregator(BaseAggregator):
 
         if results.empty:
             self.logger.warning("no instances were fine-mapped; skipping rollups")
+            self._write_ga4gh_provenance(results_path, client_ids, manifests)
             return
 
         self._write_rollups(results)
+        # After the rollups, so the output objects it addresses include them. A
+        # provenance record that names half the outputs is worse than none: it reads as
+        # complete.
+        self._write_ga4gh_provenance(results_path, client_ids, manifests)
         if self.make_figures:
             from appfl_bio_suite.experiments.fine_mapping.plotting import write_figures
 

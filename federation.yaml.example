@@ -44,6 +44,14 @@ coordinator:
   organization: Example University Institute for Computational Health
   contact: a.researcher@example-university.edu
 
+  # Where you are, for the network map (`appfl-bio-suite watch`). Drawn as the hub every
+  # partner marker connects back to. Optional -- omitting it costs the map its centre and
+  # nothing else. Nothing about a run reads this.
+  location:
+    lat: 41.8781
+    lng: -87.6298
+    city: Chicago
+
   # Your own compute endpoint, if you also participate as a training site.
   #
   # Coordinators run a SINGLE-USER endpoint. A single-user endpoint accepts tasks only
@@ -71,6 +79,71 @@ coordinator:
 
 
 # -----------------------------------------------------------------------------
+# GA4GH SERVICES  (optional)
+# -----------------------------------------------------------------------------
+# Where this federation's GA4GH services live. WHICH experiments use them is declared
+# per experiment, further down; where they live is federation-wide, because a DRS
+# hostname or a TES URL that differed per experiment would be two services described as
+# one.
+#
+# Every field here is optional and a federation using none of it runs exactly as it did
+# before any of this existed. What each standard buys, and what adopting it costs, is
+# docs/coordinator/ga4gh.md.
+#
+# Delete this whole block if you are not using them yet. Adopting them later is additive.
+ga4gh:
+
+  # Data Repository Service -- content-addressed identity for the bundles you distribute.
+  #
+  # The failure this prevents is silent: a site running last month's bundle produces
+  # well-formed aggregates over the wrong individuals, pools without complaint, and is
+  # wrong in no visible way. With a DRS object per bundle, "did this site unpack the
+  # bundle I cut for it" is a checksum rather than an assumption.
+  drs:
+    # The authority half of every drs:// URI this federation mints. A hostname, NOT a
+    # URL -- a DRS id is only unique within its service, so this is part of the identity.
+    hostname: drs.example-university.edu
+
+    # The registry file. `simulate` writes one beside the bundles it cuts; rebuild it for
+    # data you already distributed with:
+    #   appfl-bio-suite ga4gh drs register --data-root <dir> --hostname <above>
+    #
+    # Read only when a site actually names a `drs_uri`, so it is fine for this path not
+    # to exist until you have generated the data.
+    registry: local/data/fine-mapping-three-site/drs_registry.json
+
+    # Optional. Where you serve the registry, if you do (`ga4gh drs serve`). Adds an
+    # https access method to every object. NOTE: the served registry has no
+    # authorization -- put your own gateway in front of anything real.
+    https_base: null
+
+    # Optional. A Globus collection holding the bundles, added as a `globus` access
+    # method -- which is how a partner actually re-fetches one in this federation.
+    globus_collection: null
+
+  # Tool Registry Service -- which version of the site stage produced a result.
+  trs:
+    # Where your published tool tree is served, if anywhere. Dockstore's API is
+    # https://dockstore.org/api . Optional: a pin verifies against the installed package
+    # with no registry at all, which is what preflight does offline.
+    registry_url: null
+    publish_dir: local/trs
+
+  # Task Execution Service -- an alternative to Globus Compute, for a partner who
+  # already runs one. Needs a container image you have published (see the TRS pin
+  # below) and outputs staged somewhere this machine can read.
+  tes:
+    url: null
+    poll_seconds: 15
+    timeout_seconds: 7200
+    cpu_cores: 4
+    ram_gb: 16
+    disk_gb: 64
+    preemptible: false
+
+
+
+# -----------------------------------------------------------------------------
 # WHO ELSE IS IN THE FEDERATION
 # -----------------------------------------------------------------------------
 # One entry per participating institution. This is institution-level metadata only --
@@ -84,6 +157,17 @@ sites:
   - id: site-north
     name: Northern Institute of Technology
     country: Canada
+    # Where this institution is, for the network map. Declared here rather than looked
+    # up from an IP address: a partner's compute node has no outbound web access, and its
+    # public address belongs to the institution's border router rather than the cluster.
+    # You already know where your partners are -- write it down once.
+    #
+    # Optional. A site with no `location` still trains; it is listed as unplaced by
+    # `watch build` instead of being drawn at a guessed position.
+    location:
+      lat: 43.6532
+      lng: -79.3832
+      city: Toronto
     scheduler: slurm
     partition: compute          # `partition` for SLURM; use `queue` for PBS
     account: fedlearn
@@ -98,6 +182,10 @@ sites:
   - id: site-south
     name: Southern Research Council
     country: Brazil
+    location:
+      lat: -23.5505
+      lng: -46.6333
+      city: Sao Paulo
     scheduler: slurm
     partition: general
     account: genomics
@@ -107,6 +195,10 @@ sites:
   - id: site-east
     name: Eastern Technical University
     country: Japan
+    location:
+      lat: 35.6762
+      lng: 139.6503
+      city: Tokyo
     scheduler: pbspro
     queue: medium               # `queue` for PBS
     account: bioinfo
@@ -279,6 +371,77 @@ experiments:
     # scripts/fine-mapping/install_susiex.sh puts it.
     susiex_binary: null
 
+    # ---- GA4GH: who may use this data, and which tool version computes on it ----
+    #
+    # Optional. Delete this block and the experiment runs exactly as it did before.
+    # docs/coordinator/ga4gh.md explains each field and what it prevents.
+    ga4gh:
+
+      # WHAT THIS STUDY IS, in Data Use Ontology terms. Matched against every
+      # participating site's own DATA_USE.json -- by the coordinator before dispatch,
+      # and, decisively, by each site's worker before it opens a genotype file.
+      #
+      # ONE request for the whole experiment, deliberately. A coordinator who could vary
+      # the declared purpose per site to get past a refusal would have a gate that gates
+      # nothing.
+      data_use_request:
+        # `requester` defaults to coordinator.identity above -- the same string partners
+        # already authorize in their identity mapping, which is what makes DUO:0000026
+        # (user specific restriction) a check against a verified identity rather than a
+        # name typed into a form. Override only if they differ.
+        project: cross-ancestry fine-mapping
+        # `institution` defaults to coordinator.organization.
+
+        # RESEARCH PURPOSES -- what the STUDY does. DUO:0000031..DUO:0000040.
+        # These are not permissions: DUO:0000042 describes a dataset, not a study, and
+        # putting one here is refused by name. `ga4gh duo terms` lists both vocabularies.
+        purposes:
+          - DUO:0000038          # genetic research
+
+        # For matching a site whose permission is DUO:0000007 (disease specific).
+        disease: null
+
+        # Attestations. Each satisfies a modifier a site may have declared.
+        non_commercial: true
+        not_for_profit_organisation: true
+        publication_agreed: true
+        collaboration_agreed: false
+        moratorium_accepted: false
+        return_to_resource_agreed: false
+        ethics_approval: null    # a reference, e.g. "IRB-2026-0114"
+        geography: null          # e.g. "US", matched against DUO:0000022
+
+        # Terms a PERSON read and accepted, by id. The only way to clear an
+        # `undetermined` -- which is what a free-text restriction (DUO:0000012) yields,
+        # because no program can evaluate one. It cannot clear a `denied`.
+        acknowledged: []
+
+      # Refuse to launch when a site's terms do not permit this study. Turning it off
+      # waives only YOUR gate; each site's worker still enforces its own terms, and a
+      # decision that was overridden is recorded in the run's provenance so a waived
+      # result never looks like a permitted one.
+      enforce_data_use: true
+
+      # THE TOOL PIN. Written by `appfl-bio-suite ga4gh trs publish --out local/trs`;
+      # copy it from local/trs/tool_pin.json rather than typing it.
+      #
+      # `descriptor_checksum` covers the source of the two modules APPFL actually ships
+      # to workers, so editing the trainer changes it and preflight fails until you
+      # re-publish. That is what makes "which code produced this credible set" a lookup.
+      tool: null
+      # tool:
+      #   id: "#workflow/github.com/your-org/appfl-bio-suite/fine-mapping-site-stage"
+      #   version: "0.1.0"
+      #   descriptor_checksum: 4d8fc94df1656448...
+      #   image: registry.example-university.edu/appfl-bio-suite:0.1.0
+
+      # How much of its bundle each site re-checksums against the DRS object before
+      # computing:
+      #   off       trust the filesystem
+      #   metadata  everything except the genotype .bed  (seconds)
+      #   full      everything                           (minutes at chromosome scale)
+      verify_bundles: metadata
+
     sites:
       - site: site-north
         client_id: anl
@@ -287,6 +450,31 @@ experiments:
         data_dir: /home/finemap_svc/data/anl
         output_dir: /home/finemap_svc/outputs
         expected_samples: 50000
+
+        # ---- GA4GH, per site (optional) ----
+        #
+        # Both are null here and not fictional-but-filled-in like the endpoint UUID
+        # above, because unlike a UUID these are RESOLVED offline: a drs_uri is looked up
+        # in your registry and a data_use_profile is read and matched. Inventing values
+        # would make this example fail its own preflight.
+        #
+        # Fill them in after you have generated and distributed the data:
+        #
+        #   drs_uri: the object this site should hold. `simulate` prints one per site,
+        #   and `ga4gh drs register` recomputes them. The coordinator ships its per-file
+        #   checksums to the worker, which re-checks them before computing.
+        #     drs_uri: drs://drs.example-university.edu/5ee8bab1cc231219...
+        #
+        #   data_use_profile: YOUR copy of this site's terms, for the offline check. The
+        #   authoritative copy is the one in their own bundle, which their worker reads;
+        #   this is what lets preflight give the same answer before a queue wait.
+        #     data_use_profile: local/data/fine-mapping-three-site/anl/data/DATA_USE.json
+        drs_uri: null
+        data_use_profile: null
+        # TES path only. Their service, and where its outputs land -- which this machine
+        # must also be able to read, since that is where the aggregates come back from.
+        tes_url: null
+        tes_outputs_url: null
 
       - site: site-south
         client_id: covenant

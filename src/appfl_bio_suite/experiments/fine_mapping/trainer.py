@@ -53,6 +53,18 @@ touches. So this recodes against the bundle's ``reference_variants.tsv`` before 
 single moment, and reports how many it had to flip; the coordinator re-checks rather than
 trusting the report.
 
+GA4GH PROVENANCE TRAVELS WITH THE AGGREGATES
+--------------------------------------------
+The manifest this returns carries a ``ga4gh`` block: the DUO decision that authorized the
+computation, the DRS object the site verified its bundle against, and the TRS tool pin
+the coordinator dispatched. The aggregator writes all three into the results, so a
+credible set can name the consent code that permitted it, the bytes it was computed from,
+and the tool version that computed them.
+
+It travels *in the payload* rather than being recorded at the coordinator, and that is
+the point: the coordinator can only record what it dispatched. The site records what it
+actually did, and the two are checked against each other on arrival.
+
 MISSING GENOTYPES
 -----------------
 Theorem 1 condition (ii) needs one complete-case cohort per ancestry. A window variant not
@@ -340,6 +352,12 @@ class SiteFineMappingTrainer(BaseTrainer):
         # hold; the coordinator pools whoever contributed.
         self.pops = list(self.train_configs.get("pops", []) or [])
 
+        # The TRS pin the coordinator dispatched, echoed back in the manifest. The site
+        # cannot verify it -- the shipped source IS the tool, and code that checksums
+        # itself proves nothing -- so this is a record of what was claimed, checked at
+        # the coordinator against what it meant to send.
+        self.tool_pin = dict(self.train_configs.get("ga4gh_tool", {}) or {})
+
         self.gram_dtype = str(self.train_configs.get("uplink_gram_dtype", "float64"))
         if self.gram_dtype not in ("float64", "float32"):
             raise ValueError(
@@ -435,6 +453,20 @@ class SiteFineMappingTrainer(BaseTrainer):
             return torch.from_numpy(G.astype(np.float32))
         return torch.from_numpy(G)
 
+    def _provenance(self):
+        """What GA4GH facts this site can attest to about its own computation.
+
+        Read off the dataset rather than recomputed: those checks ran at construction,
+        before any genotype was opened, and re-deriving them here would be reporting a
+        second opinion instead of the one that actually gated the run.
+        """
+        dataset = self.train_dataset
+        return {
+            "data_use": getattr(dataset, "data_use", None) or {"status": "not-checked"},
+            "drs": getattr(dataset, "drs", None) or {"mode": "off"},
+            "tool": self.tool_pin,
+        }
+
     # -- the exchange ------------------------------------------------------
 
     def train(self, **kwargs):
@@ -445,6 +477,25 @@ class SiteFineMappingTrainer(BaseTrainer):
 
         dataset = self.train_dataset
         self.logger.info(f"{self.client_id}: reading site index from {dataset.data_dir}")
+
+        # Both checks already passed -- the dataset refuses to construct otherwise -- so
+        # this is a record in the site's own log of what its worker allowed and why.
+        # A partner reading their endpoint log should be able to see the decision that
+        # was made on their behalf without asking the coordinator for it.
+        data_use = getattr(dataset, "data_use", None) or {}
+        if data_use.get("status") not in (None, "no-profile", "not-checked"):
+            self.logger.info(
+                f"{self.client_id}: data use {data_use.get('outcome', '?')} for "
+                f"{data_use.get('requester') or '(no requester)'} "
+                f"({len(data_use.get('reasons', []))} DUO term(s) evaluated)"
+            )
+        drs = getattr(dataset, "drs", None) or {}
+        if drs.get("object_id"):
+            self.logger.info(
+                f"{self.client_id}: bundle verified against DRS object "
+                f"{drs['object_id'][:16]}... ({drs.get('checked', 0)} file(s), "
+                f"mode={drs.get('mode')})"
+            )
 
         bim = read_bim(dataset.plink_bim)
         fam = read_fam(dataset.plink_fam)
@@ -605,6 +656,7 @@ class SiteFineMappingTrainer(BaseTrainer):
                 "n_flipped": n_flipped,
                 "gram_dtype": self.gram_dtype,
                 "locus_shard": [self.locus_shard_index, self.locus_n_shards],
+                "ga4gh": self._provenance(),
             }
         ).encode("utf-8")
 

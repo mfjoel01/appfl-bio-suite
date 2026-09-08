@@ -19,7 +19,14 @@ Read in this order:
    working deployment, as an example. Not a requirement.
 4. [coordinator/troubleshooting.md](coordinator/troubleshooting.md) — symptom-indexed,
    with mechanisms. Skim it once before you need it.
-5. [coordinator/releasing.md](coordinator/releasing.md) — upgrading pins without breaking
+5. [coordinator/network-map.md](coordinator/network-map.md) — the page everyone in the
+   federation can open: every site on a map, what they hold, and live runs on top of it.
+   Built on [hivewatch](https://github.com/APPFL/hivewatch).
+6. [coordinator/ga4gh.md](coordinator/ga4gh.md) — the four GA4GH standards the
+   fine-mapping experiment is assembled out of: who may use a site's data (DUO), which
+   bytes it computed over (DRS), which tool version computed them (TRS), and how to
+   dispatch that tool to a site that speaks TES.
+7. [coordinator/releasing.md](coordinator/releasing.md) — upgrading pins without breaking
    the federation.
 
 ## I am a partner site

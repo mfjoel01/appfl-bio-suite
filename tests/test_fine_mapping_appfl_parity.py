@@ -54,6 +54,17 @@ _EXCLUDED_COLUMNS = {"runtime_s", "error"}
 # fine-mapping with different settings and the comparison would mean nothing.
 LEVEL, PVAL_THRESH, MAF = 0.95, 1e-5, 0.001
 
+# What the shipped ci-tiny scenario's three profiles require between them: biomedical
+# research (so `covenant`'s HMB permission is satisfied), by a non-commercial
+# not-for-profit that agrees to publish. Same request `run --driver serial` synthesizes.
+DATA_USE_REQUEST = {
+    "requester": "parity-test@localhost",
+    "purposes": ["DUO:0000038"],
+    "non_commercial": True,
+    "not_for_profit_organisation": True,
+    "publication_agreed": True,
+}
+
 pytestmark = pytest.mark.slow
 
 
@@ -115,9 +126,13 @@ def through_appfl(package, binaries, tmp_path_factory):
     output_dir = tmp_path_factory.mktemp("fm-appfl-out")
     logger = logging.getLogger("appfl-parity")
 
+    # The simulated bundles now carry DUO terms, so the loader needs the study that is
+    # asking -- exactly as a real run supplies it. Passing one here is not test
+    # scaffolding: a bundle with declared terms REFUSES a run that declares nothing, and
+    # a parity test that bypassed that would be testing a path no run takes.
     local_models = {}
     for site in scenario.site_ids:
-        dataset, _ = get_dataset(out / site / "data", site)
+        dataset, _ = get_dataset(out / site / "data", site, data_use_request=DATA_USE_REQUEST)
         trainer = SiteFineMappingTrainer(
             train_dataset=dataset,
             train_configs={"trainer_output_dirname": str(output_dir / site)},

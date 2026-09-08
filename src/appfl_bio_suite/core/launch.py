@@ -27,6 +27,18 @@ anyone expects.
 
 This module keeps the two straight so that neither the config author nor the partner has
 to.
+
+GA4GH SETTINGS ARE RESOLVED HERE TOO, AND ONE OF THEM CAN STOP A LAUNCH
+------------------------------------------------------------------------
+Three things reach a client config from the GA4GH layer: the run's DUO data use request,
+the DRS object that site is supposed to hold, and the TRS tool pin. They are resolved
+here because they are per-site facts assembled from federation.yaml plus a registry file,
+which is exactly what the rest of this module does.
+
+The data use check is the one that can refuse to launch. A site whose declared terms do
+not permit the declared study is not dispatched to, and the run stops before any task is
+submitted -- the site would refuse it anyway, in its own process, and burning a queue
+slot to be told so helps nobody.
 """
 
 from __future__ import annotations
@@ -47,6 +59,7 @@ from appfl_bio_suite.core.experiments import ExperimentSpec, get_spec
 
 __all__ = [
     "ResolvedRun",
+    "enforce_data_use",
     "build_client_configs",
     "build_server_config",
     "resolve_run",
@@ -174,6 +187,7 @@ def build_client_configs(
                     train[field] = value
             if exp.pops:
                 train["pops"] = list(exp.pops)
+            _apply_ga4gh(federation, experiment, entry, train, data_kwargs)
         else:
             # A registered experiment with no branch here would get a client config
             # carrying no data assignment at all, and would fail on the worker with a
@@ -198,6 +212,91 @@ def build_client_configs(
         }
         configs.append(client)
     return configs
+
+
+def _apply_ga4gh(
+    federation: Federation,
+    experiment: str,
+    entry,
+    train: dict[str, Any],
+    data_kwargs: dict[str, Any],
+) -> None:
+    """Put this run's GA4GH facts into one site's client config.
+
+    Everything here is optional and absent by default: a federation that declares no
+    ``ga4gh`` block gets a client config byte-identical to the one it got before any of
+    this existed, which is what made adding four specifications to a working experiment
+    safe.
+    """
+    from appfl_bio_suite.core.ga4gh.resolve import resolve_drs_object, resolve_tool
+
+    block = federation.experiment(experiment).ga4gh
+    if block is None:
+        return
+
+    request = federation.data_use_request(experiment)
+    if request is not None:
+        # The request is sent to the site rather than the decision. The site decides;
+        # sending it a verdict computed at the coordinator would make the site-side check
+        # a formality, and the whole value of DUO here is that the refusal happens where
+        # the data is.
+        data_kwargs["data_use_request"] = request.to_dict()
+    data_kwargs["enforce_data_use"] = block.enforce_data_use
+    data_kwargs["verify_bundles"] = block.verify_bundles
+
+    drs_object = resolve_drs_object(federation, entry)
+    if drs_object is not None:
+        data_kwargs["drs_object"] = drs_object
+
+    pin, _ = resolve_tool(federation, experiment, verify=False)
+    if pin is not None:
+        train["ga4gh_tool"] = pin
+
+
+def enforce_data_use(federation: Federation, experiment: str) -> tuple[bool, str]:
+    """The coordinator-side data use gate. Returns ``(ok, report)``.
+
+    ``ok`` is False when a participating site will not run this study *and* the experiment
+    asks for enforcement. That covers a refusal, a term no program can evaluate, and a
+    site with terms facing a run that declared no study -- the last because its worker
+    refuses that unconditionally, so dispatching only spends an allocation to find out.
+
+    A site with no recorded profile is not any of those. It is a site whose terms this
+    coordinator has no copy of, and whose own worker remains the authority either way.
+    """
+    from appfl_bio_suite.core.ga4gh.resolve import resolve_data_use
+
+    block = federation.experiment(experiment).ga4gh
+    if block is None:
+        return True, ""
+
+    decisions = resolve_data_use(federation, experiment)
+    if not decisions:
+        return True, ""
+
+    lines = ["data use (DUO):"]
+    lines.extend("  " + d.render() for d in decisions)
+    blocking = [d for d in decisions if d.blocking]
+
+    if blocking and block.enforce_data_use:
+        lines.append("")
+        lines.append(
+            f"{len(blocking)} site(s) will not run this study. Not launching.\n"
+            "  denied        the declared purpose in `ga4gh.data_use_request` is wrong "
+            "for this study, or that site should not be in this run.\n"
+            "  undetermined  a term no program can evaluate. Read it, then record that "
+            "you did by adding its id to `acknowledged`.\n"
+            "  no-request    that site declares terms and this experiment declares no "
+            "study. Its worker refuses that unconditionally."
+        )
+        return False, "\n".join(lines)
+    if blocking:
+        lines.append("")
+        lines.append(
+            f"WARNING: {len(blocking)} site(s) do not permit this study, and "
+            "`enforce_data_use` is off. Their own workers will still refuse."
+        )
+    return True, "\n".join(lines)
 
 
 def build_server_config(
@@ -239,6 +338,16 @@ def build_server_config(
         value = getattr(exp, field, None)
         if value is not None:
             server.setdefault("aggregator_kwargs", {})[key] = value
+
+    # GA4GH provenance for the aggregator to write beside the results. Assembled from
+    # the federation config rather than from the payloads, because it records what this
+    # coordinator *intended* -- which is the half a site cannot attest to.
+    if getattr(exp, "ga4gh", None) is not None:
+        from appfl_bio_suite.core.ga4gh.resolve import run_provenance
+
+        server.setdefault("aggregator_kwargs", {})["ga4gh"] = run_provenance(
+            federation, experiment
+        )
 
     # Fill in every `*_path` the experiment declares. These are DRIVER-side absolute
     # paths into the installed package: APPFL reads each file here and ships its source.
@@ -334,6 +443,7 @@ def launch(
     out_dir: Path | None = None,
     dry_run: bool = False,
     driver: str = "globus_compute",
+    watch: bool = False,
 ) -> int:
     """Resolve, write, and run. Returns the driver's exit code.
 
@@ -352,6 +462,12 @@ def launch(
         )
         return 1
 
+    ok, data_use_report = enforce_data_use(federation, experiment)
+    if data_use_report:
+        print("\n" + data_use_report, file=sys.stderr)
+    if not ok:
+        return 1
+
     run = resolve_run(federation, experiment, variant)
     out_dir = out_dir or Path("local/configs/generated")
     server_path, client_path = write_run_configs(run, out_dir)
@@ -361,11 +477,17 @@ def launch(
         print(f"  {client['client_id']:10} -> {client['endpoint_id']}", file=sys.stderr)
     print(f"\nserver config: {server_path}\nclient config: {client_path}", file=sys.stderr)
 
+    # Written beside the generated configs so that `--dry-run` shows exactly what the map
+    # will be told, the same way it shows exactly what the partners will be sent.
+    sidecar = _write_watch_sidecar(federation, experiment, out_dir) if watch else None
+    if sidecar is not None:
+        print(f"watch sidecar: {sidecar}", file=sys.stderr)
+
     if dry_run:
         print("\n--dry-run: stopping before launch.", file=sys.stderr)
         return 0
 
-    cmd = _driver_command(driver, server_path, client_path, run.server_config)
+    cmd = _driver_command(driver, server_path, client_path, run.server_config, sidecar)
     print(f"\nlaunching: {shlex.join(cmd)}\n", file=sys.stderr)
 
     env = dict(os.environ)
@@ -378,11 +500,32 @@ def launch(
     return subprocess.call(cmd, env=env)
 
 
+def _write_watch_sidecar(federation: Federation, experiment: str, out_dir: Path) -> Path | None:
+    """Write the map sidecar, or explain why the run will not appear on the map.
+
+    A missing hivewatch, or a federation with no coordinates, is a reason to run without
+    the map -- never a reason not to run. The launch is the expensive thing here.
+    """
+    from appfl_bio_suite.core.watch import WatchError, unplaced_report, write_sidecar
+
+    try:
+        path = write_sidecar(federation, experiment, out_dir / f"{experiment}_watch.json")
+    except (WatchError, OSError) as exc:
+        print(f"\n--watch: {exc}\nLaunching without the map.", file=sys.stderr)
+        return None
+
+    report = unplaced_report(federation, experiment)
+    if report:
+        print(f"\n--watch: {report}\n", file=sys.stderr)
+    return path
+
+
 def _driver_command(
     driver: str,
     server_path: Path,
     client_path: Path,
     server_config: dict[str, Any] | None = None,
+    watch_sidecar: Path | None = None,
 ) -> list[str]:
     """Build the APPFL driver invocation.
 
@@ -408,9 +551,24 @@ def _driver_command(
         # (they cost nothing in-process), so this only applies here.
         if _wants_sample_size_weighting(server_config):
             cmd.append("--get-sample-size")
+        if watch_sidecar is not None:
+            cmd += ["--watch", str(watch_sidecar)]
+        return cmd
+    if driver == "tes":
+        cmd = [
+            sys.executable,
+            "-m",
+            "appfl_bio_suite.core.drivers.tes_driver",
+            "--server-config",
+            str(server_path),
+            "--client-config",
+            str(client_path),
+        ]
+        if watch_sidecar is not None:
+            cmd += ["--watch", str(watch_sidecar)]
         return cmd
     if driver == "serial":
-        return [
+        cmd = [
             sys.executable,
             "-m",
             "appfl_bio_suite.core.drivers.serial_driver",
@@ -419,7 +577,10 @@ def _driver_command(
             "--client-config",
             str(client_path),
         ]
-    raise ValueError(f"unknown driver '{driver}'. Known: globus_compute, serial.")
+        if watch_sidecar is not None:
+            cmd += ["--watch", str(watch_sidecar)]
+        return cmd
+    raise ValueError(f"unknown driver '{driver}'. Known: globus_compute, serial, tes.")
 
 
 def _wants_sample_size_weighting(server_config: dict[str, Any] | None) -> bool:

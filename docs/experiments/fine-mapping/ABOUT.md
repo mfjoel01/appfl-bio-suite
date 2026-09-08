@@ -123,10 +123,39 @@ single moment, and the coordinator re-checks rather than trusting the report. Th
 the bundle carries `reference_variants.tsv` and why the run log reports a per-site flip
 count.
 
+### Governance and provenance are part of the design, not documentation around it
+
+The experiment is assembled out of four GA4GH standards, each closing a hole the design
+otherwise had:
+
+| | | what it answers |
+| --- | --- | --- |
+| **DUO** | Data Use Ontology | may this site's data be used for this study? |
+| **DRS** | Data Repository Service | which bytes did this site compute over? |
+| **TRS** | Tool Registry Service | which tool version computed them? |
+| **TES** | Task Execution Service | dispatch that tool, to a site that speaks TES |
+
+Two of them change what a run can silently get wrong. A site's consent code lives in its
+own bundle and is enforced by its own worker before a genotype is opened — so a study a
+site's terms do not permit is refused where the data is, not where the coordinator is. And
+each bundle is content-addressed, so *this site ran on the bundle I cut for it* is a
+string comparison rather than an assumption; a site running last month's bundle otherwise
+produces well-formed aggregates over the wrong individuals, pools without complaint, and
+is wrong in no visible way.
+
+The third makes results attributable: the pin covers the source of the two modules APPFL
+ships to workers, so "which code produced this credible set" is a lookup. The fourth is
+optional and adds a second transport.
+
+All of it is opt-in per experiment, and a federation declaring none of it runs exactly as
+it did before. **→ [../../coordinator/ga4gh.md](../../coordinator/ga4gh.md)**
+
 ### What is deliberately not addressed
 
 **Privacy.** The genotypes are synthetic, so aggregates ship in the clear. There is no
-secure aggregation and no differential privacy. A real deployment would need both, and
+secure aggregation and no differential privacy. Note what DUO does and does not do here:
+it decides whether a study may run against a site's data, and it does not make the uplink
+private. A site whose terms permit a study is still shipping an `X'X`. A real deployment would need both, and
 [reference/design.md §11.5](reference/design.md) says what that would involve; none of it
 is implemented here. An `X'X` over a small cohort is not a harmless object.
 

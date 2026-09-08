@@ -24,10 +24,19 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from appfl_bio_suite.core.ga4gh.duo import DataUseRequest
+from appfl_bio_suite.core.ga4gh.trs import ToolPin
+
 __all__ = [
     "Federation",
     "Coordinator",
+    "GA4GHServices",
+    "DrsService",
+    "TesService",
+    "TrsService",
+    "ExperimentGA4GH",
     "CoordinatorEndpoint",
+    "Location",
     "Site",
     "Experiment",
     "ExperimentSite",
@@ -148,6 +157,50 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class Location(_Strict):
+    """Where a participant physically is, for the network map.
+
+    DECLARED, NOT DETECTED. The obvious alternative -- resolve each participant's IP
+    through a geolocation service at run time -- does not work here and should not be
+    made to. A partner's compute node has no outbound web access, its public IP belongs
+    to the institution's border router rather than to the machine, and asking a site to
+    call an external service so that a coordinator can draw a dot is a data-governance
+    conversation nobody wants to have for a dot. The coordinator already knows where
+    their partners are; writing it down once is both cheaper and more accurate.
+
+    There is no country-centroid fallback either. A site with no coordinates is reported
+    as unplaced rather than drawn somewhere plausible -- see
+    :func:`appfl_bio_suite.core.watch.unplaced_sites`. Inventing a position would put a
+    partner's name on a map at a location they never gave, which is worse than a gap.
+    """
+
+    lat: float
+    lng: float
+
+    # City is display-only. The map shows "city, country" under each marker; country
+    # comes from the site itself, which already declares one.
+    city: str | None = None
+
+    @field_validator("lat")
+    @classmethod
+    def _lat_range(cls, value: float) -> float:
+        if not -90.0 <= value <= 90.0:
+            raise ValueError(f"latitude {value} is out of range (-90 to 90).")
+        return value
+
+    @field_validator("lng")
+    @classmethod
+    def _lng_range(cls, value: float) -> float:
+        if not -180.0 <= value <= 180.0:
+            raise ValueError(
+                f"longitude {value} is out of range (-180 to 180). Note the order: "
+                "`lat` first, then `lng`. Swapping them is the usual cause -- a "
+                "longitude in the latitude slot is often still in range and produces a "
+                "marker in the wrong hemisphere with no error at all."
+            )
+        return value
+
+
 class CoordinatorEndpoint(_Strict):
     """The coordinator's own compute endpoint, when they also train."""
 
@@ -171,6 +224,9 @@ class Coordinator(_Strict):
     identity_id: str | None = None
     organization: str | None = None
     contact: str | None = None
+    # Where the driver runs. Drawn as the hub of the network map; every partner marker
+    # is joined back to it. Optional -- omitting it costs the map its centre, nothing else.
+    location: Location | None = None
     endpoint: CoordinatorEndpoint | None = None
     host_check: str | None = None
     host_check_enforce: bool = False
@@ -239,6 +295,9 @@ class Site(_Strict):
     id: str
     name: str
     country: str | None = None
+    # Where this institution is. Only the network map reads it; nothing about a run
+    # depends on it. See :class:`Location` for why it is declared rather than detected.
+    location: Location | None = None
     scheduler: Literal["pbspro", "slurm"] = "slurm"
     queue: str | None = None
     partition: str | None = None
@@ -302,6 +361,27 @@ class ExperimentSite(_Strict):
     data_dir: str | None = None
     expected_samples: int | None = None
 
+    # -- GA4GH ------------------------------------------------------------
+    #
+    # Which DRS object this site's `data_dir` is supposed to contain. The coordinator
+    # resolves it against the registry and ships the object's checksums to the worker,
+    # which re-checks them before computing. That is what makes "did this site unpack the
+    # bundle I cut for THIS site" answerable -- the failure it catches is a site running
+    # last month's bundle, which produces well-formed aggregates over the wrong people
+    # and is invisible in every downstream number.
+    drs_uri: str | None = None
+
+    # The coordinator's copy of this site's DUO profile, for the offline check. The
+    # authoritative copy is the one inside the site's own bundle, which its worker reads;
+    # this is what lets preflight give the same answer before a queue wait.
+    data_use_profile: str | None = None
+
+    # TES path only. A per-site service URL (falls back to the federation-wide one) and
+    # the URL its outputs are staged to -- which the driver must be able to read, since
+    # that is where the aggregates come back from.
+    tes_url: str | None = None
+    tes_outputs_url: str | None = None
+
     @field_validator("endpoint_uuid")
     @classmethod
     def _uuid_shape(cls, value: str) -> str:
@@ -338,6 +418,122 @@ class ExperimentSite(_Strict):
         return site
 
 
+class DrsService(_Strict):
+    """Where this federation's data objects are named and, optionally, served.
+
+    ``hostname`` is the authority half of every ``drs://`` URI the federation uses. It is
+    required as soon as DRS is used at all, because a DRS id is only unique within its
+    service -- two coordinators who both wrote ``drs://localhost/<id>`` would have
+    produced URIs that collide in provenance and resolve to different bytes.
+    """
+
+    hostname: str
+    # The registry `simulate` wrote, or `ga4gh drs register` built. Coordinator-side path.
+    registry: str | None = None
+    # Base URL where this registry is served, when it is. Adds an `https` access method
+    # to every object.
+    https_base: str | None = None
+    # A Globus collection UUID holding the bundles, adding a `globus` access method --
+    # which is how a partner actually re-fetches one in this federation.
+    globus_collection: str | None = None
+
+    @field_validator("hostname")
+    @classmethod
+    def _hostname_shape(cls, value: str) -> str:
+        value = value.strip().rstrip("/")
+        if "://" in value:
+            raise ValueError(
+                f"drs.hostname is '{value}', which is a URL. It is the authority half of "
+                "a DRS URI -- 'drs.example.org', not 'https://drs.example.org'. Put the "
+                "URL in `https_base` if you serve the registry."
+            )
+        if not value:
+            raise ValueError("drs.hostname must not be empty")
+        return value
+
+
+class TrsService(_Strict):
+    """The tool registry this federation's pins resolve against."""
+
+    # Dockstore's is https://dockstore.org/api . Optional: a pin verifies against the
+    # installed package with no registry at all, which is what preflight does offline.
+    registry_url: str | None = None
+    # Where `ga4gh trs publish` writes the static tree.
+    publish_dir: str | None = None
+
+
+class TesService(_Strict):
+    """A TES service, for the TES execution path."""
+
+    url: str | None = None
+    poll_seconds: float = 15.0
+    # A site stage at production scale is minutes to tens of minutes. Two hours is a
+    # ceiling that catches a wedged task without cancelling a slow one.
+    timeout_seconds: float = 7200.0
+    cpu_cores: int = 4
+    ram_gb: float = 16.0
+    disk_gb: float = 64.0
+    preemptible: bool = False
+
+
+class GA4GHServices(_Strict):
+    """Federation-wide GA4GH service configuration.
+
+    Every field is optional. A federation that uses none of this runs exactly as it did
+    before, which is the property that let the four standards be added to a working
+    system rather than replacing it.
+    """
+
+    drs: DrsService | None = None
+    trs: TrsService | None = None
+    tes: TesService | None = None
+
+
+class ExperimentGA4GH(_Strict):
+    """One experiment's GA4GH settings: what it may do, and with which tool.
+
+    WHICH EXPERIMENTS THIS ACTUALLY DOES SOMETHING FOR
+    ---------------------------------------------------
+    The coordinator-side half works for any experiment: the data use gate, the preflight
+    checks, and the tool pin all read this block and nothing experiment-specific.
+
+    The site-side half -- a worker refusing a study its terms do not permit, and
+    re-checksumming its bundle before computing -- is implemented in the fine-mapping
+    loader only. Declaring this block on another experiment therefore gets you the checks
+    a coordinator can make and none of the ones that matter, which is worth knowing
+    before relying on it. Adding them elsewhere is per-experiment work in that
+    experiment's shipped loader; see ``experiments/fine_mapping/dataset.py``.
+    """
+
+    # The study, in DUO terms. Evaluated against every participating site's profile.
+    # One request for the whole experiment, deliberately: a coordinator who could vary
+    # the declared purpose per site to get past a refusal would have a gate that gates
+    # nothing.
+    data_use_request: DataUseRequest | None = None
+
+    # Refuse to launch when a site's terms do not permit the request. Default on: a
+    # federation that declares data use terms and then dispatches anyway has written
+    # documentation, not a control. Turning it off leaves the SITE-side check in place --
+    # that one is not the coordinator's to disable.
+    enforce_data_use: bool = True
+
+    # The TRS pin. Verified against the installed package by preflight, recorded in the
+    # results, and used to choose the container image on the TES path.
+    tool: ToolPin | None = None
+
+    # How much of a site's bundle its worker re-checksums against the DRS record before
+    # computing.
+    #
+    #   off       trust the filesystem
+    #   metadata  every file except the genotype .bed  (default; seconds)
+    #   full      everything, .bed included            (minutes, at chromosome scale)
+    #
+    # `metadata` is the useful default because it catches the failures that actually
+    # happen -- a stale bundle, a half-finished transfer, two runs' files mixed -- for a
+    # cost nobody notices. `full` is for the run whose result gets published.
+    verify_bundles: Literal["off", "metadata", "full"] = "metadata"
+
+
 class Experiment(_Strict):
     """One experiment's federation-wide settings and its participating sites."""
 
@@ -354,6 +550,11 @@ class Experiment(_Strict):
 
     # GWAS and fine-mapping: which simulation scenario produced the distributed data.
     simulation_scenario: str | None = None
+
+    # GA4GH: the study's data use request, the tool pin, and how much of each bundle a
+    # site re-checksums. Absent means this experiment uses none of it and behaves exactly
+    # as it did before -- see :class:`ExperimentGA4GH`.
+    ga4gh: ExperimentGA4GH | None = None
 
     # GWAS
     variant_scaling: float | None = None
@@ -446,6 +647,11 @@ class Federation(_Strict):
     sites: list[Site] = Field(default_factory=list)
     experiments: dict[str, Experiment] = Field(default_factory=dict)
 
+    # Federation-wide GA4GH services. Which experiments use them is per-experiment; where
+    # they live is not, because a DRS hostname or a TES URL that differed per experiment
+    # would be two services described as one.
+    ga4gh: GA4GHServices | None = None
+
     # Set by load_federation() so error messages can name the file.
     source_path: Path | None = None
 
@@ -527,6 +733,59 @@ class Federation(_Strict):
 
     def enabled_experiments(self) -> dict[str, Experiment]:
         return {n: e for n, e in self.experiments.items() if e.enabled}
+
+    # -- GA4GH ------------------------------------------------------------
+
+    def drs_service(self) -> DrsService:
+        """The DRS service, or raise naming what to add.
+
+        Raises rather than returning None because every caller is already inside a code
+        path that needs DRS -- resolving a site's ``drs_uri``, building a registry -- and
+        an Optional here would only move the same message into five call sites.
+        """
+        service = (self.ga4gh.drs if self.ga4gh else None)
+        if service is None:
+            raise FederationError(
+                f"no `ga4gh.drs` block in {self._where()}, but something asked for a DRS "
+                "object. Add:\n"
+                "    ga4gh:\n"
+                "      drs:\n"
+                "        hostname: drs.your-org.example\n"
+                "        registry: local/data/<run>/drs_registry.json\n"
+                "See docs/coordinator/ga4gh.md."
+            )
+        return service
+
+    def tes_service(self) -> TesService:
+        service = (self.ga4gh.tes if self.ga4gh else None)
+        if service is None:
+            raise FederationError(
+                f"no `ga4gh.tes` block in {self._where()}, but a TES run was requested. "
+                "Add `ga4gh.tes.url`, or run with --driver globus_compute."
+            )
+        return service
+
+    def data_use_request(self, experiment: str) -> DataUseRequest | None:
+        """This experiment's data use request, with the requester defaulted.
+
+        The requester defaults to ``coordinator.identity`` -- the same string partners
+        already authorize in their identity mapping. That is what makes DUO:0000026
+        (user specific restriction) a check against a real, verified identity rather than
+        a name somebody typed into a request form.
+        """
+        block = self.experiment(experiment).ga4gh
+        if block is None or block.data_use_request is None:
+            return None
+        request = block.data_use_request
+        if not request.requester:
+            request = request.model_copy(update={"requester": self.coordinator.identity})
+        if request.institution is None and self.coordinator.organization:
+            request = request.model_copy(update={"institution": self.coordinator.organization})
+        return request
+
+    def tool_pin(self, experiment: str) -> ToolPin | None:
+        block = self.experiment(experiment).ga4gh
+        return block.tool if block else None
 
     def _where(self) -> str:
         return str(self.source_path) if self.source_path else "the federation config"

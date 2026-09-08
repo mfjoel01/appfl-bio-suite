@@ -128,6 +128,18 @@ dask==2024.9.0
 matplotlib==3.10.6
 
 # ---------------------------------------------------------------------------
+# Coordinator-only (the [watch] extra) -- never installed at a partner site
+# ---------------------------------------------------------------------------
+# hivewatch draws the federation network map. Pinned like everything else, but for a
+# weaker reason than the rest of this file: it takes part in no serialization and ships
+# no bytecode anywhere, so a version difference here cannot desynchronize a federation.
+# What it can do is change the map metadata schema or the viewer under a coordinator who
+# did not ask for it, and the map is a page other people are looking at.
+#
+# It has no dependencies of its own at this version, so this line moves nothing else.
+hivewatch==0.2.1
+
+# ---------------------------------------------------------------------------
 # NOT dependencies -- recorded here so nobody adds them back
 # ---------------------------------------------------------------------------
 # plink2: the GWAS simulation writes score_bmi.txt / score_t2d.txt in plink2's --score

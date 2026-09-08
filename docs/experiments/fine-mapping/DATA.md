@@ -139,7 +139,8 @@ per site:
 ├── site_manifest.tsv              FID, IID, superpopulation
 ├── reference_variants.tsv         the agreed canonical allele coding
 ├── selected_loci.tsv              which windows this study fine-maps
-└── phenotypes/<instance>.pheno    one per locus × architecture × replicate
+├── phenotypes/<instance>.pheno    one per locus × architecture × replicate
+└── DATA_USE.json                  this site's DUO terms (see step 5)
 ```
 
 `reference_variants.tsv` is reference metadata — the same annotation table a public panel
@@ -155,6 +156,45 @@ copy via `aggregator_kwargs.causal_manifest`; a real federation leaves that unse
 credible sets it cannot score, which is correct.
 
 Also not in a bundle: any other site's anything.
+
+### Step 5 — DRS objects and data use terms
+
+Every bundle is registered as a GA4GH DRS object and written a `DATA_USE.json`. Both land
+in `<out>/drs_registry.json` and `<out>/<site>/data/` respectively.
+
+**The consent code travels with the data.** It is written *into* the bundle, not kept at
+the coordinator, because the copy that decides is the copy the site holds — its worker
+reads it and refuses a study the terms do not permit before opening a genotype file. The
+coordinator's copy is for the offline preview and has no authority.
+
+**The simulated terms are illustrative, and every generated profile says so.** The
+individuals do not exist and no consent was given, so any terms here are invented. They
+are declared anyway because the alternative is a federation whose governance machinery is
+exercised for the first time against a partner's real dataset. The three shipped sites
+declare *different* terms —
+
+| site | permission | modifiers |
+| --- | --- | --- |
+| `anl` | `DUO:0000042` general research use | — |
+| `covenant` | `DUO:0000006` health/medical/biomedical research | `DUO:0000018` not for profit, non-commercial only |
+| `mbzuai` | `DUO:0000042` general research use | `DUO:0000019` publication required |
+
+— so the loopback run matches a real consent code rather than a trivially permissive one.
+Adding population-origins research to the run's declared purposes makes `covenant` refuse,
+which is the behaviour worth having proven before a partner's terms are in play. Change
+them in the scenario's `data_use:` block.
+
+Ids are content-addressed: a blob's id is its sha-256, a bundle's is a Merkle hash over
+its members. The run manifest already checksums everything, so what DRS adds is a *name*
+for those checksums that travels — into a client config, a task document, a results table,
+and a site that has never seen the manifest.
+
+`DATA_USE.json` is written *after* the object is registered, deliberately: the profile
+carries the object's `drs_uri`, and a file cannot be inside its own checksum. The site-side
+verifier excludes exactly that one filename; anything else in a bundle the object does not
+list is still a hard error.
+
+**→ [../../coordinator/ga4gh.md](../../coordinator/ga4gh.md)**
 
 ## Per-site QC, and the PCA it deliberately skips
 

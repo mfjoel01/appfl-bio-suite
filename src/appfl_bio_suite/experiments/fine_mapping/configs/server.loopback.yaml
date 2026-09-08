@@ -44,8 +44,14 @@ server_configs:
   aggregator_kwargs:
     level: 0.95
     pval_thresh: 1.0e-5
-    # Lower than production. The ci-tiny pool is small enough that a 0.005 filter can
-    # leave a pooled column with too few variants for SuSiEx to have anything to do.
+    # FALLBACK ONLY. The authoritative value is the scenario's `fine_mapping.maf`, which
+    # `run --driver serial` reads out of the pipeline_config.yaml in --data-root and
+    # overrides this with -- the same field `run_stage.py centralized|federated` default
+    # from. This literal only applies to a --data-root whose scenario predates that field.
+    #
+    # Do not "fix" a comparison by editing this number: it is the coordinator's half of a
+    # filter that both sides of the comparison have to agree on, and changing it here
+    # alone reintroduces exactly the silent disagreement the scenario field removed.
     maf: 0.001
     # Filled in by `run --driver serial` from --data-root: a loopback run is the one case
     # where the coordinator legitimately has the answer key, because it just simulated it.

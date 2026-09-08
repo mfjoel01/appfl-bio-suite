@@ -34,6 +34,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Ask each client its sample count first. Required for "
         "client_weights_mode: sample_size; costs one extra round trip per site.",
     )
+    parser.add_argument(
+        "--watch",
+        default=None,
+        help="Path to the watch sidecar written by `run --watch`. Streams this run onto "
+        "the federation map. Absent, or unreadable, the run proceeds unwatched.",
+    )
     args = parser.parse_args(argv)
 
     # The driver imports numpy too, and a shared login node's thread budget does not
@@ -44,6 +50,8 @@ def main(argv: list[str] | None = None) -> int:
     from appfl.agent import ServerAgent
     from appfl.comm.globus_compute import GlobusComputeServerCommunicator
     from omegaconf import OmegaConf
+
+    from appfl_bio_suite.core.watch import RunWatcher, watchable
 
     server_config = OmegaConf.load(args.server_config)
     client_configs = OmegaConf.load(args.client_config)["clients"]
@@ -60,6 +68,16 @@ def main(argv: list[str] | None = None) -> int:
     def site(endpoint_id: str) -> str:
         return site_names.get(endpoint_id, endpoint_id)
 
+    watcher = RunWatcher.load(args.watch)
+    watcher.start(
+        algorithm=str(server_config.server_configs.get("scheduler", "SyncScheduler")),
+        config={
+            "rounds": int(rounds),
+            "sites": len(client_configs),
+            "driver": "globus_compute",
+        },
+    )
+
     try:
         communicator = GlobusComputeServerCommunicator(
             server_agent_config=server_agent.server_agent_config,
@@ -71,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
 
         log.error(f"[setup] could not connect: {type(exc).__name__}: {exc}")
         log.error(explain_submit_failure(exc))
+        watcher.finish()
         return 1
 
     try:
@@ -94,15 +113,28 @@ def main(argv: list[str] | None = None) -> int:
 
         futures: dict[str, Future] = {}
         client_rounds: dict[str, int] = {}
+        # Rounds close when every site has reported them. Under an asynchronous
+        # scheduler sites are on different rounds at the same instant, so a round is not
+        # a moment in the driver's control flow and cannot be closed by position in the
+        # loop; counting arrivals is the only definition that holds for both schedulers.
+        round_arrivals: dict[int, int] = {}
+        watcher.round_start(1)
 
         while not server_agent.training_finished():
             endpoint_id, client_model, client_metadata = communicator.recv_result_from_one_client()
             client_rounds[endpoint_id] = client_rounds.get(endpoint_id, 0) + 1
+            this_round = client_rounds[endpoint_id]
             log.info(
                 f"[train] {site(endpoint_id)} returned round "
-                f"{client_rounds[endpoint_id]}/{rounds}\n"
+                f"{this_round}/{rounds}\n"
                 f"{pprint.pformat(client_metadata)}"
             )
+
+            watcher.client_update(endpoint_id, this_round, **watchable(client_metadata))
+            round_arrivals[this_round] = round_arrivals.get(this_round, 0) + 1
+            if round_arrivals[this_round] == len(client_configs):
+                watcher.round_end(this_round)
+                watcher.round_start(this_round + 1)
 
             global_model = server_agent.global_update(endpoint_id, client_model, **client_metadata)
 
@@ -139,6 +171,7 @@ def main(argv: list[str] | None = None) -> int:
         log.error(explain_submit_failure(exc))
         return 1
     finally:
+        watcher.finish()
         try:
             communicator.cancel_all_tasks()
             communicator.shutdown_all_clients()

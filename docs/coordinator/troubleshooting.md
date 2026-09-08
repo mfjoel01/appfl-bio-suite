@@ -29,6 +29,12 @@ command is named. Documentation that has to be read is the weakest control avail
 | `ModuleNotFoundError` for your own helper module | [Shipped module imports](#shipped-modules-cannot-import-siblings) |
 | "Another instance of this endpoint is running" | [Stale pidfile](#stale-pidfile-on-a-shared-filesystem) |
 | Endpoint reports online but tasks never run | [Status is not liveness](#online-is-not-the-same-as-working) |
+| `PermissionError: … do not permit this study` | [A site's terms refuse the run](#a-sites-terms-refuse-the-run) |
+| A site refuses, and no study was declared | [Terms with no request](#a-bundle-with-terms-and-a-run-with-no-request) |
+| Preflight says `undetermined` and will not launch | [Undetermined is not a hedge](#undetermined-is-not-a-hedge) |
+| `is not the DRS object the coordinator expects` | [Bundle identity](#a-site-holds-a-different-bundle-than-the-run-names) |
+| `does not match its pin` at preflight | [The tool moved](#the-installed-site-stage-does-not-match-the-pin) |
+| A TES task exits `77` | [Exit 77 is a refusal](#a-tes-task-exits-77) |
 
 ---
 
@@ -378,6 +384,138 @@ value would be silently unused.
 The opposite holds for `data_dir`, `output_dir` and every logging path: those are used on
 the worker and must be absolute paths on the partner's own cluster. A relative path there
 resolves inside the endpoint's task working directory, which is not where anyone expects.
+
+---
+
+## GA4GH: data use, data objects, and tool pins
+
+Every failure here is a *refusal*, not a crash, and each one is refusing on purpose. The
+question to ask first is always which side is wrong — the declaration or the data — and
+none of these is fixed by loosening the check.
+
+**→ [ga4gh.md](ga4gh.md)** for what each standard does and how to configure it.
+
+### A site's terms refuse the run
+
+**Symptom.** `PermissionError: <site>: this site's data use terms do not permit this
+study`, naming a DUO term, with `No data was read` at the end. On the TES path, exit
+code 77.
+
+**Mechanism.** The bundle's `DATA_USE.json` declares what that dataset may be used for.
+The site's own worker matched it against the study in
+`experiments.<name>.ga4gh.data_use_request` and refused *before opening a genotype file*.
+This runs on the partner's hardware, in the account they control, on a file they own —
+which is the only version of consent enforcement that means anything.
+
+**Fix.** Read the named term. Then one of three things is true:
+
+* **The declared purpose is wrong.** The commonest case: the study declares
+  `DUO:0000032` (population research) against a site permitting only
+  `DUO:0000006` (health/medical/biomedical). Correct the request.
+* **An attestation is missing.** `DUO:0000021` needs an `ethics_approval` reference,
+  `DUO:0000018` needs both `non_commercial` and `not_for_profit_organisation`. Supply it
+  if it is true, and only if it is true.
+* **That site should not be in this run.** Remove it.
+
+`appfl-bio-suite ga4gh duo check` gives the same answer offline, in a second, against
+your copies of the profiles. Run it before launching rather than after.
+
+Do **not** ask a partner to edit their terms so a run passes. If their terms are wrong,
+that is a conversation with their data steward, and it ends in a new `DATA_USE.json`
+that they write.
+
+### A bundle with terms, and a run with no request
+
+**Symptom.** A site refuses with `this bundle declares data use terms … but the run that
+dispatched this task declared no data use request`.
+
+**Mechanism.** Deliberate, and not an oversight to work around. A dataset that has stated
+its conditions cannot be used by a study that has stated nothing about itself — that is
+the entire content of a consent code.
+
+**Fix.** Declare the study under `experiments.<name>.ga4gh.data_use_request`. It needs at
+least one research purpose (`DUO:0000031`–`DUO:0000040`); `appfl-bio-suite ga4gh duo
+terms` lists them. A site whose bundle carries no `DATA_USE.json` is unaffected either
+way.
+
+### `undetermined` is not a hedge
+
+**Symptom.** Preflight or the launch gate reports `undetermined` and refuses to launch,
+usually for `DUO:0000012` (research specific restrictions) or a value-carrying modifier
+with no values.
+
+**Mechanism.** The term's value is free text a program cannot evaluate — "no use in
+studies of X". Treating an unevaluable restriction as satisfied is precisely the failure
+this outcome exists to prevent, so it blocks dispatch exactly as a refusal does.
+
+**Fix.** A person reads it and records that they did:
+
+```yaml
+      data_use_request:
+        acknowledged: [DUO:0000012]
+```
+
+That is an attestation by a human, which is what the term requires. It cannot clear a
+`denied` — only an `undetermined`.
+
+### A site holds a different bundle than the run names
+
+**Symptom.** `<site>: this directory is not the DRS object the coordinator expects`, with
+a sha-256 mismatch, a missing member, or a file present that the object does not list.
+Or, at the aggregator: `site X computed over DRS object …, but this run expects …`.
+
+**Mechanism.** The bundle in the site's `data_dir` is not the one this run is about.
+Almost always a transfer that did not finish, or a bundle from an earlier simulation run
+left in place.
+
+This is the failure DRS was added for, and it is worth being clear about why it is fatal
+rather than a warning: without the check, that site produces perfectly well-formed
+aggregates over the wrong individuals. They pool without complaint, the credible sets
+look plausible, and every number is attributed to data that was never read.
+
+**Fix.** Re-send the bundle for *this* run and have the partner replace the directory
+wholesale. Do not repair it file by file — a bundle assembled from two runs passes every
+per-file check and is still wrong. If you regenerated the data, rebuild the registry and
+update each site's `drs_uri`:
+
+```bash
+appfl-bio-suite ga4gh drs register --data-root <dir>
+```
+
+An *extra* file is reported too, including one nobody thought counted. `DATA_USE.json` is
+the single exemption, because the profile carries the object's own URI and cannot be
+inside its own checksum.
+
+### The installed site stage does not match the pin
+
+**Symptom.** `preflight --check ga4gh` fails with `tool <id>@<version> does not match its
+pin`, listing two checksums.
+
+**Mechanism.** `descriptor_checksum` covers the source of `dataset.py` and `trainer.py` —
+the two modules APPFL actually ships to workers. Any edit to either changes it, including
+a comment. That is the point: it is what makes "which code produced this credible set" a
+lookup rather than an archaeology exercise.
+
+**Fix.** If you changed the code deliberately, re-publish and re-pin:
+
+```bash
+appfl-bio-suite ga4gh trs publish --out local/trs
+# copy descriptor_checksum from local/trs/tool_pin.json
+```
+
+If you did not, this checkout is not the one the pin was written for — which is the
+question the pin exists to answer.
+
+### A TES task exits 77
+
+**Symptom.** A TES task's executor exits `77` and the driver names the site.
+
+**Mechanism.** 77 is the site stage's data-use refusal, given a distinct code so a task
+log distinguishes "this site declined" from "this task crashed". Those call for
+completely different responses.
+
+**Fix.** See [A site's terms refuse the run](#a-sites-terms-refuse-the-run). The task's
+stderr carries the DUO term that refused it.
 
 ---
 

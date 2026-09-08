@@ -165,14 +165,27 @@ class FineMappingConfig(BaseModel):
     keeping SuSiEx from being handed a column too small to inform a GWAS or a
     stable LD panel. At 1000 all six superpopulations are retained (the smallest
     pooled cohort is EAS at 2,500).
+
+    ``maf`` is the frequency filter applied to the POOLED columns. It belongs to
+    the scenario rather than to either stage's argv because it is the one setting
+    the centralized baseline and the federated path have to agree on: the two
+    result tables are compared column for column, and filtering at two different
+    thresholds fine-maps two different variant sets, which shows up as a
+    credible-set disagreement indistinguishable from a bug in the federated path.
+    A small scenario needs a lower value than the published 0.005 -- at ci-tiny's
+    cohort size that filter can leave a pooled column with too few variants for
+    SuSiEx to do anything with.
     """
 
     min_gwas_n: int = 0
+    maf: float = 0.005
 
     @model_validator(mode="after")
     def _check(self) -> "FineMappingConfig":
         if self.min_gwas_n < 0:
             raise ValueError("min_gwas_n must be >= 0")
+        if not 0.0 <= self.maf < 0.5:
+            raise ValueError("maf must be in [0, 0.5)")
         return self
 
 

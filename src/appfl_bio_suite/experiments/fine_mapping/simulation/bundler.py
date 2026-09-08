@@ -13,7 +13,20 @@ This module rearranges it into one self-contained directory per site, in the lay
     ├── site_manifest.tsv              its individuals' ancestry labels
     ├── reference_variants.tsv         the agreed canonical allele coding
     ├── selected_loci.tsv              which windows this study fine-maps
-    └── phenotypes/<instance>.pheno    one file per locus x architecture x replicate
+    ├── phenotypes/<instance>.pheno    one file per locus x architecture x replicate
+    └── DATA_USE.json                  this site's DUO terms, which its worker enforces
+
+THE CONSENT CODE TRAVELS WITH THE DATA
+--------------------------------------
+``DATA_USE.json`` is written into the bundle rather than kept at the coordinator, and
+that placement is the whole design: the copy that decides is the copy the site holds. A
+site's worker reads it, matches it against the study the coordinator declared, and
+refuses before opening a genotype file. The coordinator's copy is for the offline
+preview and has no authority.
+
+It is written *after* the bundle is registered with DRS, deliberately. The profile
+describes the object; a file cannot be inside its own checksum, and the bundle verifier
+in ``dataset.py`` excludes this one name for exactly that reason.
 
 WHAT IS DELIBERATELY NOT IN A BUNDLE
 ------------------------------------
@@ -37,7 +50,13 @@ from pathlib import Path
 
 import pandas as pd
 
-__all__ = ["bundle_sites", "verify_disjoint", "write_reference_variants", "BUNDLE_SUBDIR"]
+__all__ = [
+    "bundle_sites",
+    "verify_disjoint",
+    "write_reference_variants",
+    "write_data_use",
+    "BUNDLE_SUBDIR",
+]
 
 log = logging.getLogger(__name__)
 
@@ -76,6 +95,36 @@ def write_reference_variants(pool_prefix: Path, destination: Path) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     bim[["snp_id", "chrom", "bp", "a1", "a2"]].to_csv(destination, sep="\t", index=False)
     return destination
+
+
+def write_data_use(data_dir: Path, site_id: str, terms: dict, drs_uri: str | None = None) -> Path:
+    """Write one site's ``DATA_USE.json`` into its bundle.
+
+    ``terms`` comes from the scenario's ``data_use`` block (see
+    :class:`~appfl_bio_suite.experiments.fine_mapping.simulation.schema.DataUseParams`).
+    The description says plainly that the data is synthetic and the terms illustrative,
+    because a profile that reads as a real consent code on data that has none is the one
+    way this file could do harm.
+    """
+    from appfl_bio_suite.core.ga4gh.duo import DataUseProfile, write_profile
+
+    profile = DataUseProfile(
+        dataset_id=f"fine-mapping/{site_id}",
+        site=site_id,
+        drs_uri=drs_uri,
+        description=(
+            "SIMULATED DATA. These individuals do not exist and no real consent was "
+            "given, so these terms are illustrative of a federation's rather than "
+            "derived from a data access agreement. They are enforced exactly as real "
+            "terms would be -- which is the point of declaring them on a simulated "
+            "cohort at all. A real site replaces this file with its own."
+        ),
+        steward=terms.get("steward"),
+        permission=terms["permission"],
+        permission_value=list(terms.get("permission_value", [])),
+        modifiers=[dict(m) for m in terms.get("modifiers", [])],
+    )
+    return write_profile(profile, Path(data_dir) / "DATA_USE.json")
 
 
 def bundle_sites(cfg, site_ids, pool_prefix: Path, out_dir: Path) -> dict[str, Path]:

@@ -124,6 +124,16 @@ def render_context(federation: Federation, experiment: str, site_key: str) -> di
         # but they are not asked to invent one: a placeholder here is a decision handed
         # to someone with less context than we have.
         "data_dir": entry.data_dir or f"{entry.output_dir.rstrip('/')}/data",
+        # -- what this study declares about itself (GA4GH DUO) ------------
+        #
+        # A partner is entitled to know what they are being asked to serve before they
+        # agree to serve it, and "the coordinator will tell you if you ask" is not a
+        # governance control. Rendered here so the request is in the bundle rather than
+        # in a conversation.
+        "data_use_request": _data_use_summary(federation, experiment),
+        "has_data_use_request": federation.data_use_request(experiment) is not None,
+        "drs_uri": entry.drs_uri or "",
+        "verify_bundles": (exp.ga4gh.verify_bundles if exp.ga4gh else "off"),
         "center": entry.center if entry.center is not None else "",
         "expected_train_samples": entry.expected_train_samples or "",
         "expected_samples": entry.expected_samples or "",
@@ -140,6 +150,12 @@ def render_context(federation: Federation, experiment: str, site_key: str) -> di
         "globus_compute_version": "4.9.0",
         "python_version": "3.12",
     }
+
+
+def _data_use_summary(federation: Federation, experiment: str) -> str:
+    """The study's DUO request as a block of text, or "" when it declares none."""
+    request = federation.data_use_request(experiment)
+    return request.render() if request is not None else ""
 
 
 def _render(template_text: str, context: dict[str, Any]) -> str:
@@ -229,6 +245,20 @@ def generate_bundle(
         encoding="utf-8",
     )
     written.append(config_path)
+
+    # -- 2b. the study, in DUO terms ---------------------------------------
+    #
+    # Machine-readable beside the prose, because the site's own worker matches this
+    # against its DATA_USE.json and refuses if the terms do not permit it. A partner who
+    # wants to check that themselves, before agreeing to anything, needs the same object
+    # the check will use -- not a paraphrase of it.
+    request = federation.data_use_request(experiment)
+    if request is not None:
+        request_path = destination / "study-data-use-request.json"
+        request_path.write_text(
+            json.dumps(request.to_dict(), indent=2) + "\n", encoding="utf-8"
+        )
+        written.append(request_path)
 
     # -- 3. their identity mapping, ready to install -----------------------
     mapping_path = destination / "example_identity_mapping_config.json"

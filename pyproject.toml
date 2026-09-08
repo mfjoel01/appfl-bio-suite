@@ -128,6 +128,25 @@ finemapping-sim = [
     "Jinja2>=3.1,<4",
 ]
 
+# COORDINATOR-ONLY. The federation network map.
+#
+# hivewatch (https://github.com/APPFL/hivewatch) is APPFL's monitoring toolkit: it supplies
+# the event schema, the map metadata artifact, the SSE server and the Leaflet viewer that
+# `appfl-bio-suite watch` builds on.
+#
+# Separate from every other extra, and never in a partner's install, because the map is
+# drawn entirely on the coordinator: a site returns statistics, and where that site is
+# comes from federation.yaml, which only the coordinator holds. A partner gains nothing
+# from this package and should not be asked to install one more thing for a page they do
+# not draw.
+#
+# Its core has no dependencies of its own -- the emitters that do (wandb, mlflow) are its
+# own extras and are not requested here -- so adding it moves nothing else in the pinned
+# set. That is why it can be an extra at all rather than a version-alignment problem.
+watch = [
+    "hivewatch==0.2.1",
+]
+
 dev = [
     "pytest>=8.0",
     "pytest-cov",
@@ -145,6 +164,7 @@ all = [
     "appfl-bio-suite[gwas-sim]",
     "appfl-bio-suite[finemapping]",
     "appfl-bio-suite[finemapping-sim]",
+    "appfl-bio-suite[watch]",
 ]
 
 [project.scripts]
@@ -158,6 +178,10 @@ appfl_bio_suite = [
     "experiments/*/configs/*.yaml",
     "experiments/*/configs/**/*.yaml",
     "experiments/*/configs/**/*.json",
+    # The vendored DUO release. Package data rather than a download: a partner's worker
+    # enforces its site's consent code with no outbound network, and an ontology that
+    # moves under a running federation is a consent decision changing silently.
+    "core/ga4gh/data/*.json",
 ]
 
 [tool.pytest.ini_options]

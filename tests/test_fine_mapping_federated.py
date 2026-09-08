@@ -735,6 +735,14 @@ def test_driver_runs_end_to_end_and_writes_the_result_table(package, binaries) -
     assert df["converged"].all() and df["any_causal_captured"].all()
     assert set(_METRIC_COLS).issubset(df.columns)
     assert {f"min_p_{p}" for p in SUPERPOPS}.issubset(df.columns)
+    # ...and the ancestry columns in a fixed order, which is what makes "directly
+    # comparable" mean a positional diff rather than a keyed one. This path orders its
+    # SuSiEx columns by pooled block order and the centralized one by
+    # cfg.superpopulations; neither ordering may reach the results schema.
+    min_p_columns = [c for c in df.columns if c.startswith("min_p_")]
+    assert min_p_columns == sorted(min_p_columns), (
+        f"min_p columns are not in ancestry order: {min_p_columns}"
+    )
     for name in ("by_architecture", "by_stratum_rg"):
         assert (out / f"fed_fm_rollup_{name}.tsv").exists()
     # the coordinator's scratch is cleaned up when not asked to keep it
