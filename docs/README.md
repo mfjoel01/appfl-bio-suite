@@ -56,8 +56,7 @@ Each experiment has the same four documents, always:
 - [experiments/gwas/](experiments/gwas/)
 - [experiments/fine-mapping/](experiments/fine-mapping/) — federated cross-ancestry
   fine-mapping. Also carries [reference/](experiments/fine-mapping/reference/), the
-  derivation and design notes it was ported with, and
-  [results/](experiments/fine-mapping/results/), the completed runs.
+  derivation and design notes it was ported with.
 
 Uniform on purpose: no experiment gets a special extra document, and none is omitted. A
 missing one is a test failure.

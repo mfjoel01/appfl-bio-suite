@@ -79,3 +79,7 @@ htmlcov/
 # Downloaded wheels. The offline installer drops these in the tree; they are
 # install artifacts, not source, and constraints.txt already pins the versions.
 *.whl
+
+# Scheduler job output. The PBS scripts write here (`#PBS -o logs/...`), so the
+# directory appears on any machine that has run one; none of it belongs in the repo.
+logs/
