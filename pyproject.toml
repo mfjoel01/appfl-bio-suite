@@ -177,7 +177,6 @@ where = ["src"]
 appfl_bio_suite = [
     "experiments/*/configs/*.yaml",
     "experiments/*/configs/**/*.yaml",
-    "experiments/*/configs/**/*.json",
     # The vendored DUO release. Package data rather than a download: a partner's worker
     # enforces its site's consent code with no outbound network, and an ontology that
     # moves under a running federation is a consent decision changing silently.
