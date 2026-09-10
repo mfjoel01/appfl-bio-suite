@@ -6,9 +6,9 @@ if you ask for it — whether their endpoint is answering right now.
 
 Built on **[hivewatch](https://github.com/APPFL/hivewatch)**, APPFL's monitoring toolkit.
 hivewatch supplies the event schema, the map metadata format, the live server and the
-viewer. This suite supplies the one thing hivewatch cannot know: who is in *your*
-federation and what each of them is doing. That comes from `federation.yaml`, the same
-file everything else here reads from.
+base viewer. This suite adds a federation viewer with an interactive globe and experiment
+filters, and supplies who is in *your* federation and what each of them is doing. That
+comes from `federation.yaml`, the same file everything else here reads from.
 
 ```
 federation.yaml ──► appfl-bio-suite watch ──► hivewatch artifacts ──► the map
@@ -40,6 +40,28 @@ appfl-bio-suite watch serve          # open http://localhost:7070
 run under a fixed id, which is what lets it sit beside your real runs and appear
 alongside them in the viewer's run list. Rerun it whenever `federation.yaml` changes; it
 replaces rather than accumulates.
+
+### Exploring the federation
+
+The viewer opens in the familiar **Flat map** view. Switch to **Globe** for a rotating globe:
+drag to turn it, zoom to look closer, and select a site to inspect its details. You can
+pause rotation. Arrow keys rotate the focused globe, `+` and `-` zoom, `Space` toggles
+rotation, and `Home` resets the view. Rotation starts paused when your browser requests
+reduced motion. Both views use the same sites and experiment selection.
+
+The **Experiments** tab starts with **All experiments** selected, showing every site in
+the loaded federation. Select **Fine-mapping**, **GWAS**, or any combination of experiments
+to show sites participating in at least one selection. A site participating in several
+selected experiments still appears once. These controls filter the page locally; they
+do not change the federation configuration or launch experiments. Options are drawn from
+the loaded data: a federation with only fine-mapping configured shows only fine-mapping.
+Clear every checkbox to hide all sites; **All experiments** restores them. Selecting a
+different run resets the experiment filter to All; changing the map view preserves it.
+
+Run monitoring remains available under **Runs**, including selecting recorded runs and
+playback controls. The federation view takes priority, and round, global accuracy and
+global loss no longer occupy the page header. `watch serve` and `watch export` use the
+same viewer.
 
 ---
 
@@ -180,8 +202,10 @@ appfl-bio-suite watch export  --out DIR [--experiment X] [--probe] [--title "...
 appfl-bio-suite run EXPERIMENT --watch
 ```
 
-`--experiment` narrows every command to one experiment's sites. The default is every
-enabled experiment, which is the point: one map, every experiment, one federation.
+`--experiment` on `watch build` and `watch export` limits the generated data to one
+experiment's sites. The default includes every enabled experiment. The viewer's
+checkboxes can filter the experiments present in that data; they cannot restore sites
+excluded when the data was generated.
 
 ---
 
@@ -198,6 +222,12 @@ viewer lists a client it cannot place; it does not invent a position.
 
 **The exported page is blank** — it was opened as `file://`. Serve the directory.
 
-**The map draws but there are no base tiles** — the viewer loads Leaflet and its tiles
-from the public internet. That is a property of hivewatch's viewer, not of the export;
-a browser with no web access renders the markers on an empty background.
+**The map draws but there are no base tiles** — the flat map loads Leaflet and its tiles
+from the public internet. The globe's geography and rendering code are embedded in the
+viewer, but the base viewer still requires Leaflet to initialize. Serve the page in a
+browser with web access.
+
+**`The installed hivewatch viewer has an unsupported layout`** — this suite extends the
+viewer shipped in the pinned `hivewatch==0.2.1`. Reinstall the `[watch]` extra using
+`constraints.txt`. The viewer is assembled into a separate file; the installed hivewatch
+package is never edited.

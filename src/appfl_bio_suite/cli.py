@@ -508,14 +508,7 @@ def watch_serve(host: str, port: int | None, runs_dir: Path | None) -> None:
     HPC login node is reachable by you and by nobody else -- partners cannot open it, and
     the cluster is right not to let them. `watch export` is what you hand out.
     """
-    from appfl_bio_suite.core.watch import DEFAULT_PORT, DEFAULT_RUNS_DIR, require_hivewatch
-
-    try:
-        require_hivewatch()
-    except Exception as exc:
-        raise click.ClickException(str(exc)) from exc
-
-    from hivewatch.map import MapServer
+    from appfl_bio_suite.core.watch import DEFAULT_PORT, DEFAULT_RUNS_DIR, WatchError, map_server
 
     runs_dir = runs_dir or DEFAULT_RUNS_DIR
     port = port or DEFAULT_PORT
@@ -524,15 +517,17 @@ def watch_serve(host: str, port: int | None, runs_dir: Path | None) -> None:
     if not any(runs_dir.glob("*.jsonl")):
         click.echo(f"{runs_dir} is empty -- run `appfl-bio-suite watch build` first.\n")
 
-    server = MapServer(host=host, port=port, runs_dir=str(runs_dir), watch=True)
-    server.start()
-    click.echo(f"map:  http://localhost:{port}")
-    click.echo(f"runs: {runs_dir}")
-    click.echo("Ctrl-C to stop.")
     try:
-        server.serve_forever()
+        with map_server(host=host, port=port, runs_dir=runs_dir) as server:
+            server.start()
+            click.echo(f"map:  http://localhost:{port}")
+            click.echo(f"runs: {runs_dir}")
+            click.echo("Ctrl-C to stop.")
+            server.serve_forever()
     except KeyboardInterrupt:
-        server.stop()
+        pass
+    except WatchError as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 @watch.command("export")
