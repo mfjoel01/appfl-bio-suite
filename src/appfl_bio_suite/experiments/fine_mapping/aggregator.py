@@ -567,12 +567,9 @@ class FineMappingAggregator(BaseAggregator):
             outputs = sorted(
                 path
                 for path in self.data_dir.glob("*")
-                if path.is_file()
-                and path.name not in ("drs_outputs.json", "ga4gh_provenance.json")
+                if path.is_file() and path.name not in ("drs_outputs.json", "ga4gh_provenance.json")
             )
-            registry = registry_for_files(
-                outputs, hostname, description="fine-mapping results"
-            )
+            registry = registry_for_files(outputs, hostname, description="fine-mapping results")
             registry.save(self.data_dir / "drs_outputs.json")
             record["outputs"] = {
                 obj.name: obj.self_uri for obj in registry.objects.values() if not obj.is_bundle

@@ -192,9 +192,9 @@ def test_verify_notices_a_missing_member(registry, tmp_path):
 
 def test_verify_notices_a_corrupted_blob(registry, tmp_path):
     path = tmp_path / "anl" / "data" / "site_genotypes.bed"
-    blob = registry.get(next(iter(
-        [o.id for o in registry.objects.values() if o.local_path() == path.resolve()]
-    )))
+    blob = registry.get(
+        next(iter([o.id for o in registry.objects.values() if o.local_path() == path.resolve()]))
+    )
     path.write_bytes(b"corrupted")
     assert any("sha-256 mismatch" in p for p in verify_object(blob))
 
@@ -235,9 +235,7 @@ def test_objects_endpoint_returns_the_bundle(server, registry):
 def test_access_endpoint_returns_the_url_for_a_served_registry(tmp_path):
     """With an https base configured, /access/{id} hands back a fetchable URL."""
     make_bundles(tmp_path)
-    registry = build_registry(
-        tmp_path, hostname="drs.test.org", https_base="https://drs.test.org"
-    )
+    registry = build_registry(tmp_path, hostname="drs.test.org", https_base="https://drs.test.org")
     httpd = serve(registry, "127.0.0.1", 0)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{httpd.server_address[1]}"

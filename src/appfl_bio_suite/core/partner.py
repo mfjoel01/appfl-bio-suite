@@ -255,9 +255,7 @@ def generate_bundle(
     request = federation.data_use_request(experiment)
     if request is not None:
         request_path = destination / "study-data-use-request.json"
-        request_path.write_text(
-            json.dumps(request.to_dict(), indent=2) + "\n", encoding="utf-8"
-        )
+        request_path.write_text(json.dumps(request.to_dict(), indent=2) + "\n", encoding="utf-8")
         written.append(request_path)
 
     # -- 3. their identity mapping, ready to install -----------------------

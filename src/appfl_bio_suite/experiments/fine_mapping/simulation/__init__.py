@@ -251,9 +251,7 @@ def register_bundles(out_dir: Path, site_ids, scenario, hostname: str, bundles):
     for site in site_ids:
         obj = registry.by_name(site)
         terms = scenario.data_use.for_site(site)
-        path = write_data_use(
-            bundles[site], site, terms, drs_uri=obj.self_uri if obj else None
-        )
+        path = write_data_use(bundles[site], site, terms, drs_uri=obj.self_uri if obj else None)
         log.info(
             "  %s: %s  %s",
             site,

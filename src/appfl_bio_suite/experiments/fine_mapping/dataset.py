@@ -487,9 +487,7 @@ def verify_against_drs(data_dir, drs_object, mode="metadata"):
         report["checked"] += 1
         if expected and actual != expected:
             report["problems"].append(
-                f"{name}: sha-256 mismatch\n"
-                f"    expected {expected}\n"
-                f"    actual   {actual}"
+                f"{name}: sha-256 mismatch\n    expected {expected}\n    actual   {actual}"
             )
     return report
 
@@ -651,8 +649,7 @@ class SiteFineMappingDataset:
             return {
                 "status": "no-profile",
                 "detail": (
-                    f"this bundle carries no {DATA_USE_FILENAME}, so no data use terms "
-                    "were checked"
+                    f"this bundle carries no {DATA_USE_FILENAME}, so no data use terms were checked"
                 ),
             }
 

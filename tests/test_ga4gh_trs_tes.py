@@ -114,7 +114,8 @@ def test_the_tool_id_is_derived_from_the_repository_not_hardcoded():
 
 def test_the_generated_tree_is_servable_and_conformant(tmp_path):
     _, pin = write_registry(
-        tmp_path, image="registry.example.org/site-stage:0.1.0",
+        tmp_path,
+        image="registry.example.org/site-stage:0.1.0",
         registry_url="https://trs.example.org",
     )
     httpd = serve_trs(tmp_path, "127.0.0.1", 0)
@@ -260,8 +261,14 @@ class _StubTES(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
         path = self.path.split("?")[0]
         if path.endswith("/service-info"):
-            self._send(200, {"id": "stub", "name": "stub TES",
-                             "type": {"group": "org.ga4gh", "artifact": "tes", "version": "1.1.0"}})
+            self._send(
+                200,
+                {
+                    "id": "stub",
+                    "name": "stub TES",
+                    "type": {"group": "org.ga4gh", "artifact": "tes", "version": "1.1.0"},
+                },
+            )
             return
         task_id = path.rsplit("/", 1)[-1]
         task = _StubTES.tasks.get(task_id)
@@ -270,8 +277,15 @@ class _StubTES(BaseHTTPRequestHandler):
             return
         index = min(task["polls"], len(_StubTES.sequence) - 1)
         task["polls"] += 1
-        self._send(200, {"id": task_id, "state": _StubTES.sequence[index],
-                         "executors": task["executors"], "logs": []})
+        self._send(
+            200,
+            {
+                "id": task_id,
+                "state": _StubTES.sequence[index],
+                "executors": task["executors"],
+                "logs": [],
+            },
+        )
 
     def do_POST(self):  # noqa: N802
         length = int(self.headers.get("Content-Length", 0))

@@ -94,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
     ]
     server = OmegaConf.to_container(server_config, resolve=True)
     aggregator_kwargs = (server.get("server_configs") or {}).get("aggregator_kwargs") or {}
-    shared_train = ((server.get("client_configs") or {}).get("train_configs") or {})
+    shared_train = (server.get("client_configs") or {}).get("train_configs") or {}
     ga4gh = aggregator_kwargs.get("ga4gh") or {}
     tes_settings = ga4gh.get("tes") or {}
 

@@ -873,11 +873,7 @@ def run_preflight(
         candidate = root / "constraints.txt"
         constraints = candidate if candidate.is_file() else None
 
-    want = (
-        {check}
-        if check != "all"
-        else {"env", "pins", "config", "data", "ga4gh", "endpoints"}
-    )
+    want = {check} if check != "all" else {"env", "pins", "config", "data", "ga4gh", "endpoints"}
 
     if "env" in want:
         _check_python(report)

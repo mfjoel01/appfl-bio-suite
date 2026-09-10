@@ -169,9 +169,7 @@ def run_site_stage(
     written["provenance"] = provenance_path
 
     total_mb = payload_path.stat().st_size / (1 << 20)
-    logger.info(
-        f"{client_id}: wrote {len(arrays)} array(s), {total_mb:.1f} MB -> {payload_path}"
-    )
+    logger.info(f"{client_id}: wrote {len(arrays)} array(s), {total_mb:.1f} MB -> {payload_path}")
     return written
 
 

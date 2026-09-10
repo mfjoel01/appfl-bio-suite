@@ -388,9 +388,7 @@ class DataUseRequest(_Strict):
             lines.append(f"project   {self.project}")
         if self.institution:
             lines.append(f"institute {self.institution}")
-        lines.append(
-            "purposes  " + ", ".join(f"{p} {PURPOSES[p]}" for p in self.purposes)
-        )
+        lines.append("purposes  " + ", ".join(f"{p} {PURPOSES[p]}" for p in self.purposes))
         if self.disease:
             lines.append(f"disease   {self.disease}")
         attested = [
@@ -719,9 +717,7 @@ def _evaluate_modifier(
     )
 
 
-def decide(
-    profile: DataUseProfile, request: DataUseRequest, as_of: str | None = None
-) -> Decision:
+def decide(profile: DataUseProfile, request: DataUseRequest, as_of: str | None = None) -> Decision:
     """Typed wrapper over :func:`evaluate`."""
     return Decision.model_validate(evaluate(profile.to_dict(), request.to_dict(), as_of))
 

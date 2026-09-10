@@ -514,9 +514,7 @@ CMD ["appfl-bio-suite", "--help"]
 """
 
 
-def dockstore_yaml(
-    experiment: str = "fine-mapping", descriptor_path: str | None = None
-) -> str:
+def dockstore_yaml(experiment: str = "fine-mapping", descriptor_path: str | None = None) -> str:
     """A ``.dockstore.yml`` registering the site stage with Dockstore.
 
     Dockstore is a TRS implementation, so registering here is how this tool becomes

@@ -197,9 +197,7 @@ def resolve_drs_object(federation, entry, registry=None) -> dict[str, Any] | Non
         "checksums": [c.model_dump() for c in obj.checksums],
         # Members, by name and content id. This is the whole of what a worker verifies
         # against; access methods are deliberately dropped (see the module docstring).
-        "contents": [
-            {"name": child.name, "id": child.id} for child in (obj.contents or [])
-        ],
+        "contents": [{"name": child.name, "id": child.id} for child in (obj.contents or [])],
     }
 
 

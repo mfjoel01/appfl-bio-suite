@@ -345,9 +345,7 @@ def build_server_config(
     if getattr(exp, "ga4gh", None) is not None:
         from appfl_bio_suite.core.ga4gh.resolve import run_provenance
 
-        server.setdefault("aggregator_kwargs", {})["ga4gh"] = run_provenance(
-            federation, experiment
-        )
+        server.setdefault("aggregator_kwargs", {})["ga4gh"] = run_provenance(federation, experiment)
 
     # Fill in every `*_path` the experiment declares. These are DRIVER-side absolute
     # paths into the installed package: APPFL reads each file here and ships its source.
