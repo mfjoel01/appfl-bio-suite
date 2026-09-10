@@ -8,7 +8,13 @@
 # This exists because the published scenario is not a single-process job: 100 loci x 15
 # architectures x 10 replicates over 150,000 individuals, with two stages that shard over
 # loci. It runs prepare -> sampling -> locus-selection -> phenotypes (sharded) -> merge
-# -> bundle, then QC and validation on the finished package.
+# -> bundle, then QC and validation on the finished package. `bundle` also mints the DRS
+# ids and writes each site's DUO profile, so what lands here is a complete, distributable
+# package -- the same artifacts `simulate` produces, differing only in the strength of
+# the provenance the manifest can claim.
+#
+# Set FM_DRS_HOSTNAME to mint the bundles' DRS URIs under your own hostname. The ids are
+# content-addressed and unaffected by it; only the URIs you hand partners change.
 #
 # BEFORE YOU SUBMIT
 #   1. Stage HAPNEST once, on a login node with internet (~135 GB for chr1):
@@ -149,7 +155,8 @@ if [ "${NNODES}" -gt 1 ]; then
   step phenotypes-merge phenotypes --config "${CONFIG}" --merge --n-shards "${NNODES}"
 fi
 
-step bundle bundle --scenario "${FM_SCENARIO}" --out "${FM_RUN_DIR}" --n-shards "${NNODES}"
+step bundle bundle --scenario "${FM_SCENARIO}" --out "${FM_RUN_DIR}" --n-shards "${NNODES}" \
+  ${FM_DRS_HOSTNAME:+--drs-hostname "${FM_DRS_HOSTNAME}"}
 
 # QC: one site per node, in parallel. Non-fatal -- the data package is already complete
 # and checksummed by this point, and an HTML report is not worth failing a job over.
@@ -175,6 +182,7 @@ echo
 echo "==> data package complete @ $(date)"
 echo "==> bundles    ${FM_RUN_DIR}/{anl,covenant,mbzuai}/data"
 echo "==> answer key ${FM_RUN_DIR}/ground_truth/causal_manifest.tsv   (do NOT distribute)"
+echo "==> drs        ${FM_RUN_DIR}/drs_registry.json   (send each site its drs:// URI)"
 echo "==> manifest   ${FM_RUN_DIR}/run_manifest.json"
 echo "==> validation ${FM_RUN_DIR}/reports/validation/SUMMARY.txt"
 echo

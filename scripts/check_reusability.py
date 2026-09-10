@@ -81,6 +81,14 @@ SCOPED_EXEMPTIONS = [
         "the ported upstream tests assert against those cohort identifiers",
     ),
     (
+        "tests/test_simulation_provenance.py",
+        {"partner institution", "cluster hostname"},
+        "asserts over a simulated fine-mapping package, so it names the same "
+        "simulated-cohort identifiers the sampler bakes in; the one cluster reference is "
+        "a docstring recording which scheduler exposed the cwd-relative --out bug the "
+        "test now guards, which is the kind of provenance a comment exists to keep",
+    ),
+    (
         "scripts/fine-mapping/",
         {"partner institution", "cluster hostname"},
         "PBS scripts for a named scheduler necessarily name it; the allocation and every "

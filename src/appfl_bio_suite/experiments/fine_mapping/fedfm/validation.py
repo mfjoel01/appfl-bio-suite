@@ -453,7 +453,10 @@ def run_ld_sanity(cfg: SimulationConfig, n_workers: int, logger, ld_tol: float =
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config", default="config/simulation_config.yaml")
-    ap.add_argument("--out", default="reports/validation")
+    ap.add_argument("--out", default=None,
+                    help="where to write the report; defaults to the config's "
+                         "reports_dir/validation, so the output lands beside the run "
+                         "it validates rather than in the current directory")
     ap.add_argument("--n-workers", type=int, default=8)
     ap.add_argument("--rtol", type=float, default=1e-5,
                     help="relative tolerance on re-derived vs manifest empirical h2")
@@ -478,7 +481,13 @@ def main() -> int:
     cfg = load_config(args.config)
     cfg_path = str(Path(args.config).resolve())
     gt_dir = cfg.resolved_path("ground_truth_dir")
-    out = Path(args.out)
+    # Relative to the RUN, not to the caller. This used to default to the literal
+    # "reports/validation", which is resolved against the working directory -- so the
+    # Polaris job, which cds to the suite checkout before launching stages, wrote every
+    # site's validation report into the source tree while its own completion banner
+    # pointed at ${FM_RUN_DIR}/reports/validation/SUMMARY.txt, where nothing had been
+    # written. An explicit --out still wins.
+    out = Path(args.out) if args.out else cfg.resolved_path("reports_dir") / "validation"
     out.mkdir(parents=True, exist_ok=True)
 
     manifest = pd.read_csv(gt_dir / "causal_manifest.tsv", sep="\t")

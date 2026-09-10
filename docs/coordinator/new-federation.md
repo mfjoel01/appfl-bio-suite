@@ -247,6 +247,11 @@ which data produced which result.
 Read [the GWAS data documentation](../experiments/gwas/DATA.md) before using any output
 for a publication. It is explicit about what this pipeline does and does not reproduce.
 
+Fine-mapping additionally writes a DUO profile into each bundle and registers every
+bundle with DRS, so a site can verify it holds the bundle you cut for it and can enforce
+its own data use terms. Wiring those into `federation.yaml` is optional and additive; see
+[ga4gh.md](ga4gh.md).
+
 ## Step 9 — Run
 
 ```bash

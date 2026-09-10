@@ -74,6 +74,68 @@ ls {{ data_dir }}
 ls {{ data_dir }}/phenotypes | wc -l
 ```
 
+## Step 2b — Your data use terms, and the study we are asking you to serve
+
+{% if has_data_use_request %}This run declares what it is, in
+[GA4GH Data Use Ontology](https://github.com/EBISPOT/DUO) terms. The same declaration is
+in your bundle as `study-data-use-request.json`:
+
+```
+{{ data_use_request }}
+```
+
+**Your site enforces its own terms against this, in your own process.** If
+`{{ data_dir }}` contains a `DATA_USE.json` describing your dataset's permitted uses, the
+task checks this study against it *before reading a single genotype*, and refuses if the
+terms do not permit it. Nothing is sent to us in that case; the task fails with the term
+that refused it named in your log.
+
+That check runs on your hardware, in the account you control, on a file you own. We run
+the same check on our side beforehand — but ours is a courtesy that saves you a wasted
+queue slot, not a control. Yours is the control.
+
+If your dataset has data use conditions, write them down:
+
+```json
+{
+  "dataset_id": "your-institution/fine-mapping-cohort",
+  "permission": "DUO:0000006",
+  "modifiers": [{"id": "DUO:0000018"}],
+  "steward": "your data access committee"
+}
+```
+
+Exactly one `permission`, plus any `modifiers`. To see the vocabulary:
+
+```bash
+appfl-bio-suite ga4gh duo terms
+```
+
+If the study as declared does not satisfy your terms, tell us — the fix is on our side,
+either in what we declared or in whether this run should include your site at all. Do not
+edit your terms to make a run pass.
+
+If your dataset carries no formal use conditions, leave the file out. Nothing changes.
+
+{% else %}This run declares no data use request. If `{{ data_dir }}` contains a
+`DATA_USE.json` describing your dataset's permitted uses, **the task will refuse to run** —
+a dataset with declared terms cannot be used by a study that has stated nothing about
+itself. Tell us, and we will declare the study's purpose before launching.
+
+{% endif %}{% if drs_uri %}Your bundle also has a content checksum recorded on our side:
+
+```
+{{ drs_uri }}
+```
+
+Before computing, the task re-checksums the files in `{{ data_dir }}` against it
+(mode: `{{ verify_bundles }}`). If they do not match, it stops rather than computing over
+data we cannot identify. That catches a transfer that did not finish, and a bundle from a
+different run — both of which otherwise produce perfectly plausible results over the wrong
+data.
+
+{% endif %}---
+
 ## Step 3 — Verify, and send us the number
 
 Still as `{{ service_account }}`, in the Part 1 environment:
@@ -120,6 +182,16 @@ a single round and needs nothing new from you.
 ---
 
 ## Troubleshooting
+
+**`PermissionError` mentioning data use terms**
+Your `DATA_USE.json` does not permit this study. The message names the DUO term that
+refused it. Nothing was read and nothing was sent. Send us the message — this is ours to
+resolve, not yours.
+
+**`ValueError` about a DRS object, or a sha-256 mismatch**
+The files in your data directory are not the ones we recorded for you. Usually an
+interrupted transfer, or a bundle from an earlier run. Re-fetch the bundle we sent for
+this run rather than repairing it file by file.
 
 **`FileNotFoundError` naming missing files**
 The archive was unpacked into a subdirectory. The six files must be directly inside

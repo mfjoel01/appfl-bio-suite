@@ -159,11 +159,13 @@ src/appfl_bio_suite/
 │   ├── partner.py          bundle generation
 │   ├── simulation.py       pipeline contract, run manifests, provenance
 │   ├── compat.py           one upstream workaround, written to be deleted
-│   └── drivers/            globus_compute (production), serial (loopback)
+│   ├── ga4gh/              DUO, DRS, TRS, TES -- data use, objects, tools, tasks
+│   └── drivers/            globus_compute (production), serial (loopback), tes
 └── experiments/
     ├── flamby_heart_disease/
     ├── gwas/
     └── fine_mapping/       fine-mapping; also fedfm/ (vendored verbatim upstream)
+                            and site_stage.py, the same computation as a command
 ```
 
 Adding an experiment means writing a registry entry in `core/experiments.py`, creating the

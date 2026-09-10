@@ -525,8 +525,15 @@ def finemap_instance(
         row.update({"any_causal_captured": False, "converged": False,
                     "error": str(exc)[:200]})
     finally:
-        for col in columns:
-            row[f"min_p_{col.name}"] = min_p.get(col.name, np.nan)
+        # Sorted by ancestry, NOT in `columns` order. The centralized and federated
+        # paths order their SuSiEx columns differently -- this one follows
+        # cfg.superpopulations, the federated one follows the pooled block order --
+        # and that ordering is load-bearing for the fit, so it cannot be changed.
+        # But it must not leak into the results schema: these two tables exist to be
+        # compared column for column, and the same columns in a different order
+        # defeats a positional diff for no benefit.
+        for name in sorted(col.name for col in columns):
+            row[f"min_p_{name}"] = min_p.get(name, np.nan)
         row["runtime_s"] = round(time.time() - t0, 2)
         if not keep_work:
             shutil.rmtree(priv, ignore_errors=True)
@@ -693,8 +700,10 @@ def main(argv: Iterable[str] | None = None) -> int:
                         help="credible-set coverage level (SuSiEx --level)")
     parser.add_argument("--pval-thresh", type=float, default=1e-5,
                         help="SuSiEx marginal p-value filter for credible sets")
-    parser.add_argument("--maf", type=float, default=0.005,
-                        help="MAF filter applied to the LD panel (SuSiEx default)")
+    parser.add_argument("--maf", type=float, default=None,
+                        help="MAF filter applied to the LD panel; defaults to the "
+                             "scenario's fine_mapping.maf, so that this baseline and "
+                             "the federated path filter identically")
     parser.add_argument("--keep-work", action="store_true",
                         help="keep per-instance GWAS/LD scratch (debug)")
     parser.add_argument("--limit", type=int, default=None,
@@ -710,7 +719,7 @@ def main(argv: Iterable[str] | None = None) -> int:
             parser.error("need 0 <= --shard-index < --n-shards")
         run_fine_mapping(cfg, args.shard_index, args.n_shards, args.n_workers,
                          args.level, args.pval_thresh, args.keep_work, args.limit,
-                         args.maf)
+                         cfg.fine_mapping.maf if args.maf is None else args.maf)
     return 0
 
 

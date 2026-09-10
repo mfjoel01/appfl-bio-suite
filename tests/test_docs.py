@@ -75,6 +75,8 @@ def test_shared_partner_doc_exists():
         "troubleshooting.md",
         "reference-deployment.md",
         "releasing.md",
+        "network-map.md",
+        "ga4gh.md",
     ],
 )
 def test_coordinator_docs_exist(name: str):

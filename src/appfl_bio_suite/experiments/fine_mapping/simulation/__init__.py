@@ -13,6 +13,7 @@ nothing to distributable bundles::
     fedfm/locus_selection.py  step 2 -- LD-divergence scoring, stratified locus choice
     fedfm/phenotype_sim.py    step 3 -- causal variants, effect sizes, phenotypes
     bundler.py                step 4 -- rearrange into one self-contained bundle per site
+    core/ga4gh/drs.py         step 5 -- address every bundle, and write its consent code
 
 Step 0 exists for the same reason the GWAS experiment's does: without it, running this
 experiment requires a 135 GB download, and a repository that cannot be exercised without
@@ -22,6 +23,19 @@ importantly, what it is not.
 Every run writes a manifest recording the scenario, every seed, the suite commit, input
 and output checksums, and package versions -- so a result can be traced back to the data
 and the code that produced it.
+
+STEP 5 IS WHAT MAKES THE BUNDLES CITABLE
+----------------------------------------
+The run manifest already checksums everything, so why register the bundles with DRS as
+well? Because a manifest answers "did this rerun produce the same data" for the person
+holding the manifest, and a DRS id answers "which data is this" for everybody else -- in
+a client config, in a task document, in a results table, at a site that has never seen
+the manifest. The checksums are the same sha-256s; what DRS adds is a name for them that
+travels.
+
+``DATA_USE.json`` is written in the same step and lands *inside* each bundle, where the
+site that will enforce it can read it. See bundler.py on why it is written after the
+object is registered rather than before.
 
 THIS STAGE NEEDS PLINK
 ----------------------
@@ -41,6 +55,9 @@ from pathlib import Path
 
 __all__ = [
     "run_simulation",
+    "register_bundles",
+    "DEFAULT_DRS_HOSTNAME",
+    "DRS_REGISTRY_FILENAME",
     "list_scenarios",
     "load_scenario",
     "cli_entry",
@@ -82,8 +99,18 @@ def load_scenario(name_or_path: str):
     return scenario
 
 
-def run_simulation(scenario, out_dir: Path, notes: str = ""):
-    """Run steps 0 through 4 and write the run manifest. Returns the manifest."""
+DRS_REGISTRY_FILENAME = "drs_registry.json"
+
+# Used when no real DRS hostname is configured. Deliberately not a real domain: an id
+# minted under it is unmistakably local, and a coordinator who publishes bundles
+# re-registers them under their own hostname with `ga4gh drs register --hostname`.
+DEFAULT_DRS_HOSTNAME = "drs.local"
+
+
+def run_simulation(
+    scenario, out_dir: Path, notes: str = "", drs_hostname: str = DEFAULT_DRS_HOSTNAME
+):
+    """Run steps 0 through 5 and write the run manifest. Returns the manifest."""
     from appfl_bio_suite.core.simulation import (
         MANIFEST_FILENAME,
         SimulationScenario,
@@ -146,6 +173,10 @@ def run_simulation(scenario, out_dir: Path, notes: str = ""):
     site_ids = list(cfg.sites)
     bundles = bundle_sites(cfg, site_ids, pool_prefix, out_dir)
 
+    # -- step 5 --------------------------------------------------------
+    log.info("step 5: DRS objects and data use profiles")
+    registry = register_bundles(out_dir, site_ids, scenario, drs_hostname, bundles)
+
     # -- manifest ------------------------------------------------------
     core_scenario = SimulationScenario(
         name=scenario.name,
@@ -192,7 +223,42 @@ def run_simulation(scenario, out_dir: Path, notes: str = ""):
         "bundles ready: %s",
         ", ".join(f"{site} -> {path}" for site, path in bundles.items()),
     )
+    log.info("drs: %s", registry.summary())
     return manifest
+
+
+def register_bundles(out_dir: Path, site_ids, scenario, hostname: str, bundles):
+    """Give every bundle a DRS id, then write each site's DUO profile into it.
+
+    Public because both paths that build a data package must run it: `simulate`, and
+    `run_stage.py bundle` for scenarios too large for one process. It used to be private
+    and called only from `simulate`, so the sharded path -- the *only* documented way to
+    build the published scenario -- produced bundles with no DRS registry and no consent
+    terms, which the coordinator then could not verify a site had actually read.
+
+    Order matters and is the reverse of the intuitive one. The profile *describes* the
+    object -- it carries its ``drs_uri`` -- so the object has to exist first, and the
+    profile therefore cannot be part of what the object's Merkle id covers. The site-side
+    verifier knows this and excludes exactly that one filename; anything else appearing
+    in a bundle that the object does not list is still a hard error.
+    """
+    from appfl_bio_suite.core.ga4gh.drs import build_registry
+    from appfl_bio_suite.experiments.fine_mapping.simulation.bundler import write_data_use
+
+    registry = build_registry(out_dir, hostname=hostname, experiment="fine-mapping")
+    registry.save(out_dir / DRS_REGISTRY_FILENAME)
+
+    for site in site_ids:
+        obj = registry.by_name(site)
+        terms = scenario.data_use.for_site(site)
+        path = write_data_use(bundles[site], site, terms, drs_uri=obj.self_uri if obj else None)
+        log.info(
+            "  %s: %s  %s",
+            site,
+            (obj.self_uri if obj else "(unregistered)"),
+            path.name,
+        )
+    return registry
 
 
 PIPELINE_CONFIG_FILENAME = "pipeline_config.yaml"
@@ -300,9 +366,14 @@ def cli_entry(
     print(f"  enrolled   {loaded.total_samples:,} individuals")
     print(f"  answer key {causal_manifest_path(destination)}")
     print(f"  manifest   {destination / 'run_manifest.json'}")
+    print(f"  drs        {destination / DRS_REGISTRY_FILENAME}")
     print(f"  commit     {manifest.suite_commit}")
     print("\nThe answer key stays here. It is NOT in any site bundle -- point the")
     print("aggregator at it with aggregator_kwargs.causal_manifest to score a run.")
+    print("\nEach bundle carries its own DATA_USE.json (DUO terms) and has a DRS id in")
+    print(f"{DRS_REGISTRY_FILENAME}. Wire them into federation.yaml with:")
+    print("  appfl-bio-suite ga4gh duo check --experiment fine-mapping")
+    print("  appfl-bio-suite ga4gh drs resolve <drs uri>")
     print("\nProve the whole path on this machine, without partners:")
     print(
         f"  appfl-bio-suite run fine-mapping --config loopback --driver serial "

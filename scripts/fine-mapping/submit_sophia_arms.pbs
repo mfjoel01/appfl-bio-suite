@@ -1,0 +1,100 @@
+#!/bin/bash
+# Run the fine-mapping participation arms on ONE Sophia node.
+#
+# WHY SOPHIA AND NOT POLARIS
+#   This stage is CPU-only and embarrassingly parallel across instances. It needs no GPU
+#   and -- unlike `appfl-bio-suite run` -- imports no torch, so the Sophia appfl_env
+#   torch breakage is irrelevant to it. A Sophia node is 256 cores and 1 TB of RAM, which
+#   swallows the whole sweep, and Sophia's own PBS can be driven from the Sophia login
+#   node where we work. The Polaris scripts exist for the full 79-locus x 15-arch x 10-rep
+#   *federated* sweep, which is a different, larger job.
+#
+# WHAT IT RUNS
+#   anl / covenant / mbzuai   each site alone
+#   federation_50k            all three, down-sampled to one site's worth of people
+#   ld_borrowed               Covenant's statistics against ANL's LD panel
+#   (the full three-site federation arm is the already-published centralized run and is
+#    folded in at merge time via FM_FEDERATION_RESULTS)
+#
+# BEFORE YOU SUBMIT
+#   FM_BASE_CONFIG   a pipeline_config.yaml describing all three sites
+#   FM_ARMS_DIR      where arm configs, per-arm reports and the merged table go
+#   FM_FEDERATION_RESULTS  (optional) the published fm_results.tsv
+#
+# SUBMIT
+#   qsub -A <allocation> -v FM_BASE_CONFIG=...,FM_ARMS_DIR=... \
+#        scripts/fine-mapping/submit_sophia_arms.pbs
+#
+# KEEP THE DIRECTIVE BLOCK PURE: no trailing comments on a #PBS line, and no indented
+# lines inside it -- PBS stops scanning at the first line not starting with '#' and
+# silently drops every directive after it.
+
+#PBS -q single-node
+#PBS -l select=1
+#PBS -l walltime=08:00:00
+#PBS -l filesystems=home:grand
+#PBS -N fm-arms
+#PBS -o logs/fm-arms.out
+#PBS -e logs/fm-arms.err
+#PBS -j oe
+
+set -euo pipefail
+
+: "${SUITE_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+# PBS copies the job script into a spool directory before running it, so BASH_SOURCE can
+# resolve somewhere that is not the checkout. Fail here with an instruction rather than
+# 20 lines later with a confusing ImportError.
+if [[ ! -d "${SUITE_ROOT}/src/appfl_bio_suite" ]]; then
+  echo "SUITE_ROOT='${SUITE_ROOT}' is not an appfl-bio-suite checkout." >&2
+  echo "Pass it explicitly:  qsub -v SUITE_ROOT=/path/to/appfl-bio-suite,... " >&2
+  exit 2
+fi
+cd "${SUITE_ROOT}"
+
+: "${FM_BASE_CONFIG:?set FM_BASE_CONFIG to a three-site pipeline_config.yaml}"
+: "${FM_ARMS_DIR:?set FM_ARMS_DIR to an output directory}"
+FM_ARMS="${FM_ARMS:-ld_borrowed,federation_50k,covenant,anl,mbzuai}"
+FM_WORKERS="${FM_WORKERS:-32}"
+# Replicates per architecture. Lowering this keeps every locus and every architecture and
+# only thins the repeats within a design cell, which is the cheap axis: at 3 replicates an
+# arm is ~3,555 instances and a power estimate still has a ~1pp confidence half-width.
+FM_REPS="${FM_REPS:-}"
+
+# PLINK writes large intermediates and /tmp is small and shared. Keep them on grand.
+export TMPDIR="${TMPDIR:-${FM_ARMS_DIR}/tmp}"
+mkdir -p "${TMPDIR}" "${FM_ARMS_DIR}" logs
+
+# One BLAS thread per process: the parallelism is across instances, and letting each of
+# 48 workers spawn its own thread pool oversubscribes the node and runs slower.
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+
+PYBIN="${FM_PYTHON:-$(command -v python)}"
+export PYTHONPATH="${SUITE_ROOT}/src:${PYTHONPATH:-}"
+
+echo "host        $(hostname)"
+echo "cores       $(nproc)"
+echo "workers     ${FM_WORKERS}"
+echo "arms        ${FM_ARMS}"
+echo "replicates  ${FM_REPS:-<config default>}"
+echo "base config ${FM_BASE_CONFIG}"
+echo "out         ${FM_ARMS_DIR}"
+echo "started     $(date -Is)"
+
+ARGS=(--base-config "${FM_BASE_CONFIG}" --out-dir "${FM_ARMS_DIR}"
+      --arms "${FM_ARMS}" --n-workers "${FM_WORKERS}")
+if [[ -n "${FM_FEDERATION_RESULTS:-}" ]]; then
+  ARGS+=(--federation-results "${FM_FEDERATION_RESULTS}")
+fi
+if [[ -n "${FM_REPS}" ]]; then
+  ARGS+=(--reps "${FM_REPS}")
+fi
+
+"${PYBIN}" -m appfl_bio_suite.experiments.fine_mapping.arms "${ARGS[@]}"
+
+echo "finished    $(date -Is)"
+echo
+echo "next:"
+echo "  ${PYBIN} -m appfl_bio_suite.experiments.fine_mapping.figures.render \\"
+echo "      --results ${FM_ARMS_DIR}/fm_results_by_arm.tsv \\"
+echo "      --by-arm  ${FM_ARMS_DIR}/fm_results_by_arm.tsv \\"
+echo "      --data-root <package> --out-dir <figures>"

@@ -30,7 +30,7 @@ from pathlib import Path
 
 __all__ = ["Level", "Check", "PreflightReport", "run_preflight", "CHECK_GROUPS"]
 
-CHECK_GROUPS = ("env", "pins", "config", "configs", "data", "endpoints", "all")
+CHECK_GROUPS = ("env", "pins", "config", "configs", "data", "ga4gh", "endpoints", "all")
 
 # Packages whose version must be identical at every site or payloads stop deserializing.
 # These come from constraints.txt at runtime; the list here is what to look at.
@@ -626,6 +626,235 @@ def _check_endpoints(report: PreflightReport, federation, experiment: str | None
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# GA4GH
+#
+# Offline, all of it. The point of a preflight check is to be cheaper than the failure it
+# prevents, and every one of these prevents a failure that costs a scheduler queue wait --
+# a site refusing on consent grounds, a bundle that is not the one this run is about, a
+# tool version that is not the one the results will claim.
+#
+# TES reachability is deliberately NOT here: it needs the network, so it belongs with the
+# endpoint checks, where the contract is already "this group talks to things".
+# ---------------------------------------------------------------------------
+
+
+def _check_ga4gh(report: PreflightReport, federation, experiment: str | None) -> None:
+    names = [experiment] if experiment else list(federation.enabled_experiments())
+    configured = [
+        name
+        for name in names
+        if getattr(federation.experiments.get(name), "ga4gh", None) is not None
+    ]
+    if not configured:
+        report.add(
+            "ga4gh",
+            Level.SKIP,
+            "no experiment declares a `ga4gh` block",
+            "The four standards are opt-in. See docs/coordinator/ga4gh.md for what each\n"
+            "one buys and what it costs to adopt.",
+        )
+        return
+
+    _check_duo_snapshot(report)
+    for name in configured:
+        _check_data_use(report, federation, name)
+        _check_drs(report, federation, name)
+        _check_trs(report, federation, name)
+
+
+def _check_duo_snapshot(report: PreflightReport) -> None:
+    """The vendored ontology must load. Everything else here depends on it."""
+    from appfl_bio_suite.core.ga4gh.duo import DuoError, ontology
+
+    try:
+        snapshot = ontology()
+    except DuoError as exc:
+        report.add("duo ontology", Level.FAIL, str(exc))
+        return
+    report.add(
+        "duo ontology",
+        Level.OK,
+        f"{len(snapshot['terms'])} terms from {snapshot['version_iri']}",
+    )
+
+
+def _check_data_use(report: PreflightReport, federation, experiment: str) -> None:
+    from appfl_bio_suite.core.ga4gh.resolve import resolve_data_use
+
+    block = federation.experiment(experiment).ga4gh
+    request = federation.data_use_request(experiment)
+    name = f"data use [{experiment}]"
+
+    if request is None:
+        report.add(
+            name,
+            Level.WARN,
+            "no `ga4gh.data_use_request` declared",
+            "Any site whose bundle carries a DATA_USE.json will refuse the task: a\n"
+            "dataset with declared terms cannot be used by a study that declares\n"
+            "nothing about itself. Declare the study's purposes under\n"
+            f"experiments.{experiment}.ga4gh.data_use_request.",
+        )
+        return
+
+    decisions = resolve_data_use(federation, experiment)
+    blocking = [d for d in decisions if d.blocking]
+    unchecked = [d for d in decisions if d.status == "no-profile"]
+    detail = "\n".join(d.render() for d in decisions)
+
+    if blocking:
+        report.add(
+            name,
+            Level.FAIL if block.enforce_data_use else Level.WARN,
+            detail,
+            "Those sites' terms do not permit this study. Either the declared purposes\n"
+            "are wrong for what you are actually doing, or those sites should not be in\n"
+            "this run. An 'undetermined' is a term a program cannot evaluate -- read it,\n"
+            "then record that you did by adding the term id to `acknowledged`.",
+        )
+        return
+    if unchecked:
+        report.add(
+            name,
+            Level.WARN,
+            detail,
+            f"{len(unchecked)} site(s) have no `data_use_profile` recorded here, so their\n"
+            "terms cannot be checked before dispatch. Ask them for their DATA_USE.json;\n"
+            "their own worker enforces it either way.",
+        )
+        return
+    report.add(name, Level.OK, detail)
+
+
+def _check_drs(report: PreflightReport, federation, experiment: str) -> None:
+    from appfl_bio_suite.core.ga4gh.drs import DrsError
+    from appfl_bio_suite.core.ga4gh.resolve import load_registry
+
+    name = f"drs [{experiment}]"
+    sites = federation.experiment(experiment).sites
+    with_uri = [s for s in sites if s.drs_uri]
+
+    if not with_uri:
+        report.add(
+            name,
+            Level.SKIP,
+            "no site names a `drs_uri`",
+            "Without one, a site's data is identified by a filesystem path and nothing\n"
+            "checks that it holds the bundle you cut for it. `simulate` writes a\n"
+            "registry; `ga4gh drs register` builds one from an existing directory.",
+        )
+        return
+
+    try:
+        registry = load_registry(federation)
+    except (DrsError, FileNotFoundError) as exc:
+        report.add(name, Level.FAIL, str(exc))
+        return
+    if registry is None:
+        report.add(
+            name,
+            Level.FAIL,
+            f"{len(with_uri)} site(s) name a drs_uri but no `ga4gh.drs.registry` is set",
+        )
+        return
+
+    problems = []
+    for entry in with_uri:
+        try:
+            obj = registry.resolve(entry.drs_uri)
+        except DrsError as exc:
+            problems.append(f"{entry.client_id}: {exc}")
+            continue
+        if not obj.is_bundle:
+            problems.append(
+                f"{entry.client_id}: {entry.drs_uri} is a single file, not a bundle. A "
+                "site's data_dir is a directory of several files."
+            )
+
+    if problems:
+        report.add(
+            name,
+            Level.FAIL,
+            "\n".join(problems),
+            "Rebuild the registry against the data you actually distributed:\n"
+            "    appfl-bio-suite ga4gh drs register --data-root <simulation output>",
+        )
+        return
+
+    missing = [s.client_id for s in sites if not s.drs_uri]
+    level = Level.WARN if missing else Level.OK
+    detail = f"{len(with_uri)} bundle(s) resolve in {registry.hostname}"
+    if missing:
+        detail += f"; no drs_uri for {', '.join(missing)}"
+    report.add(name, level, detail)
+
+
+def _check_trs(report: PreflightReport, federation, experiment: str) -> None:
+    from appfl_bio_suite.core.ga4gh.resolve import resolve_tool
+
+    name = f"trs pin [{experiment}]"
+    pin = federation.tool_pin(experiment)
+    if pin is None:
+        report.add(
+            name,
+            Level.SKIP,
+            "no `ga4gh.tool` pin declared",
+            "Without a pin, the code a site runs is whatever this checkout happens to\n"
+            "contain, and the results record no version. `ga4gh trs publish` emits one.",
+        )
+        return
+
+    _, problems = resolve_tool(federation, experiment)
+    if problems:
+        report.add(
+            name,
+            Level.FAIL,
+            "\n".join(problems),
+            "The installed site stage is not the version this federation pinned. If you\n"
+            "changed it deliberately, re-publish and re-pin:\n"
+            "    appfl-bio-suite ga4gh trs publish --out local/trs",
+        )
+        return
+    if not pin.descriptor_checksum:
+        report.add(
+            name,
+            Level.WARN,
+            f"{pin.render()} -- pinned by name and version only",
+            "A pin without a descriptor checksum pins a label. Freeze it:\n"
+            "    appfl-bio-suite ga4gh trs publish --out local/trs\n"
+            "then copy `descriptor_checksum` from local/trs/tool_pin.json.",
+        )
+        return
+    report.add(name, Level.OK, f"{pin.render()} matches this install")
+
+
+def _check_tes(report: PreflightReport, federation, experiment: str | None) -> None:
+    """Reachability only. Runs with the endpoint checks, because it uses the network."""
+    from appfl_bio_suite.core.ga4gh.tes import TesClient, TesError
+
+    service = federation.ga4gh.tes if federation.ga4gh else None
+    if service is None or not service.url:
+        return
+    try:
+        info = TesClient(service.url).service_info()
+    except TesError as exc:
+        report.add(
+            "tes service",
+            Level.WARN,
+            str(exc).splitlines()[0],
+            "Only the TES execution path needs this; a Globus Compute run is unaffected.",
+        )
+        return
+    kind = info.get("type", {})
+    report.add(
+        "tes service",
+        Level.OK,
+        f"{service.url}: {info.get('name', '?')} "
+        f"({kind.get('artifact', '?')} {kind.get('version', '?')})",
+    )
+
+
 def run_preflight(
     federation=None,
     experiment: str | None = None,
@@ -644,7 +873,7 @@ def run_preflight(
         candidate = root / "constraints.txt"
         constraints = candidate if candidate.is_file() else None
 
-    want = {check} if check != "all" else {"env", "pins", "config", "data", "endpoints"}
+    want = {check} if check != "all" else {"env", "pins", "config", "data", "ga4gh", "endpoints"}
 
     if "env" in want:
         _check_python(report)
@@ -670,8 +899,15 @@ def run_preflight(
         else:
             report.add("data", Level.SKIP, "no federation config loaded")
 
+    if "ga4gh" in want:
+        if federation is not None:
+            _check_ga4gh(report, federation, experiment)
+        else:
+            report.add("ga4gh", Level.SKIP, "no federation config loaded")
+
     if "endpoints" in want and federation is not None:
         _check_endpoints(report, federation, experiment)
+        _check_tes(report, federation, experiment)
     elif "endpoints" in want:
         report.add("endpoints", Level.SKIP, "no federation config loaded")
 

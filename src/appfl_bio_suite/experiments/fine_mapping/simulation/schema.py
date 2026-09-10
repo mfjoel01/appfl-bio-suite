@@ -40,7 +40,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-__all__ = ["CohortParams", "FineMappingScenario", "KNOWN_SITE_IDS"]
+__all__ = ["CohortParams", "DataUseParams", "FineMappingScenario", "KNOWN_SITE_IDS"]
 
 # Mirrors fedfm/sampling.py::SITE_ORDER. Duplicated rather than imported so that this
 # module stays importable without pulling in numpy/pandas/pydantic, and kept honest by
@@ -143,12 +143,70 @@ class CohortParams:
 
 
 @dataclass(frozen=True)
+class DataUseParams:
+    """The DUO terms the generated bundles declare, per site.
+
+    WHY A SIMULATION DECLARES CONSENT TERMS AT ALL
+    ----------------------------------------------
+    The data is synthetic and carries no real consent code, so any terms here are
+    invented. That is not an argument for leaving them out -- it is an argument for
+    saying so in the profile, which :func:`bundler.write_data_use` does in every
+    generated ``DATA_USE.json``.
+
+    They are here because the alternative is a federation whose governance machinery is
+    exercised for the first time against a partner's real dataset. A simulated run with
+    three sites declaring *different* terms is the only cheap way to find out that a
+    study's declared purpose does not satisfy one of them.
+
+    ``default`` applies to every site; ``per_site`` overrides it by site id. The shipped
+    scenarios use three different profiles deliberately, so the shipped loopback run
+    exercises a real match rather than a trivially permissive one.
+    """
+
+    # DUO:0000042 general research use. The most permissive of the research permissions,
+    # which is the honest default for a pool generated from a documented model.
+    permission: str = "DUO:0000042"
+    permission_value: list[str] = field(default_factory=list)
+    # Each entry is {"id": "DUO:00000NN", "value": [...]}.
+    modifiers: list[dict[str, Any]] = field(default_factory=list)
+    steward: str | None = None
+    per_site: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def for_site(self, site_id: str) -> dict[str, Any]:
+        """This site's terms: the default, with any per-site override applied whole.
+
+        Whole, not merged. A half-overridden consent code -- this site's permission with
+        that site's modifiers -- is not a consent code anybody wrote down, and merging
+        would produce one silently.
+        """
+        override = self.per_site.get(site_id)
+        if override:
+            return {
+                "permission": override.get("permission", self.permission),
+                "permission_value": list(override.get("permission_value", [])),
+                "modifiers": [dict(m) for m in override.get("modifiers", [])],
+                "steward": override.get("steward", self.steward),
+            }
+        return {
+            "permission": self.permission,
+            "permission_value": list(self.permission_value),
+            "modifiers": [dict(m) for m in self.modifiers],
+            "steward": self.steward,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class FineMappingScenario:
     """A complete, named fine-mapping simulation scenario."""
 
     name: str
     description: str = ""
     cohort: CohortParams = field(default_factory=CohortParams)
+    # DUO terms written into each generated bundle. See :class:`DataUseParams`.
+    data_use: DataUseParams = field(default_factory=DataUseParams)
     # The upstream SimulationConfig, verbatim, minus `paths`. Kept as a plain dict rather
     # than parsed here: fedfm/utils.py validates it, and validating it twice in two
     # places is how the two definitions drift apart.
@@ -176,6 +234,7 @@ class FineMappingScenario:
             name=data["name"],
             description=data.get("description", ""),
             cohort=CohortParams(**(data.get("cohort") or {})),
+            data_use=DataUseParams(**(data.get("data_use") or {})),
             pipeline=dict(data.get("pipeline") or {}),
         )
 
@@ -193,6 +252,7 @@ class FineMappingScenario:
             "name": self.name,
             "description": self.description,
             "cohort": self.cohort.to_dict(),
+            "data_use": self.data_use.to_dict(),
             "pipeline": self.pipeline,
         }
 

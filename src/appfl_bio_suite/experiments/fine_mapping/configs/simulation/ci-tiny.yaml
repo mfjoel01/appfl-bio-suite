@@ -50,6 +50,33 @@ cohort:
     CSA: 0.14
     MID: 0.08
 
+# DUO terms written into each generated bundle (DATA_USE.json), and enforced by each
+# site's own worker before it reads a genotype.
+#
+# THE THREE SITES DECLARE DIFFERENT TERMS ON PURPOSE. A scenario where every site says
+# "general research use" exercises the consent machinery about as well as a test suite
+# with one passing assertion. These three are the shapes a real cross-institution
+# federation actually produces: one open, one restricted to biomedical research by a
+# non-commercial requester, one open but requiring that results be published.
+#
+# The data is synthetic and no real consent was given, which every generated profile says
+# in its own description. The terms are illustrative; the enforcement is not.
+data_use:
+  permission: DUO:0000042          # general research use
+  steward: the coordinator that generated this simulated cohort
+  per_site:
+    covenant:
+      # Health/medical/biomedical research only, by a not-for-profit, non-commercial
+      # requester. A study declaring population-origins research fails the first term;
+      # a commercial requester fails the second. Both are worth being able to see fail.
+      permission: DUO:0000006
+      modifiers:
+        - id: DUO:0000018          # not for profit, non commercial use only
+    mbzuai:
+      permission: DUO:0000042
+      modifiers:
+        - id: DUO:0000019          # publication required
+
 pipeline:
   master_seed: 20260601
   chromosome: 1
@@ -141,6 +168,16 @@ pipeline:
   # would leave the multi-ancestry path untested, which is the path that matters.
   fine_mapping:
     min_gwas_n: 0
+    # Lower than the published 0.005. This pool is small enough that a 0.005 filter can
+    # leave a pooled column with too few variants for SuSiEx to have anything to do.
+    #
+    # It is declared HERE, once, and read by all three consumers -- the loopback
+    # aggregator, the centralized baseline, and the standalone federated stage. It used
+    # to be a literal in server.loopback.yaml while both comparator stages defaulted to
+    # 0.005, so the comparison the runbook tells you to run silently fine-mapped two
+    # different variant sets and reported a credible-set disagreement that looked exactly
+    # like a bug in the federated path.
+    maf: 0.001
 
   qc:
     kinship_threshold: 0.05

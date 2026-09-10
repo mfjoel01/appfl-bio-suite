@@ -41,6 +41,33 @@ cohort:
 # only differences should be indentation and the absent `paths:` block, which the suite
 # supplies from `--out`.
 # ---------------------------------------------------------------------------
+# DUO terms written into each generated bundle (DATA_USE.json), and enforced by each
+# site's own worker before it reads a genotype.
+#
+# THE THREE SITES DECLARE DIFFERENT TERMS ON PURPOSE. A scenario where every site says
+# "general research use" exercises the consent machinery about as well as a test suite
+# with one passing assertion. These three are the shapes a real cross-institution
+# federation actually produces: one open, one restricted to biomedical research by a
+# non-commercial requester, one open but requiring that results be published.
+#
+# The data is synthetic and no real consent was given, which every generated profile says
+# in its own description. The terms are illustrative; the enforcement is not.
+data_use:
+  permission: DUO:0000042          # general research use
+  steward: the coordinator that generated this simulated cohort
+  per_site:
+    covenant:
+      # Health/medical/biomedical research only, by a not-for-profit, non-commercial
+      # requester. A study declaring population-origins research fails the first term;
+      # a commercial requester fails the second. Both are worth being able to see fail.
+      permission: DUO:0000006
+      modifiers:
+        - id: DUO:0000018          # not for profit, non commercial use only
+    mbzuai:
+      permission: DUO:0000042
+      modifiers:
+        - id: DUO:0000019          # publication required
+
 pipeline:
   master_seed: 20260601
   chromosome: 1

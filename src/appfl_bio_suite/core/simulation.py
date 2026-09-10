@@ -200,11 +200,19 @@ def file_checksum(path: str | Path) -> str:
     return digest.hexdigest()
 
 
-def checksum_tree(root: str | Path, patterns: tuple[str, ...] = ("*",)) -> dict[str, str]:
+def checksum_tree(root: str | Path, patterns: tuple[str, ...] = ("**/*",)) -> dict[str, str]:
     """Checksum every matching file under ``root``, keyed by relative POSIX path.
 
     Sorted, and relative, so the result is comparable across machines and directory
     layouts -- an absolute path would make two correct runs look different.
+
+    Patterns are anchored at ``root``, which is the whole point of letting a caller pass
+    them: they name the subset of the tree the run is responsible for. Matching with
+    ``rglob`` instead silently prepends ``**/``, so an anchored pattern like ``anl/**/*``
+    also matches ``processed/anl/**`` and ``ground_truth/phenotypes/anl/**``. That is not
+    a cosmetic difference -- it pulled PLINK's ``.log`` files into the manifest, and those
+    record the absolute output path and the hostname, so they cannot match on a rerun
+    anywhere else. Use ``**/*`` to mean "the whole tree"; do not reach for ``rglob``.
 
     The run manifest itself is excluded. It is written into the output directory after
     the outputs are checksummed, so including it would make every run report its own
@@ -214,7 +222,7 @@ def checksum_tree(root: str | Path, patterns: tuple[str, ...] = ("*",)) -> dict[
     root = Path(root)
     seen: dict[str, str] = {}
     for pattern in patterns:
-        for path in sorted(root.rglob(pattern)):
+        for path in sorted(root.glob(pattern)):
             if path.is_file() and path.name != MANIFEST_FILENAME:
                 seen[path.relative_to(root).as_posix()] = file_checksum(path)
     return seen

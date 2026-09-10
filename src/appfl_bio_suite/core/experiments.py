@@ -66,6 +66,13 @@ class ExperimentSpec:
     title: str
     summary: str
 
+    # A short phrase naming what a participating site actually holds on disk. Shown on
+    # the network map beside each site, which is the one place a reader asks "what kind
+    # of data is behind that dot" and has nowhere else to look. Kept to a few words:
+    # the long version is the experiment's own DATA.md, and `summary` above is the
+    # paragraph. Empty is allowed for an experiment that is declared but not implemented.
+    data_kind: str = ""
+
     # Modules whose SOURCE is read on the coordinator and shipped to workers as text.
     # These are subject to the self-containment rule: they may not import anything the
     # partner has not installed, and in particular may not import from appfl_bio_suite.
@@ -147,6 +154,7 @@ REGISTRY: dict[str, ExperimentSpec] = {
         name="flamby-heart-disease",
         package="flamby_heart_disease",
         title="FLamby Fed-Heart-Disease",
+        data_kind="Tabular clinical records, 13 features",
         summary=(
             "Multi-round FedAvg on a small public tabular benchmark with natural "
             "hospital-level client splits. The scientific claim is about the "
@@ -169,6 +177,7 @@ REGISTRY: dict[str, ExperimentSpec] = {
         name="gwas",
         package="gwas",
         title="Federated GWAS with polygenic-score evaluation",
+        data_kind="Genotypes and phenotypes, PLINK bfile",
         summary=(
             "Single-round summary-statistic federated learning. Each site runs a "
             "complete local GWAS and returns per-variant effect sizes, standard errors "
@@ -194,6 +203,7 @@ REGISTRY: dict[str, ExperimentSpec] = {
         name="fine-mapping",
         package="fine_mapping",
         title="Federated cross-ancestry statistical fine-mapping",
+        data_kind="Genotype windows per ancestry, PLINK bfile",
         summary=(
             "Single-round aggregate federated learning. Each site returns raw "
             "second-moment aggregates over its own individuals at a locus; the server "

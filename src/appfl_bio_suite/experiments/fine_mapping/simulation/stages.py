@@ -18,7 +18,8 @@ to the suite rather than to upstream:
 
     prepare   materialize the genotype pool and write pipeline_config.yaml, so the
               sharded stages have a config to point at
-    bundle    rearrange the finished outputs into per-site bundles and check disjointness
+    bundle    rearrange the finished outputs into per-site bundles, check disjointness,
+              give each bundle a DRS id and its DUO profile, and write the manifest
 
 Between them, the sharded run is::
 
@@ -29,6 +30,20 @@ Between them, the sharded run is::
         --shard-index $i --n-shards $N                                # shardable
     run_stage.py phenotypes     --config $RUN/pipeline_config.yaml --merge --n-shards $N
     run_stage.py bundle         --scenario three-site-hapnest --out $RUN
+
+WHAT ``bundle`` PRODUCES, AND WHY IT IS THE WHOLE PACKAGE
+---------------------------------------------------------
+A distributable data package, identical in kind to what ``simulate`` writes: the per-site
+bundles, a DRS registry addressing each one, a ``DATA_USE.json`` inside each carrying its
+site's consent terms, and the run manifest.
+
+It did not always. ``bundle`` used to stop after the bundles, and DRS registration and
+the DUO profiles happened only inside ``run_simulation``. Since the published scenario is
+too large for a single process, the sharded path is the *only* way to build it -- so the
+one scenario that ships produced bundles a coordinator could not verify a site had read
+and that carried no consent terms at all, while the tiny scenario used for smoke tests
+produced both. The two paths now converge, which is the property worth having: a stage
+run and a single-process run differ in provenance strength, never in what they produce.
 
 WHAT YOU GIVE UP BY SHARDING
 -----------------------------
@@ -116,6 +131,10 @@ def bundle_main(argv=None) -> int:
         file_checksum,
         record_provenance,
     )
+    from appfl_bio_suite.experiments.fine_mapping.simulation import (
+        DEFAULT_DRS_HOSTNAME,
+        register_bundles,
+    )
     from appfl_bio_suite.experiments.fine_mapping.simulation.bundler import bundle_sites
     from appfl_bio_suite.experiments.fine_mapping.simulation.cohort import POOL_STEM
 
@@ -135,6 +154,14 @@ def bundle_main(argv=None) -> int:
         action="store_true",
         help="skip the run manifest (checksumming a large package is not free)",
     )
+    parser.add_argument(
+        "--drs-hostname",
+        default=DEFAULT_DRS_HOSTNAME,
+        help=(
+            "DRS hostname minted into every bundle's URI. Ids are content-addressed, so "
+            f"this changes the URI and not the id. Default: {DEFAULT_DRS_HOSTNAME}"
+        ),
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     logging.basicConfig(
@@ -152,6 +179,13 @@ def bundle_main(argv=None) -> int:
 
     for site, path in bundles.items():
         print(f"{site}: {path}")
+
+    # DRS ids and DUO profiles, before the manifest and not after. Each DATA_USE.json
+    # carries its bundle's drs_uri, so the object has to exist first; and writing it
+    # after the checksums were taken would leave every bundle holding a file the
+    # manifest does not list, which `--verify` reports as an unexpected extra.
+    print()
+    register_bundles(out_dir, site_ids, scenario, args.drs_hostname, bundles)
 
     if args.no_manifest:
         print("\nno run manifest written (--no-manifest)")
