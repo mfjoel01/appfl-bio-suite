@@ -70,8 +70,18 @@ mkdir -p "${TMPDIR}" "${FM_FED_DIR}" logs
 # worker spawn its own thread pool oversubscribes the node and runs slower.
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 
-PYBIN="${FM_PYTHON:-$(command -v python)}"
 export PYTHONPATH="${SUITE_ROOT}/src:${PYTHONPATH:-}"
+PYBIN="${FM_PYTHON:-$(command -v python)}"
+# A compute node does not inherit the login shell's conda activation, so a bare `python`
+# there is often /usr/bin/python with no scientific stack. Check before spending the
+# allocation: without this the job dies on `import numpy` several minutes in, and every
+# job chained behind it is cancelled by the dependency.
+if ! "${PYBIN}" -c "import numpy, pandas, appfl_bio_suite" 2>/dev/null; then
+  echo "FATAL: '${PYBIN}' cannot import numpy/pandas/appfl_bio_suite." >&2
+  echo "Pass the interpreter that can:  qsub -v FM_PYTHON=/path/to/env/bin/python,... " >&2
+  "${PYBIN}" -c "import sys; print('  interpreter:', sys.executable)" >&2 || true
+  exit 3
+fi
 
 # Derive the run config rather than requiring a hand-edited one: only `replicates` and
 # the output paths change, so the sweep cannot drift from the package the baseline used.
