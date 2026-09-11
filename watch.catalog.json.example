@@ -4,9 +4,16 @@
       "id": "prospective-partner",
       "name": "Example Research Institute",
       "country": "Example country",
-      "projects": ["fine-mapping"],
+      "projects": [
+        "fine-mapping"
+      ],
       "stage": "1 - Initial Planning",
-      "contacts": [{"name": "Project coordinator", "email": "research@example.org"}],
+      "contacts": [
+        {
+          "name": "Project coordinator",
+          "email": "research@example.org"
+        }
+      ],
       "notes": "Replace with your partner's details or remove this entry.",
       "location": null
     }
@@ -14,12 +21,9 @@
   "results": [
     {
       "experiment": "fine-mapping",
-      "title": "Fine-mapping reference experiment",
-      "description": "Published reference simulation results, not a currently running federation job.",
-      "artifacts": [
-        {"title": "Discovery power", "path": "docs/experiments/fine-mapping/results/fine_mapping/figures/fig1_power_grid.png"},
-        {"title": "Results by genetic architecture", "path": "docs/experiments/fine-mapping/results/fine_mapping/fm_rollup_by_architecture.tsv"}
-      ]
+      "title": "Fine-mapping results",
+      "description": "Add selected figures, tables and reports from your experiment.",
+      "artifacts": []
     }
   ]
 }

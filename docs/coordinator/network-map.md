@@ -78,6 +78,7 @@ to Experiments; a single selected map experiment becomes the initial Results sel
 An optional JSON catalogue adds planning partners and explicitly selected result files:
 
 ```bash
+mkdir -p local/watch
 cp watch.catalog.json.example local/watch/catalog.json
 # Edit the catalogue's partners and result paths, then:
 appfl-bio-suite watch build --catalog local/watch/catalog.json
@@ -86,9 +87,9 @@ appfl-bio-suite watch serve
 appfl-bio-suite watch export --catalog local/watch/catalog.json --out local/watch-site
 ```
 
-The example's artifact paths are relative to the repository root; when copying it
-into `local/watch/`, prefix those paths with `../../`. Paths are resolved relative
-to the catalogue file, and absolute paths also work. The catalogue is loaded only
+Paths are resolved relative to the catalogue file, and absolute paths also work.
+For example, an artifact with `"path": "results/summary.tsv"` in that catalogue
+reads `local/watch/results/summary.tsv`. The catalogue is loaded only
 when `--catalog` is supplied. Rebuild or re-export after changing it.
 
 Each partner has a stable `id`, `name`, `country`, `projects` array and `stage`.
@@ -111,7 +112,7 @@ Choose files intended for the viewer's audience. The catalogue's filesystem path
 are not included in the generated metadata, and no result directories are scanned.
 Artifacts are embedded in `network.map.json`, so the export still contains three files.
 Use `local/` for your deployment's roster and catalogue; the repository example contains
-only a fictional partner and already published reference results.
+only a fictional partner and an empty results group ready for your selected files.
 
 ---
 
