@@ -23,7 +23,14 @@ federation.yaml
 vendor
 
 # Data. No experiment's inputs or outputs belong in git.
+#
+# A bare `data/` matches at any depth, which also caught the DUO snapshot that ships
+# inside the package. Package data under src/ is source: it is installed with the
+# wheel, and a checkout missing it fails at import rather than at run time. The
+# negation must name the DIRECTORY -- git does not descend into an excluded directory,
+# so `!.../data/duo.json` on its own is silently a no-op.
 data/
+!src/appfl_bio_suite/**/data/
 outputs/
 output/
 *.bed

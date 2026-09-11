@@ -372,6 +372,13 @@ def run_cmd(
 
 _WATCH_OPTIONS = [
     click.option(
+        "--catalog",
+        "catalog_path",
+        type=click.Path(path_type=Path, exists=True),
+        default=None,
+        help="Optional JSON partner roster and selected result artifacts.",
+    ),
+    click.option(
         "--experiment",
         type=click.Choice(experiment_names()),
         default=None,
@@ -454,6 +461,7 @@ def _statuses(fed, experiment: str | None, probe: bool) -> dict[str, str] | None
     help="Where run artifacts live. Defaults to local/watch/runs.",
 )
 def watch_build(
+    catalog_path: Path | None,
     experiment: str | None,
     probe: bool,
     include_endpoint_uuids: bool,
@@ -474,6 +482,7 @@ def watch_build(
         _, mapjson = write_run(
             fed,
             runs_dir or DEFAULT_RUNS_DIR,
+            catalog_path=catalog_path,
             experiment=experiment,
             statuses=_statuses(fed, experiment, probe),
             include_endpoint_uuids=include_endpoint_uuids,
@@ -541,6 +550,7 @@ def watch_serve(host: str, port: int | None, runs_dir: Path | None) -> None:
 )
 @click.option("--title", default="APPFL federation network", show_default=True)
 def watch_export(
+    catalog_path: Path | None,
     experiment: str | None,
     probe: bool,
     include_endpoint_uuids: bool,
@@ -567,6 +577,7 @@ def watch_export(
         destination = export_site(
             fed,
             out_dir,
+            catalog_path=catalog_path,
             title=title,
             experiment=experiment,
             statuses=_statuses(fed, experiment, probe),
@@ -815,8 +826,12 @@ def ga4gh_duo_show(profile: Path) -> None:
 
 
 @ga4gh_duo.command("terms")
-@click.option("--kind", type=click.Choice(["permission", "modifier", "purpose", "all"]),
-              default="all", show_default=True)
+@click.option(
+    "--kind",
+    type=click.Choice(["permission", "modifier", "purpose", "all"]),
+    default="all",
+    show_default=True,
+)
 def ga4gh_duo_terms(kind: str) -> None:
     """List the DUO terms this build understands, from the vendored release."""
     from appfl_bio_suite.core.ga4gh.duo import MODIFIERS, PERMISSIONS, PURPOSES, ontology
@@ -846,8 +861,12 @@ def ga4gh_drs() -> None:
 
 
 @ga4gh_drs.command("register")
-@click.option("--data-root", type=click.Path(path_type=Path), required=True,
-              help="A directory `simulate` wrote: one <site>/data/ per site.")
+@click.option(
+    "--data-root",
+    type=click.Path(path_type=Path),
+    required=True,
+    help="A directory `simulate` wrote: one <site>/data/ per site.",
+)
 @click.option("--hostname", default=None, help="DRS hostname. Defaults to ga4gh.drs.hostname.")
 @click.option("--https-base", default=None, help="Base URL where this registry is served.")
 @click.option("--globus-collection", default=None, help="Collection UUID holding the bundles.")
@@ -870,7 +889,7 @@ def ga4gh_drs_register(
     from appfl_bio_suite.core.ga4gh.drs import DrsError, build_registry
 
     fed = _load(federation_path, required=False)
-    service = (fed.ga4gh.drs if fed and fed.ga4gh else None)
+    service = fed.ga4gh.drs if fed and fed.ga4gh else None
     hostname = hostname or (service.hostname if service else None)
     if not hostname:
         raise click.ClickException(
@@ -884,8 +903,7 @@ def ga4gh_drs_register(
             data_root,
             hostname=hostname,
             https_base=https_base or (service.https_base if service else None),
-            globus_collection=globus_collection
-            or (service.globus_collection if service else None),
+            globus_collection=globus_collection or (service.globus_collection if service else None),
         )
     except DrsError as exc:
         raise click.ClickException(str(exc)) from exc
@@ -1038,8 +1056,8 @@ def ga4gh_trs_publish(
     click.echo("")
     click.echo("Pin for federation.yaml:")
     click.echo("      tool:")
-    click.echo(f"        id: \"{pin.id}\"")
-    click.echo(f"        version: \"{pin.version}\"")
+    click.echo(f'        id: "{pin.id}"')
+    click.echo(f'        version: "{pin.version}"')
     click.echo(f"        descriptor_checksum: {pin.descriptor_checksum}")
     if pin.image:
         click.echo(f"        image: {pin.image}")

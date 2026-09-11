@@ -177,13 +177,13 @@ where = ["src"]
 appfl_bio_suite = [
     "experiments/*/configs/*.yaml",
     "experiments/*/configs/**/*.yaml",
-    "experiments/*/configs/**/*.json",
     # The vendored DUO release. Package data rather than a download: a partner's worker
     # enforces its site's consent code with no outbound network, and an ontology that
     # moves under a running federation is a consent decision changing silently.
     "core/ga4gh/data/*.json",
     # Embedded into the same federation viewer for watch serve and three-file exports.
     "core/watch_assets/*.css",
+    "core/watch_assets/*.png",
     "core/watch_assets/*.js",
     "core/watch_assets/*.md",
 ]

@@ -210,9 +210,7 @@ def parse_drs_uri(uri: str) -> tuple[str, str]:
     neither a partner's worker nor this project has.
     """
     if not uri.startswith("drs://"):
-        raise DrsError(
-            f"'{uri}' is not a DRS URI. They look like 'drs://drs.example.org/<id>'."
-        )
+        raise DrsError(f"'{uri}' is not a DRS URI. They look like 'drs://drs.example.org/<id>'.")
     remainder = uri[len("drs://") :]
     host, sep, object_id = remainder.partition("/")
     if not sep or not object_id:
@@ -234,9 +232,7 @@ class _Access:
     globus_collection: str | None = None
 
     def methods(self, object_id: str, path: Path) -> list[AccessMethod]:
-        methods = [
-            AccessMethod(type="file", access_url=AccessURL(url=path.resolve().as_uri()))
-        ]
+        methods = [AccessMethod(type="file", access_url=AccessURL(url=path.resolve().as_uri()))]
         if self.https_base:
             base = self.https_base.rstrip("/")
             methods.append(
@@ -336,8 +332,10 @@ class DrsRegistry(BaseModel):
         if existing is None:
             self.objects[obj.id] = obj
             return obj
-        known = {(m.type, m.access_url.url if m.access_url else m.access_id) for m in
-                 existing.access_methods}
+        known = {
+            (m.type, m.access_url.url if m.access_url else m.access_id)
+            for m in existing.access_methods
+        }
         for method in obj.access_methods:
             key = (method.type, method.access_url.url if method.access_url else method.access_id)
             if key not in known:
@@ -444,9 +442,7 @@ def register_directory(
             child = register_file(registry, entry, access)
         else:
             continue
-        contents.append(
-            ContentsObject(name=entry.name, id=child.id, drs_uri=[child.self_uri])
-        )
+        contents.append(ContentsObject(name=entry.name, id=child.id, drs_uri=[child.self_uri]))
         children[entry.name] = child.id
         size += child.size
 
@@ -497,9 +493,7 @@ def build_registry(
     if not data_root.is_dir():
         raise DrsError(f"--data-root {data_root} does not exist")
 
-    access = _Access(
-        hostname=hostname, https_base=https_base, globus_collection=globus_collection
-    )
+    access = _Access(hostname=hostname, https_base=https_base, globus_collection=globus_collection)
     registry = DrsRegistry(
         hostname=hostname,
         source=f"{experiment} simulation at {data_root}",

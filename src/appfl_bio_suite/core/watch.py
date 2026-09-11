@@ -45,6 +45,7 @@ never reach the map at all. Those describe the inside of a partner's cluster.
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import queue
@@ -413,7 +414,11 @@ def metadata_from_events(events: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def write_network_run(
-    federation: Federation, runs_dir: Path | str = DEFAULT_RUNS_DIR, **kwargs
+    federation: Federation,
+    runs_dir: Path | str = DEFAULT_RUNS_DIR,
+    *,
+    catalog_path: Path | str | None = None,
+    **kwargs,
 ) -> tuple[Path, Path]:
     """Write the network view into a runs directory. Returns (jsonl, map.json).
 
@@ -421,8 +426,7 @@ def write_network_run(
     serves detail from ``*.map.json``. A network view with only the metadata file would
     load if you asked for it by name and would not appear in the run list.
     """
-    events = build_network_events(federation, **kwargs)
-    metadata = metadata_from_events(events)
+    events, metadata = _network_artifacts(federation, catalog_path, **kwargs)
 
     runs_dir = Path(runs_dir)
     runs_dir.mkdir(parents=True, exist_ok=True)
@@ -435,6 +439,26 @@ def write_network_run(
     jsonl.write_text("".join(json.dumps(e) + "\n" for e in events), encoding="utf-8")
     mapjson.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     return jsonl, mapjson
+
+
+def _network_artifacts(federation: Federation, catalog_path=None, **kwargs) -> tuple[list, dict]:
+    from appfl_bio_suite.core.watch_catalog import add_partners, load_catalog
+
+    try:
+        catalog = load_catalog(catalog_path)
+    except ValueError as exc:
+        raise WatchError(str(exc)) from exc
+    events = build_network_events(federation, **kwargs)
+    add_partners(events, catalog, kwargs.get("experiment"))
+    metadata = metadata_from_events(events)
+    results = [
+        group
+        for group in catalog["results"]
+        if not kwargs.get("experiment") or group["experiment"] == kwargs["experiment"]
+    ]
+    if results:
+        metadata["results"] = results
+    return events, metadata
 
 
 # ---------------------------------------------------------------------------
@@ -504,9 +528,15 @@ def _patched_viewer() -> str:
     css = (_VIEWER_ASSETS / "viewer.css").read_text(encoding="utf-8")
     html = html.replace("</head>", f'<style id="bio-viewer-style">\n{css}\n</style>\n</head>', 1)
     scripts = ["<!-- appfl-bio-suite: federation viewer and globe -->"]
+    logo = base64.b64encode((_VIEWER_ASSETS / "suite-logo.png").read_bytes()).decode("ascii")
+    scripts.append(
+        '<script type="application/json" id="bio-branding-data">'
+        + json.dumps({"suite_logo": "data:image/png;base64," + logo})
+        + "</script>"
+    )
     notices = (_VIEWER_ASSETS / "THIRD_PARTY.md").read_text(encoding="utf-8")
     scripts.append(f'<script type="text/plain" id="bio-asset-notices">\n{notices}\n</script>')
-    for name in ("vendor.js", "land.js", "globe.js", "viewer.js"):
+    for name in ("vendor.js", "land.js", "globe.js", "results.js", "viewer.js"):
         source = (_VIEWER_ASSETS / name).read_text(encoding="utf-8")
         scripts.append(f'<script data-bio-asset="{name}">\n{source}\n</script>')
     return html.replace("</body>", "\n".join(scripts) + "\n</body>", 1)
@@ -560,6 +590,7 @@ def export_site(
     out_dir: Path | str,
     *,
     title: str = "APPFL federation network",
+    catalog_path: Path | str | None = None,
     **kwargs,
 ) -> Path:
     """Write a self-contained static site for the network view. Returns the directory.
@@ -577,8 +608,7 @@ def export_site(
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    events = build_network_events(federation, **kwargs)
-    metadata = metadata_from_events(events)
+    _, metadata = _network_artifacts(federation, catalog_path, **kwargs)
 
     (out_dir / "network.map.json").write_text(
         json.dumps(metadata, indent=2) + "\n", encoding="utf-8"

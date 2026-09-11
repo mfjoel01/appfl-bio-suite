@@ -7,8 +7,19 @@ const site = (id, experiments, lat, lng) => ({client_id:id, institution:`Institu
   experiments, lat, lng, country:'Example country', city:'Example city', num_samples:100, status:'active'});
 const sites = [site('north','fine-mapping, gwas',40,-75), site('south','fine-mapping',-20,15),
   site('east','gwas',25,55), site('unplaced','new-experiment',null,null), site('zero','gwas',0,0)];
+sites[1].partnership_stage='1 - Initial Planning';
+sites[1].contacts=[{name:'Research contact',email:'research@example.org'}];
+sites[1].location_basis='Representative headquarters';
+sites[1].location_source='https://example.org/location';
+const asset=(mime,content)=>`data:${mime};base64,${Buffer.from(content).toString('base64')}`;
+const results=[{experiment:'fine-mapping',title:'Reference study',description:'Documented study results.',artifacts:[
+ {kind:'table',title:'Scores',filename:'scores.tsv',columns:['Variant','Score'],rows:[['v10','10'],['v2','2']],total_rows:205,
+  download:asset('text/tab-separated-values','Variant\tScore\nv10\t10\nv2\t2\n')},
+ {kind:'image',title:'Power figure',filename:'power.png',download:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='},
+ {kind:'report',title:'QC report',filename:'qc.html',download:asset('text/html','<h1>Study QC</h1><script>parent.injected=true</script>')}
+]}];
 const network = {run_id:'network',algorithm:'federation network',finished_at:'2026-01-01',
-  server:{lat:40,lng:-75,org:'Coordinator'},rounds:[{round:1,clients:sites}]};
+  server:{lat:40,lng:-75,org:'Coordinator'},rounds:[{round:1,clients:sites}],results};
 const live = {run_id:'running',algorithm:'gwas',finished_at:null,server:network.server,
   rounds:[{round:1,clients:[{...sites[0],experiments:undefined,experiment:'gwas'}]}]};
 const events = [
@@ -56,6 +67,10 @@ const events = [
  assert.equal(await page.locator('#bio-runs-panel').isVisible(),false);
  for(const id of ['hdr-round','hdr-acc','hdr-loss']) assert.equal(await page.locator('#'+id).isVisible(),false);
  assert.equal(await checkbox('*').isChecked(),true);
+ for (const logo of ['.bio-suite-logo','.bio-hive-logo']) {
+   assert.equal(await page.locator(logo).isVisible(),true);
+   assert.equal(await page.locator(logo).evaluate(img=>img.complete && img.naturalWidth>0),true);
+ }
  assert.deepEqual(await page.evaluate(()=>Object.keys(markers).filter(id=>map.hasLayer(markers[id]))),['north','south','east','zero']);
  await checkbox('fine-mapping').check(); await assertVisible(['north','south']);
  assert.deepEqual(await page.evaluate(()=>Object.keys(lines).filter(id=>map.hasLayer(lines[id]))),['north','south']);
@@ -97,13 +112,66 @@ const events = [
  await page.locator('#bio-zoom-in').click();assert.ok(await page.evaluate(()=>testGlobe.zoomFactor)>zoom);
  await canvas.focus();await page.keyboard.press('ArrowRight');await page.keyboard.press('Home');
  assert.deepEqual(await page.evaluate(()=>testGlobe.rotation),[62,-28,0]);
+ // Theme changes redraw a paused globe, including the ocean and surrounding sky.
+ const brightness=()=>page.evaluate(()=>{
+   const data=testGlobe.context.getImageData(0,0,testGlobe.canvas.width,testGlobe.canvas.height).data;
+   let sum=0;for(let i=0;i<data.length;i+=4)sum+=data[i]+data[i+1]+data[i+2];
+   return sum/(data.length/4*3);
+ });
+ const dark=await brightness(); await page.locator('#theme-btn').click();
+ await page.waitForFunction(()=>testGlobe.theme==='light');
+ assert.ok(await brightness()>dark+80,'light theme must recolor the globe canvas');
+ assert.equal(await page.evaluate(()=>testGlobe.spinning),false);
+ await page.locator('#theme-btn').click(); await page.waitForFunction(()=>testGlobe.theme==='dark');
+ // Results use experiment-level selection and preserve the map's independent filter.
+ await checkbox('fine-mapping').check();
+ await page.locator('#bio-results-tab').click();
+ assert.equal(await page.locator('#bio-results-workspace').isVisible(),true);
+ assert.equal(await page.locator('.bio-map-toolbar').isVisible(),false);
+ assert.equal(await page.evaluate(()=>testGlobe.visible),false);
+ assert.equal(await page.locator('#bio-result-experiment').inputValue(),'fine-mapping');
+ assert.equal(await page.locator('.bio-result-card').count(),3);
+ await page.getByRole('button',{name:'Score ↕',exact:true}).click();
+ assert.equal(await page.locator('.bio-table-scroll tbody tr').first().innerText(),'v2\t2');
+ await page.getByRole('searchbox',{name:'Search Scores'}).fill('v10');
+ assert.equal(await page.locator('.bio-table-scroll tbody tr').count(),1);
+ assert.match(await page.locator('.bio-table-note').innerText(),/first 2 rows/);
+ const download=page.waitForEvent('download'); await page.locator('.bio-result-table .bio-download').click();
+ assert.equal((await download).suggestedFilename(),'scores.tsv');
+ await page.getByRole('button',{name:'Expand Power figure',exact:true}).click();
+ assert.equal(await page.locator('dialog').isVisible(),true); await page.keyboard.press('Escape');
+ await page.locator('dialog').waitFor({state:'detached'});
+ assert.equal(await page.locator('dialog').count(),0);
+ await page.getByRole('button',{name:'Open report',exact:true}).click();
+ await page.frameLocator('.bio-report-frame').getByRole('heading',{name:'Study QC'}).waitFor();
+ assert.equal(await page.locator('.bio-report-frame').getAttribute('sandbox'),'');
+ assert.equal(await page.evaluate(()=>window.injected),undefined);
+ await page.getByRole('button',{name:/Figures/}).click();
+ assert.equal(await page.locator('.bio-result-card').count(),1);
+ await page.locator('#bio-result-experiment').selectOption('gwas');
+ assert.match(await page.locator('#bio-results-workspace').innerText(),/No results have been added/);
+ await page.locator('#bio-experiments-tab').click(); await assertVisible(['north','south']);
+ await page.locator('#bio-flat').click();
+ assert.deepEqual(await page.evaluate(()=>Object.keys(markers).filter(id=>map.hasLayer(markers[id]))),['north','south']);
+ await page.locator('[data-site="south"]').click();
+ assert.match(await page.locator('.leaflet-popup-content').innerText(),/Initial Planning/);
+ assert.equal(await page.locator('.leaflet-popup-content a[href="mailto:research@example.org"]').count(),1);
  await page.emulateMedia({reducedMotion:'reduce'});
  await page.reload();await assertVisible(sites.map(s=>s.client_id));
+ await page.locator('#theme-btn').click();
+ await page.evaluate(()=>{const original=BioGlobe.prototype.setData;BioGlobe.prototype.setData=function(...args){window.testGlobe=this;return original.apply(this,args)}});
  await page.locator('#bio-globe').click();assert.equal(await page.locator('#bio-spin').getAttribute('aria-pressed'),'false');
+ assert.equal(await page.evaluate(()=>testGlobe.theme),'light');
  // Small screens retain reachable controls and have no horizontal overflow.
  await page.setViewportSize({width:390,height:844});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  assert.equal(await page.locator('#bio-globe').isVisible(),true);
+ for(const logo of ['.bio-suite-logo','.bio-hive-logo']) {
+   const bounds=await page.locator(logo).boundingBox();assert.ok(bounds && bounds.x>=0 && bounds.x+bounds.width<=390);
+ }
+ await page.locator('#bio-results-tab').click();
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ assert.equal(await page.locator('#bio-result-experiment').isVisible(),true);
  await page.locator('#bio-runs-tab').click();
  assert.equal(await page.locator('.playback-bar').isVisible(),true);
  assert.equal(await page.locator('#runs-list').isVisible(),true);

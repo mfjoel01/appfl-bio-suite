@@ -23,6 +23,10 @@ reduced motion, mobile layout, JSONL playback, late joining an active run, strea
 isolation, and escaped metadata. The flat map still loads Leaflet and tiles from the
 internet, just as the product does.
 
+It also checks light/dark globe rendering (including paused and newly created globes),
+both header logos, experiment results selection, figure expansion, table search/sorting,
+downloads, sandboxed reports, and restoring map layers after leaving Results.
+
 Optional environment variables:
 
 - `PLAYWRIGHT_MODULE`: path to an existing Playwright or playwright-core installation.

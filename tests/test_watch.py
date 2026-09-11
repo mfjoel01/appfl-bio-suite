@@ -312,7 +312,7 @@ def test_export_is_three_self_contained_files(federation, tmp_path):
 
     assets = Assets()
     assets.feed(page)
-    assert assets.scripts == ["vendor.js", "land.js", "globe.js", "viewer.js"]
+    assert assets.scripts == ["vendor.js", "land.js", "globe.js", "results.js", "viewer.js"]
     assert "bio-viewer-style" in assets.styles
     assert 'id="bio-asset-notices"' in page
     assert "Permission to use, copy, modify, and/or distribute this software" in page

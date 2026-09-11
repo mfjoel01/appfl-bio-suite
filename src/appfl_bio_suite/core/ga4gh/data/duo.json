@@ -1,0 +1,399 @@
+{
+  "ontology": "DUO",
+  "title": "Data Use Ontology",
+  "version_iri": "http://purl.obolibrary.org/obo/duo/releases/2021-02-23/duo.owl",
+  "source": "https://raw.githubusercontent.com/EBISPOT/DUO/master/duo.owl",
+  "license": "http://creativecommons.org/licenses/by/4.0/",
+  "terms": {
+    "DUO:0000001": {
+      "id": "DUO:0000001",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000001",
+      "label": "data use permission",
+      "definition": "A data item that is used to indicate consent permissions for datasets and/or materials, and relates to the purposes for which datasets and/or material might be removed, stored or used.",
+      "deprecated": false,
+      "parents": [
+        "IAO:0000027"
+      ]
+    },
+    "DUO:0000002": {
+      "id": "DUO:0000002",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000002",
+      "label": "obsolete consent code primary category",
+      "definition": "A categorical data item indicating the primary category the consent code belongs to according to Dyke et al. 2016.",
+      "deprecated": true,
+      "parents": [
+        "oboInOwl#ObsoleteClass"
+      ]
+    },
+    "DUO:0000003": {
+      "id": "DUO:0000003",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000003",
+      "label": "obsolete consent code secondary category",
+      "definition": "A categorical data item indicating the secondary category the consent code belongs to according to Dyke et al. 2016.",
+      "deprecated": true,
+      "parents": [
+        "oboInOwl#ObsoleteClass"
+      ]
+    },
+    "DUO:0000004": {
+      "id": "DUO:0000004",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000004",
+      "label": "no restriction",
+      "definition": "This data use permission indicates there is no restriction on use.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000001"
+      ]
+    },
+    "DUO:0000005": {
+      "id": "DUO:0000005",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000005",
+      "label": "obsolete general research use and clinical care",
+      "definition": "This data use limitation indicates that use is allowed for health/medical/biomedical purposes and other biological research, including the study of population origins or ancestry.",
+      "deprecated": false,
+      "parents": [
+        "oboInOwl#ObsoleteClass"
+      ]
+    },
+    "DUO:0000006": {
+      "id": "DUO:0000006",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000006",
+      "label": "health or medical or biomedical research",
+      "definition": "This data use permission indicates that use is allowed for health/medical/biomedical purposes; does not include the study of population origins or ancestry.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000042"
+      ]
+    },
+    "DUO:0000007": {
+      "id": "DUO:0000007",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000007",
+      "label": "disease specific research",
+      "definition": "This data use permission indicates that use is allowed provided it is related to the specified disease.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000006"
+      ]
+    },
+    "DUO:0000011": {
+      "id": "DUO:0000011",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000011",
+      "label": "population origins or ancestry research only",
+      "definition": "This data use permission indicates that use of the data is limited to the study of population origins or ancestry.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000001"
+      ]
+    },
+    "DUO:0000012": {
+      "id": "DUO:0000012",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000012",
+      "label": "research specific restrictions",
+      "definition": "This data use modifier indicates that use is limited to studies of a certain research type.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000017"
+      ]
+    },
+    "DUO:0000014": {
+      "id": "DUO:0000014",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000014",
+      "label": "obsolete research use only",
+      "definition": "This data use limitation indicates that use is limited to research purposes (e.g., does not include its use in clinical care).",
+      "deprecated": false,
+      "parents": [
+        "oboInOwl#ObsoleteClass"
+      ]
+    },
+    "DUO:0000015": {
+      "id": "DUO:0000015",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000015",
+      "label": "no general methods research",
+      "definition": "This data use modifier indicates that use does not allow methods development research (e.g., development of software or algorithms).",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000017"
+      ]
+    },
+    "DUO:0000016": {
+      "id": "DUO:0000016",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000016",
+      "label": "genetic studies only",
+      "definition": "This data use modifier indicates that use is limited to genetic studies only (i.e., studies that include genotype research alone or both genotype and phenotype research, but not phenotype research exclusively)",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000017"
+      ]
+    },
+    "DUO:0000017": {
+      "id": "DUO:0000017",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000017",
+      "label": "data use modifier",
+      "definition": "Data use modifiers indicate additional conditions for use.",
+      "deprecated": false,
+      "parents": [
+        "IAO:0000027"
+      ]
+    },
+    "DUO:0000018": {
+      "id": "DUO:0000018",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000018",
+      "label": "not for profit, non commercial use only",
+      "definition": "This data use modifier indicates that use of the data is limited to not-for-profit organizations and not-for-profit use, non-commercial use.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000017"
+      ]
+    },
+    "DUO:0000019": {
+      "id": "DUO:0000019",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000019",
+      "label": "publication required",
+      "definition": "This data use modifier indicates that requestor agrees to make results of studies using the data available to the larger scientific community.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000017"
+      ]
+    },
+    "DUO:0000020": {
+      "id": "DUO:0000020",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000020",
+      "label": "collaboration required",
+      "definition": "This data use modifier indicates that the requestor must agree to collaboration with the primary study investigator(s).",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000017"
+      ]
+    },
+    "DUO:0000021": {
+      "id": "DUO:0000021",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000021",
+      "label": "ethics approval required",
+      "definition": "This data use modifier indicates that the requestor must provide documentation of local IRB/ERB approval.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000017"
+      ]
+    },
+    "DUO:0000022": {
+      "id": "DUO:0000022",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000022",
+      "label": "geographical restriction",
+      "definition": "This data use modifier indicates that use is limited to within a specific geographic region.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000017"
+      ]
+    },
+    "DUO:0000024": {
+      "id": "DUO:0000024",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000024",
+      "label": "publication moratorium",
+      "definition": "This data use modifier indicates that requestor agrees not to publish results of studies until a specific date.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000017"
+      ]
+    },
+    "DUO:0000025": {
+      "id": "DUO:0000025",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000025",
+      "label": "time limit on use",
+      "definition": "This data use modifier indicates that use is approved for a specific number of months.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000017"
+      ]
+    },
+    "DUO:0000026": {
+      "id": "DUO:0000026",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000026",
+      "label": "user specific restriction",
+      "definition": "This data use modifier indicates that use is limited to use by approved users.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000017"
+      ]
+    },
+    "DUO:0000027": {
+      "id": "DUO:0000027",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000027",
+      "label": "project specific restriction",
+      "definition": "This data use modifier indicates that use is limited to use within an approved project.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000017"
+      ]
+    },
+    "DUO:0000028": {
+      "id": "DUO:0000028",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000028",
+      "label": "institution specific restriction",
+      "definition": "This data use modifier indicates that use is limited to use within an approved institution.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000017"
+      ]
+    },
+    "DUO:0000029": {
+      "id": "DUO:0000029",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000029",
+      "label": "return to database or resource",
+      "definition": "This data use modifier indicates that the requestor must return derived/enriched data to the database/resource.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000017"
+      ]
+    },
+    "DUO:0000031": {
+      "id": "DUO:0000031",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000031",
+      "label": "method development",
+      "definition": "An investigation concerning development of methods, algorithms, software or analytical tools.",
+      "deprecated": false,
+      "parents": [
+        "OBI:0000066"
+      ]
+    },
+    "DUO:0000032": {
+      "id": "DUO:0000032",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000032",
+      "label": "population research",
+      "definition": "An investigation concerning a specific population group.",
+      "deprecated": false,
+      "parents": [
+        "OBI:0000066"
+      ]
+    },
+    "DUO:0000033": {
+      "id": "DUO:0000033",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000033",
+      "label": "ancestry research",
+      "definition": "An investigation concerning ancestry or population origins.",
+      "deprecated": false,
+      "parents": [
+        "OBI:0000066"
+      ]
+    },
+    "DUO:0000034": {
+      "id": "DUO:0000034",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000034",
+      "label": "age category research",
+      "definition": "An investigation concerning specific age categories.",
+      "deprecated": false,
+      "parents": [
+        "OBI:0000066"
+      ]
+    },
+    "DUO:0000035": {
+      "id": "DUO:0000035",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000035",
+      "label": "gender category research",
+      "definition": "An investigation concerning specific gender categories.",
+      "deprecated": false,
+      "parents": [
+        "OBI:0000066"
+      ]
+    },
+    "DUO:0000036": {
+      "id": "DUO:0000036",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000036",
+      "label": "research control",
+      "definition": "An investigation concerning use of data as reference or control material.",
+      "deprecated": false,
+      "parents": [
+        "OBI:0000066"
+      ]
+    },
+    "DUO:0000037": {
+      "id": "DUO:0000037",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000037",
+      "label": "biomedical research",
+      "definition": "An investigation concerning health, medical, or biomedical research.",
+      "deprecated": false,
+      "parents": [
+        "OBI:0000066"
+      ]
+    },
+    "DUO:0000038": {
+      "id": "DUO:0000038",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000038",
+      "label": "genetic research",
+      "definition": "Biomedical research concerning genetics (i.e., the study of genes, genetic variations and heredity).",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000037"
+      ]
+    },
+    "DUO:0000039": {
+      "id": "DUO:0000039",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000039",
+      "label": "drug development research",
+      "definition": "Biomedical research concerning drug development.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000037"
+      ]
+    },
+    "DUO:0000040": {
+      "id": "DUO:0000040",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000040",
+      "label": "disease category research",
+      "definition": "Biomedical research research concerning specific disease/s",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000037"
+      ]
+    },
+    "DUO:0000042": {
+      "id": "DUO:0000042",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000042",
+      "label": "general research use",
+      "definition": "This data use permission indicates that use is allowed for general research use for any research purpose.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000001"
+      ]
+    },
+    "DUO:0000043": {
+      "id": "DUO:0000043",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000043",
+      "label": "clinical care use",
+      "definition": "This data use modifier indicates that use is allowed for clinical use and care.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000017"
+      ]
+    },
+    "DUO:0000044": {
+      "id": "DUO:0000044",
+      "iri": "http://purl.obolibrary.org/obo/DUO_00000044",
+      "label": "population origins or ancestry research prohibited",
+      "definition": "This data use modifier indicates use for purposes of population, origin, or ancestry research is prohibited.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000017"
+      ]
+    },
+    "DUO:0000045": {
+      "id": "DUO:0000045",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000045",
+      "label": "not for profit organisation use only",
+      "definition": "This data use modifier indicates that use of the data is limited to not-for-profit organizations.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000018"
+      ]
+    },
+    "DUO:0000046": {
+      "id": "DUO:0000046",
+      "iri": "http://purl.obolibrary.org/obo/DUO_0000046",
+      "label": "non-commercial use only",
+      "definition": "This data use modifier indicates that use of the data is limited to not-for-profit use.",
+      "deprecated": false,
+      "parents": [
+        "DUO:0000018"
+      ]
+    }
+  }
+}

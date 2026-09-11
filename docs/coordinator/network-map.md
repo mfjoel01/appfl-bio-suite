@@ -48,6 +48,9 @@ drag to turn it, zoom to look closer, and select a site to inspect its details. 
 pause rotation. Arrow keys rotate the focused globe, `+` and `-` zoom, `Space` toggles
 rotation, and `Home` resets the view. Rotation starts paused when your browser requests
 reduced motion. Both views use the same sites and experiment selection.
+The theme button also changes the globe: light mode uses pale oceans, mint land,
+and a bright sky, while dark mode retains the night palette. Both the suite logo
+and the smaller original HiveWatch logo remain in the header.
 
 The **Experiments** tab starts with **All experiments** selected, showing every site in
 the loaded federation. Select **Fine-mapping**, **GWAS**, or any combination of experiments
@@ -62,6 +65,53 @@ Run monitoring remains available under **Runs**, including selecting recorded ru
 playback controls. The federation view takes priority, and round, global accuracy and
 global loss no longer occupy the page header. `watch serve` and `watch export` use the
 same viewer.
+
+### Partners and experiment results
+
+The **Results** tab sits between Experiments and Runs. Choose an experiment to see
+its published figures, tables, and reports in the main workspace. Figures expand;
+CSV/TSV tables support search and numeric or text sorting; HTML reports open in a
+sandboxed frame. Every artifact has a download link. Experiments without results
+show an empty state. Map filters remain independent and are preserved when returning
+to Experiments; a single selected map experiment becomes the initial Results selection.
+
+An optional JSON catalogue adds planning partners and explicitly selected result files:
+
+```bash
+cp watch.catalog.json.example local/watch/catalog.json
+# Edit the catalogue's partners and result paths, then:
+appfl-bio-suite watch build --catalog local/watch/catalog.json
+appfl-bio-suite watch serve
+# Or create the same static viewer:
+appfl-bio-suite watch export --catalog local/watch/catalog.json --out local/watch-site
+```
+
+The example's artifact paths are relative to the repository root; when copying it
+into `local/watch/`, prefix those paths with `../../`. Paths are resolved relative
+to the catalogue file, and absolute paths also work. The catalogue is loaded only
+when `--catalog` is supplied. Rebuild or re-export after changing it.
+
+Each partner has a stable `id`, `name`, `country`, `projects` array and `stage`.
+Optional fields are `contacts`, `notes`, `location`, `location_basis`, and `source_url`.
+Use the existing federation site id to enrich that site without duplicating it;
+the federation's sample counts, coordinates and endpoint status stay authoritative.
+New partners have no declared sample count or compute endpoint. A planning stage
+does not imply that an experiment is running. Use `location: null` for an unresolved
+location, or document a representative institutional marker with its source.
+
+Each results group names an `experiment`, `title`, optional `description`, and an
+`artifacts` array of `{ "title": "...", "path": "..." }` objects. Artifact descriptions
+are optional. Supported files are PNG, JPEG, WebP, CSV, TSV and HTML, up to 16 MiB each.
+Tables preview the first 200 rows; search and sorting apply to that preview, while
+downloads contain the complete file. HTML report scripts are disabled in the viewer.
+For interactive report content, publish a static figure or table alongside the report.
+
+The catalogue publishes the listed contacts, notes, and entire selected file contents.
+Choose files intended for the viewer's audience. The catalogue's filesystem paths
+are not included in the generated metadata, and no result directories are scanned.
+Artifacts are embedded in `network.map.json`, so the export still contains three files.
+Use `local/` for your deployment's roster and catalogue; the repository example contains
+only a fictional partner and already published reference results.
 
 ---
 
@@ -110,8 +160,8 @@ anyone their identity mapping does not name, so a leaked UUID grants nothing —
 "grants nothing" is a claim about *their* configuration, not yours, and this is a page
 meant to be handed out. For an internal deployment, opt in.
 
-Read `site/network.map.json` before you publish it. It is small and it is the whole
-payload.
+Read `site/network.map.json` before you publish it. It is the whole data payload;
+with a catalogue, it also contains embedded results and the partner details you selected.
 
 ---
 

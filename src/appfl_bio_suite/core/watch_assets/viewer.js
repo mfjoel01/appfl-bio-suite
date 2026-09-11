@@ -5,9 +5,10 @@
   const esc = escapeHtml;
   const ui = { selected: null, experiments: [], view: 'flat', tab: 'experiments',
     server: null, globe: null, runId: null, loading: false, loadToken: 0, focus: null,
-    liveRuns: new Set(), queued: [], error: '', source: !!(METADATA_URL || EVENTS_URL) };
+    liveRuns: new Set(), queued: [], error: '', resultGroups: [], resultsRevision: 0, resultsSignature: '',
+    source: !!(METADATA_URL || EVENTS_URL) };
   const labels = { 'fine-mapping': 'Fine-mapping', gwas: 'GWAS',
-    'flamby-heart-disease': 'FLamby · Heart disease' };
+    'flamby-heart-disease': 'FLamby · Heart disease', caidf: 'CAIDF', cpg: 'CpG', tbd: 'Project TBD' };
   const label = name => labels[name] || name;
   const number = value => Number(value || 0).toLocaleString();
   const coordinate = v => v == null || (typeof v === 'string' && v.trim() === '') || typeof v === 'boolean' ? null
@@ -21,15 +22,24 @@
   }
   const matches = c => ui.selected === null || memberships(c).some(e => ui.selected.has(e));
   const visible = () => Object.entries(state.clients).filter(([, c]) => matches(c));
-  const color = c => ({ idle: '#f5bd66', dropped: '#f08085', failed: '#f08085' }[c.status] || '#50d9c7');
-  const statusLabel = c => ui.runId === 'network' ? `Member · ${c.status || 'active'}` : c.status || 'active';
+  const color = c => ({ '0': '#8d9eaa', '1': '#669fe0', '2': '#d89e42', '4': '#15b9a6', X: '#db717e' }
+    [String(c.partnership_stage || '').slice(0, 1)] || { idle: '#f5bd66', dropped: '#f08085', failed: '#f08085' }[c.status] || '#50d9c7');
+  const statusLabel = c => c.partnership_stage || (ui.runId === 'network' ? `Member · ${c.status || 'active'}` : c.status || 'active');
 
   document.documentElement.dataset.theme = 'dark';
   document.body.classList.add('bio-viewer');
   document.title = 'Federation network · Hive Watch';
-  document.querySelector('.logo').innerHTML = `<span class="bio-mark" aria-hidden="true">⬡</span>
+  const hiveLogo = document.querySelector('.logo-img');
+  const branding = JSON.parse($('bio-branding-data')?.textContent || '{}');
+  document.querySelector('.logo').innerHTML = `<img class="bio-suite-logo" alt="APPFL Bio Suite network logo">
     <div><div class="bio-brand">APPFL <span>Bio Suite</span></div>
-    <div class="bio-brand-note">FEDERATION NETWORK <span> / HIVE WATCH</span></div></div>`;
+    <div class="bio-brand-note">FEDERATION NETWORK</div></div>`;
+  document.querySelector('.bio-suite-logo').src = branding.suite_logo || '';
+  if (hiveLogo) {
+    hiveLogo.classList.add('bio-hive-logo'); hiveLogo.alt = 'HiveWatch';
+    const credit = document.createElement('div'); credit.className = 'bio-hive-credit';
+    credit.append(hiveLogo); document.querySelector('.header-right').prepend(credit);
+  }
   for (const id of ['hdr-round', 'hdr-acc', 'hdr-loss']) $(id).closest('.stat').hidden = true;
   $('hdr-clients').nextElementSibling.textContent = 'Sites shown';
   document.querySelector('.header-stats').insertAdjacentHTML('beforeend', `
@@ -50,6 +60,7 @@
   siteHeading.remove();
   sidebar.insertAdjacentHTML('afterbegin', `<div class="bio-tabs" role="tablist" aria-label="Explore federation">
     <button id="bio-experiments-tab" role="tab" aria-selected="true" aria-controls="bio-experiments-panel">Experiments</button>
+    <button id="bio-results-tab" role="tab" aria-selected="false" aria-controls="bio-results-panel" tabindex="-1">Results</button>
     <button id="bio-runs-tab" role="tab" aria-selected="false" aria-controls="bio-runs-panel" tabindex="-1">Runs <span>↗</span></button></div>
     <section id="bio-experiments-panel" role="tabpanel" aria-labelledby="bio-experiments-tab">
       <div class="bio-panel-intro"><h1>Explore the network</h1><p>See where each experiment happens.</p></div>
@@ -57,6 +68,7 @@
       <div class="bio-sites-heading"><span>PARTICIPATING SITES</span><span id="bio-site-count">0</span></div>
       <p id="bio-filter-note" role="status"></p>
     </section>
+    <section id="bio-results-panel" role="tabpanel" aria-labelledby="bio-results-tab" hidden></section>
     <section id="bio-runs-panel" role="tabpanel" aria-labelledby="bio-runs-tab" hidden>
       <div class="bio-panel-intro"><h1>Runs & playback</h1><p>Inspect live activity or replay a saved run.</p></div>
       <button id="bio-network-return" class="bio-text-button">← Return to federation network</button>
@@ -65,6 +77,10 @@
   $('bio-runs-panel').append(runs, roundSummary, logPanel);
 
   const area = document.querySelector('.map-area');
+  const resultsWorkspace = document.createElement('div'); resultsWorkspace.id = 'bio-results-workspace';
+  resultsWorkspace.hidden = true; resultsWorkspace.setAttribute('aria-label', 'Experiment results');
+  area.append(resultsWorkspace);
+  const resultsView = new BioResults($('bio-results-panel'), resultsWorkspace);
   area.insertAdjacentHTML('afterbegin', `<div class="bio-map-toolbar">
     <div><div class="bio-eyebrow">CONNECTED SCIENCE</div><h2 id="bio-map-title">Federation footprint</h2></div>
     <div class="bio-view-switch" role="group" aria-label="Map view">
@@ -76,7 +92,7 @@
     <div id="bio-site-detail" hidden></div>
     <div class="bio-map-footer"><div class="bio-legend"><span><i class="bio-dot"></i> Site</span>
       <span><i class="bio-dot bio-hub"></i> Coordinator</span></div>
-      <span id="bio-geography-note">Locations declared by the federation</span></div>
+      <span id="bio-geography-note">Institution locations · See site details for sources</span></div>
     <div id="bio-globe-controls" hidden><button id="bio-spin" aria-pressed="true">Pause rotation</button>
       <button id="bio-zoom-in" aria-label="Zoom globe in">+</button>
       <button id="bio-zoom-out" aria-label="Zoom globe out">−</button>
@@ -87,7 +103,11 @@
   function setTab(tab) {
     ui.tab = tab;
     document.body.classList.toggle('bio-show-runs', tab === 'runs');
-    for (const name of ['experiments', 'runs']) {
+    document.body.classList.toggle('bio-show-results', tab === 'results');
+    resultsWorkspace.hidden = tab !== 'results';
+    ui.globe?.setVisible(ui.view === 'globe' && tab !== 'results');
+    if (tab === 'results') resultsView.open(ui.selected?.size === 1 ? [...ui.selected][0] : null);
+    for (const name of ['experiments', 'results', 'runs']) {
       const active = tab === name;
       $(`bio-${name}-tab`).setAttribute('aria-selected', String(active));
       $(`bio-${name}-tab`).tabIndex = active ? 0 : -1;
@@ -95,15 +115,17 @@
     }
     document.querySelector('.playback-bar').hidden = tab !== 'runs';
     $('debug').hidden = tab !== 'runs' || ui.source;
+    syncLayers();
     requestAnimationFrame(() => map.invalidateSize());
   }
-  for (const tab of ['experiments', 'runs']) {
+  const tabs = ['experiments', 'results', 'runs'];
+  for (const tab of tabs) {
     $(`bio-${tab}-tab`).onclick = () => setTab(tab);
     $(`bio-${tab}-tab`).onkeydown = event => {
       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
       event.preventDefault();
       const next = event.key === 'Home' ? 'experiments' : event.key === 'End' ? 'runs'
-        : tab === 'runs' ? 'experiments' : 'runs';
+        : tabs[(tabs.indexOf(tab) + (event.key === 'ArrowRight' ? 1 : 2)) % tabs.length];
       setTab(next); $(`bio-${next}-tab`).focus();
     };
   }
@@ -153,6 +175,7 @@
         <span class="bio-dot" style="background:${color(c)}" title="${esc(statusLabel(c))}"></span></span>
       <span class="bio-site-location">${esc([c.city, c.country].filter(Boolean).join(', ') || 'Location not declared')}</span>
       <span class="bio-tags">${memberships(c).map(e => `<span>${esc(label(e))}</span>`).join('')}</span>
+      ${c.partnership_stage ? `<span class="bio-partner-stage" style="--stage-color:${color(c)}">${esc(c.partnership_stage)}</span>` : ''}
       <span class="bio-card-bottom"><span>${c.num_samples == null ? 'Samples not declared' : number(c.num_samples) + ' declared samples'}</span>
         <span>${placed(c) ? '↗' : 'Unplaced'}</span></span></button>`;
   }
@@ -161,8 +184,13 @@
       <strong>${esc(c[e] || 'Participating')}</strong></div>`).join('');
     return `<div class="popup-title">${esc(c.institution || id)}</div>
       <p class="bio-detail-location">${esc([c.city, c.country].filter(Boolean).join(', ') || 'Location not declared')}</p>
-      ${experimentRows}<div class="bio-detail-row"><span>Samples across experiments</span><strong>${number(c.num_samples)}</strong></div>
-      <div class="bio-detail-row"><span>Status</span><strong>${esc(c.status || 'active')}</strong></div>
+      ${experimentRows}<div class="bio-detail-row"><span>Samples across experiments</span><strong>${c.num_samples == null ? 'Not declared' : number(c.num_samples)}</strong></div>
+      <div class="bio-detail-row"><span>${c.partnership_stage ? 'Project readiness' : 'Status'}</span><strong>${esc(statusLabel(c))}</strong></div>
+      ${Array.isArray(c.contacts) ? c.contacts.map(contact => `<div class="bio-detail-row"><span>${esc(contact.name)}</span>
+        <a href="mailto:${esc(encodeURI(contact.email))}">${esc(contact.email)}</a></div>`).join('') : ''}
+      ${c.notes ? `<div class="bio-detail-row"><span>Notes</span><strong>${esc(c.notes)}</strong></div>` : ''}
+      ${c.location_basis ? `<div class="bio-detail-row"><span>Map location</span><strong>${esc(c.location_basis)}</strong>
+        ${/^https?:\/\//.test(c.location_source || '') ? `<a href="${esc(c.location_source)}" target="_blank" rel="noopener noreferrer">Location source ↗</a>` : ''}</div>` : ''}
       <details class="bio-metadata"><summary>Site details & metrics</summary><div class="client-metrics">${renderClientMetrics(c)}</div></details>`;
   }
   function closeDetail() { ui.focus = null; $('bio-site-detail').hidden = true; map.closePopup(); }
@@ -188,7 +216,7 @@
   // Keep complete HiveWatch state for playback; filtering changes only visible layers.
   function syncLayers() {
     for (const [id, c] of Object.entries(state.clients)) {
-      const show = matches(c) && placed(c) && ui.view === 'flat';
+      const show = matches(c) && placed(c) && ui.view === 'flat' && ui.tab !== 'results';
       const toggle = (layer, enabled) => {
         if (!layer) return;
         if (enabled && !map.hasLayer(layer)) layer.addTo(map);
@@ -199,7 +227,7 @@
       toggle(packets[id]?.uplink, show && !!ui.server && ui.runId !== 'network');
       toggle(packets[id]?.downlink, show && !!ui.server && ui.runId !== 'network');
     }
-    if (ui.view === 'globe' || ui.runId === 'network') stopNetworkAnimation();
+    if (ui.view === 'globe' || ui.runId === 'network' || ui.tab === 'results') stopNetworkAnimation();
     if (ui.globe) ui.globe.setData(visible().map(([id, c]) => ({ ...c, client_id: id })), ui.server);
   }
 
@@ -216,7 +244,7 @@
     $('sb-acc').textContent = fmtAcc(state.globalAcc);
     $('sb-loss').textContent = fmtLoss(state.globalLoss);
     const unplaced = entries.filter(([, c]) => !placed(c)).length;
-    $('bio-filter-note').textContent = ui.selected === null ? 'All participating institutions'
+    $('bio-filter-note').textContent = ui.selected === null ? 'All sites and partner institutions'
       : ui.selected.size ? 'Sites in any selected experiment' : 'Select an experiment to show its sites.';
     if (unplaced) $('bio-filter-note').textContent += ` · ${unplaced} unplaced`;
     const focused = document.activeElement?.dataset.site;
@@ -227,6 +255,10 @@
     $('bio-map-message').hidden = !!entries.length || ui.loading;
     $('bio-map-message').textContent = ui.error || (total ? 'No sites match this selection' : 'No federation data loaded');
     syncLayers();
+    const signature = `${ui.resultsRevision}|${ui.experiments.join(',')}`;
+    if (ui.resultsSignature !== signature) {
+      ui.resultsSignature = signature; resultsView.setData(ui.resultGroups, ui.experiments);
+    }
   };
 
   // HiveWatch 0.2.1 coerces null to zero and guesses an undeclared coordinator.
@@ -332,7 +364,7 @@
     $('bio-flat').setAttribute('aria-pressed', String(view === 'flat'));
     $('bio-globe').setAttribute('aria-pressed', String(view === 'globe'));
     area.classList.toggle('bio-globe-view', view === 'globe');
-    ui.globe?.setVisible(view === 'globe');
+    ui.globe?.setVisible(view === 'globe' && ui.tab !== 'results');
     if (view === 'flat') requestAnimationFrame(() => map.invalidateSize());
     renderSidebar();
   }
@@ -358,7 +390,8 @@
   async function loadSource({ metadataUrl, eventsUrl, runId, live = false }) {
     const token = ++ui.loadToken;
     ui.loading = true; ui.error = ''; ui.runId = runId || 'external'; ui.queued = [];
-    ui.selected = null; closeDetail(); stopPlayback(); clearMap(); applyServerMetadata(null);
+    ui.selected = null; ui.resultGroups = []; ui.resultsRevision++;
+    closeDetail(); stopPlayback(); clearMap(); applyServerMetadata(null);
     pb.rounds = []; pb.events = []; pb.runId = ui.runId; pb.index = 0;
     setMode('replay'); renderSidebar();
     try {
@@ -369,6 +402,7 @@
       }
       if (!metadata?.rounds?.length && eventsUrl) events = await json(eventsUrl);
       if (token !== ui.loadToken) return;
+      ui.resultGroups = metadata?.results || []; ui.resultsRevision++;
       live = !ui.source && ui.runId !== 'network' && !(metadata?.finished_at || events.some(e => e.event_type === 'finished'));
       if (live) ui.liveRuns.add(ui.runId); else ui.liveRuns.delete(ui.runId);
       pb.events = events;

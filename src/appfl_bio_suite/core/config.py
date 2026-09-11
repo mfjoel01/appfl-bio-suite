@@ -743,7 +743,7 @@ class Federation(_Strict):
         path that needs DRS -- resolving a site's ``drs_uri``, building a registry -- and
         an Optional here would only move the same message into five call sites.
         """
-        service = (self.ga4gh.drs if self.ga4gh else None)
+        service = self.ga4gh.drs if self.ga4gh else None
         if service is None:
             raise FederationError(
                 f"no `ga4gh.drs` block in {self._where()}, but something asked for a DRS "
@@ -757,7 +757,7 @@ class Federation(_Strict):
         return service
 
     def tes_service(self) -> TesService:
-        service = (self.ga4gh.tes if self.ga4gh else None)
+        service = self.ga4gh.tes if self.ga4gh else None
         if service is None:
             raise FederationError(
                 f"no `ga4gh.tes` block in {self._where()}, but a TES run was requested. "

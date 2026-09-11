@@ -48,9 +48,7 @@ def make_bundle(root, terms: dict | None = None):
     (data / "selected_loci.tsv").write_text("locus_id\tchrom\tstart_bp\tend_bp\nL0\t1\t1\t1000\n")
     (data / "phenotypes" / "L0_arch_rep0.pheno").write_text("FID\tIID\ty\n1\tIND1\t0.5\n")
     if terms is not None:
-        write_profile(
-            DataUseProfile(dataset_id="test/site", **terms), data / "DATA_USE.json"
-        )
+        write_profile(DataUseProfile(dataset_id="test/site", **terms), data / "DATA_USE.json")
     return data
 
 
@@ -93,9 +91,7 @@ def test_a_bundle_without_terms_is_not_refused(tmp_path):
 def test_waiving_enforcement_still_records_the_refusal(tmp_path):
     """A result computed under a waived check must not look like a permitted one."""
     data = make_bundle(tmp_path, {"permission": "DUO:0000011"})
-    dataset = SiteFineMappingDataset(
-        data, "site", data_use_request=STUDY, enforce_data_use=False
-    )
+    dataset = SiteFineMappingDataset(data, "site", data_use_request=STUDY, enforce_data_use=False)
     assert dataset.data_use["outcome"] == "denied"
     assert dataset.data_use["enforced"] is False
 

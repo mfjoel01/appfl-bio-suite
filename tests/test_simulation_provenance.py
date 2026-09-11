@@ -21,11 +21,11 @@ from appfl_bio_suite.core.simulation import checksum_tree, verify_against_manife
 def _tree(root: Path) -> None:
     """A layout with the same shape as a fine-mapping run directory."""
     for rel in (
-        "anl/data/site_genotypes.bed",           # the bundle -- in scope
+        "anl/data/site_genotypes.bed",  # the bundle -- in scope
         "anl/data/site_manifest.tsv",
-        "processed/anl/anl_chr1.bed",            # simulation scratch -- out of scope
-        "processed/anl/anl_chr1.log",            # ...and not reproducible anywhere else
-        "ground_truth/causal_manifest.tsv",      # the answer key -- in scope
+        "processed/anl/anl_chr1.bed",  # simulation scratch -- out of scope
+        "processed/anl/anl_chr1.log",  # ...and not reproducible anywhere else
+        "ground_truth/causal_manifest.tsv",  # the answer key -- in scope
         "ground_truth/phenotypes/anl/L0.pheno",  # out of scope
         "loci/selected_loci.tsv",
     ):
@@ -122,7 +122,6 @@ def _manifest(root: Path, outputs: dict[str, str]) -> Path:
         )
     )
     return path
-
 
 
 # ---------------------------------------------------------------------------

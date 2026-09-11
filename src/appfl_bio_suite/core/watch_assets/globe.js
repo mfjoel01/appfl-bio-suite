@@ -27,6 +27,7 @@
       this.rotation = [62, -28, 0];
       this.zoomFactor = 1;
       this.motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+      this.theme = document.documentElement.dataset.theme || 'dark';
       this.spinning = !this.motionPreference.matches;
       this.frame = null;
       this.lastFrame = null;
@@ -55,6 +56,8 @@
         font: '12px/1.5 system-ui, sans-serif', boxShadow: '0 12px 40px #0006',
       });
       this.container.append(this.canvas, this.tooltip);
+      this.themeObserver = new MutationObserver(() => this.setTheme(document.documentElement.dataset.theme));
+      this.themeObserver.observe(document.documentElement, {attributes: true, attributeFilter: ['data-theme']});
       this.projection = d3.geoOrthographic().clipAngle(90).precision(.35);
       this.path = d3.geoPath(this.projection, this.context);
       this.graticule = d3.geoGraticule().step([20, 20])();
@@ -62,6 +65,7 @@
       this.resizeObserver = new ResizeObserver(() => this.resize());
       this.resizeObserver.observe(container);
       this.resize();
+      this.setTheme(this.theme);
       if (this.options.onSpinChange) this.options.onSpinChange(this.spinning);
     }
 
@@ -79,6 +83,18 @@
       this.tooltip.hidden = true;
       this.draw();
       this._schedule();
+    }
+
+    setTheme(theme) {
+      this.theme = theme === 'light' ? 'light' : 'dark';
+      const light = this.theme === 'light';
+      this.tooltip.style.background = light ? 'rgba(255,255,255,.98)' : 'rgba(7,20,35,.96)';
+      this.tooltip.style.color = light ? '#163f4d' : '#edf8fb';
+      this.tooltip.style.borderColor = light ? '#b8d6dc' : 'rgba(118,215,217,.28)';
+      this.tooltip.style.boxShadow = light ? '0 12px 40px #244e601c' : '0 12px 40px #0006';
+      const description = this.tooltip.querySelector('div');
+      if (description) description.style.color = light ? '#496b78' : '#a8c0d0';
+      this.draw();
     }
 
     setVisible(visible) {
@@ -253,9 +269,9 @@
       const title = document.createElement('strong');
       title.textContent = target.item.institution || target.item.client_id || 'Coordinator';
       const description = document.createElement('div');
-      description.style.color = '#a8c0d0';
+      description.style.color = this.theme === 'light' ? '#496b78' : '#a8c0d0';
       description.textContent = target.server ? 'Coordinator' :
-        `${target.item.status || 'Site'} · Select to inspect`;
+        `${target.item.partnership_stage || target.item.status || 'Site'} · Select to inspect`;
       this.tooltip.replaceChildren(title, description);
       const left = clamp(point[0] + 17, 8, Math.max(8, this.width - this.tooltip.offsetWidth - 12));
       const top = clamp(point[1] - 16, 8, Math.max(8, this.height - this.tooltip.offsetHeight - 12));
@@ -266,6 +282,7 @@
     draw() {
       if (!this.visible || !this.width || !this.height || document.hidden) return;
       const ctx = this.context;
+      const light = this.theme === 'light';
       const w = this.width, h = this.height;
       const cx = w / 2, cy = h / 2;
       const radius = Math.min(w, h) * .405 * this.zoomFactor;
@@ -274,23 +291,23 @@
       ctx.clearRect(0, 0, w, h);
 
       const sky = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(w, h) * .7);
-      sky.addColorStop(0, '#102639');
-      sky.addColorStop(.6, '#081726');
-      sky.addColorStop(1, '#060f1b');
+      sky.addColorStop(0, light ? '#ffffff' : '#102639');
+      sky.addColorStop(.6, light ? '#f0f7f9' : '#081726');
+      sky.addColorStop(1, light ? '#e2edf2' : '#060f1b');
       ctx.fillStyle = sky;
       ctx.fillRect(0, 0, w, h);
       // Fixed deterministic stars remain still as the earth rotates.
       for (let i = 1; i <= 95; i++) {
         const x = ((i * 7919) % 997) / 997 * w;
         const y = ((i * 3571) % 991) / 991 * h;
-        ctx.fillStyle = `rgba(171,210,228,${.11 + (i % 4) * .06})`;
+        ctx.fillStyle = light ? 'rgba(82,139,160,.13)' : `rgba(171,210,228,${.11 + (i % 4) * .06})`;
         ctx.beginPath();
         ctx.arc(x, y, i % 7 === 0 ? 1 : .6, 0, TAU);
         ctx.fill();
       }
 
       const atmosphere = ctx.createRadialGradient(cx, cy, radius * .985, cx, cy, radius * 1.075);
-      atmosphere.addColorStop(0, 'rgba(90,219,232,.29)');
+      atmosphere.addColorStop(0, light ? 'rgba(56,165,188,.24)' : 'rgba(90,219,232,.29)');
       atmosphere.addColorStop(.28, 'rgba(58,174,207,.10)');
       atmosphere.addColorStop(1, 'rgba(35,123,167,0)');
       ctx.fillStyle = atmosphere;
@@ -303,49 +320,49 @@
       ctx.arc(cx, cy, radius, 0, TAU);
       ctx.clip();
       const ocean = ctx.createRadialGradient(cx - radius * .36, cy - radius * .48, radius * .1, cx, cy, radius * 1.2);
-      ocean.addColorStop(0, '#163c52');
-      ocean.addColorStop(.65, '#0c273e');
-      ocean.addColorStop(1, '#061321');
+      ocean.addColorStop(0, light ? '#f6fcff' : '#163c52');
+      ocean.addColorStop(.65, light ? '#d8edf5' : '#0c273e');
+      ocean.addColorStop(1, light ? '#bbdce7' : '#061321');
       ctx.fillStyle = ocean;
       ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
 
       ctx.beginPath();
       this.path(this.graticule);
-      ctx.strokeStyle = 'rgba(138,193,211,.115)';
+      ctx.strokeStyle = light ? 'rgba(63,119,141,.17)' : 'rgba(138,193,211,.115)';
       ctx.lineWidth = .65;
       ctx.stroke();
 
       const land = ctx.createLinearGradient(cx - radius, cy - radius, cx + radius, cy + radius);
-      land.addColorStop(0, '#356b73');
-      land.addColorStop(.5, '#25565f');
-      land.addColorStop(1, '#163d4e');
+      land.addColorStop(0, light ? '#bee4d9' : '#356b73');
+      land.addColorStop(.5, light ? '#93c9bf' : '#25565f');
+      land.addColorStop(1, light ? '#6fa99f' : '#163d4e');
       ctx.beginPath();
       this.path(window.BIO_LAND);
       ctx.fillStyle = land;
       ctx.fill();
-      ctx.strokeStyle = 'rgba(121,205,206,.38)';
+      ctx.strokeStyle = light ? 'rgba(51,121,127,.5)' : 'rgba(121,205,206,.38)';
       ctx.lineWidth = .65;
       ctx.stroke();
 
       // Limb shading gives the orthographic projection a spherical appearance.
       const shade = ctx.createRadialGradient(cx - radius * .24, cy - radius * .2, radius * .25, cx, cy, radius);
       shade.addColorStop(0, 'rgba(0,6,17,0)');
-      shade.addColorStop(.72, 'rgba(0,6,17,.03)');
-      shade.addColorStop(1, 'rgba(0,6,17,.59)');
+      shade.addColorStop(.72, light ? 'rgba(23,68,87,.01)' : 'rgba(0,6,17,.03)');
+      shade.addColorStop(1, light ? 'rgba(23,68,87,.16)' : 'rgba(0,6,17,.59)');
       ctx.fillStyle = shade;
       ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
 
       if (this.routes && this.routes.coordinates.length) {
         ctx.beginPath();
         this.path(this.routes);
-        ctx.strokeStyle = 'rgba(99,224,220,.32)';
+        ctx.strokeStyle = light ? 'rgba(0,125,131,.55)' : 'rgba(99,224,220,.32)';
         ctx.lineWidth = 1.15;
         ctx.stroke();
       }
       ctx.restore();
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, TAU);
-      ctx.strokeStyle = 'rgba(131,229,235,.4)';
+      ctx.strokeStyle = light ? 'rgba(49,132,155,.45)' : 'rgba(131,229,235,.4)';
       ctx.lineWidth = 1;
       ctx.stroke();
 
@@ -379,7 +396,10 @@
 
     _drawMarker(x, y, item, server) {
       const ctx = this.context;
-      const color = server ? '#f5c77e' : (COLORS[item.status] || '#66ddd7');
+      const stage = String(item.partnership_stage || '').slice(0, 1);
+      const stageColors = { '0': '#8d9eaa', '1': '#669fe0', '2': '#d89e42', '4': '#15b9a6', X: '#db717e' };
+      const color = server ? (this.theme === 'light' ? '#bd7a17' : '#f5c77e')
+        : stageColors[stage] || (this.theme === 'light' && item.status === 'active' ? '#088981' : COLORS[item.status] || '#66ddd7');
       const hovered = this.hovered && this.hovered.server === server &&
         (server || this.hovered.item.client_id === item.client_id);
       ctx.save();
@@ -416,6 +436,7 @@
     destroy() {
       this.setVisible(false);
       this.resizeObserver.disconnect();
+      this.themeObserver.disconnect();
       document.removeEventListener('visibilitychange', this._visibilityChange);
       this.motionPreference.removeEventListener('change', this._motionChange);
       this.canvas.remove();
