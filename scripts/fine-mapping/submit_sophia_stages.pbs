@@ -1,0 +1,88 @@
+#!/bin/bash
+# Run one or more fine-mapping pipeline stages, in order, on ONE Sophia node.
+#
+# A generic runner rather than a script per stage: every stage goes through the same
+# scripts/fine-mapping/run_stage.py entry point and differs only in its name, so a
+# per-stage script would be four copies of this file with one word changed.
+#
+# Chain stages across jobs with PBS dependencies rather than listing them all here when
+# a single walltime cannot hold them:
+#   A=$(qsub ... -v FM_STAGES=sampling,phenotypes,bundle ...)
+#   qsub -W depend=afterok:$A ... -v FM_STAGES=centralized ...
+#
+# BEFORE YOU SUBMIT
+#   FM_CONFIG   a pipeline_config.yaml; every stage reads and writes the paths IN IT, so
+#               point it at the package you mean to build or analyse
+#   FM_STAGES   comma-separated stage names, run in the order given
+#
+# SUBMIT
+#   qsub -A <allocation> -v FM_CONFIG=...,FM_STAGES=sampling,phenotypes,bundle \
+#        scripts/fine-mapping/submit_sophia_stages.pbs
+#
+# KEEP THE DIRECTIVE BLOCK PURE: no trailing comments on a #PBS line, and no indented
+# lines inside it -- PBS stops scanning at the first line not starting with '#' and
+# silently drops every directive after it.
+
+#PBS -q single-node
+#PBS -l select=1
+#PBS -l walltime=12:00:00
+#PBS -l filesystems=home:grand
+#PBS -N fm-stages
+#PBS -o logs/fm-stages.out
+#PBS -e logs/fm-stages.err
+#PBS -j oe
+
+set -euo pipefail
+
+: "${SUITE_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+# PBS copies the job script into a spool directory before running it, so BASH_SOURCE can
+# resolve somewhere that is not the checkout. Fail here with an instruction rather than
+# 20 lines later with a confusing ImportError.
+if [[ ! -d "${SUITE_ROOT}/src/appfl_bio_suite" ]]; then
+  echo "SUITE_ROOT='${SUITE_ROOT}' is not an appfl-bio-suite checkout." >&2
+  echo "Pass it explicitly:  qsub -v SUITE_ROOT=/path/to/appfl-bio-suite,... " >&2
+  exit 2
+fi
+cd "${SUITE_ROOT}"
+
+: "${FM_CONFIG:?set FM_CONFIG to a pipeline_config.yaml}"
+: "${FM_STAGES:?set FM_STAGES to a comma-separated list of stage names}"
+FM_WORKERS="${FM_WORKERS:-32}"
+
+export TMPDIR="${TMPDIR:-${SUITE_ROOT}/local/scratch}"
+mkdir -p "${TMPDIR}" logs
+
+# One BLAS thread per process: the parallelism is across instances, and letting each
+# worker spawn its own thread pool oversubscribes the node and runs slower.
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+
+PYBIN="${FM_PYTHON:-$(command -v python)}"
+export PYTHONPATH="${SUITE_ROOT}/src:${PYTHONPATH:-}"
+
+echo "host        $(hostname)"
+echo "cores       $(nproc)"
+echo "workers     ${FM_WORKERS}"
+echo "config      ${FM_CONFIG}"
+echo "stages      ${FM_STAGES}"
+echo "started     $(date -Is)"
+echo
+
+IFS=',' read -ra STAGES <<< "${FM_STAGES}"
+for stage in "${STAGES[@]}"; do
+  echo "=== stage ${stage}  $(date -Is) ==="
+  # Only centralized and federated take --n-workers; the rest reject it as an unknown
+  # argument, which would fail the job at whichever stage happened to come first.
+  case "${stage}" in
+    centralized|federated)
+      "${PYBIN}" scripts/fine-mapping/run_stage.py "${stage}" \
+          --config "${FM_CONFIG}" --n-workers "${FM_WORKERS}"
+      ;;
+    *)
+      "${PYBIN}" scripts/fine-mapping/run_stage.py "${stage}" --config "${FM_CONFIG}"
+      ;;
+  esac
+  echo "=== stage ${stage} OK  $(date -Is) ==="
+done
+
+echo
+echo "finished    $(date -Is)"
