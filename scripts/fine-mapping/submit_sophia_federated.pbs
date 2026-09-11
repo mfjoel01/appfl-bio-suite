@@ -1,0 +1,108 @@
+#!/bin/bash
+# Run the standalone FEDERATED fine-mapping sweep on ONE Sophia node.
+#
+# WHAT THIS IS FOR
+#   Corollary 1 says the federated fit EQUALS the centralized one. The evidence for that
+#   was 45 instances at a single locus, while every other number in the study is 79 loci
+#   x 15 architectures. This closes that gap: it runs the federated path over the same
+#   package the centralized baseline used, so the two can be compared instance by
+#   instance rather than in aggregate.
+#
+# WHY SOPHIA AND NOT POLARIS
+#   Same reasoning as submit_sophia_arms.pbs: CPU-only, imports no torch, and Sophia's
+#   PBS is reachable from the login node we work on. The Polaris script is sized for the
+#   full 10-replicate sweep across 25 nodes; at 3 replicates this fits on one node.
+#
+# WHY 3 REPLICATES AND NOT 10
+#   Exactness is deterministic -- it either holds or there is a bug -- so the sweep needs
+#   to cover every locus and every architecture, not every repeat within a design cell.
+#   Lowering `architecture.replicates` is the honest way to get there: the driver's inner
+#   loop is `range(cfg.architecture.replicates)`, so it keeps all 79 loci, all 15
+#   architectures and therefore all three LD-divergence strata, and only thins the
+#   repeats. `--limit` would truncate locus by locus and silently bias the stratum mix.
+#   3 replicates is also exactly what the participation arms carry, so the federated
+#   sweep pairs with them on (locus, architecture, replicate) with nothing dropped.
+#
+# BEFORE YOU SUBMIT
+#   FM_BASE_CONFIG   the pipeline_config.yaml for the package the baseline ran on
+#   FM_FED_DIR       where the derived config, reports and logs go
+#
+# SUBMIT
+#   qsub -A <allocation> -v FM_BASE_CONFIG=...,FM_FED_DIR=... \
+#        scripts/fine-mapping/submit_sophia_federated.pbs
+#
+# KEEP THE DIRECTIVE BLOCK PURE: no trailing comments on a #PBS line, and no indented
+# lines inside it -- PBS stops scanning at the first line not starting with '#' and
+# silently drops every directive after it.
+
+#PBS -q single-node
+#PBS -l select=1
+#PBS -l walltime=08:00:00
+#PBS -l filesystems=home:grand
+#PBS -N fm-fed
+#PBS -o logs/fm-fed.out
+#PBS -e logs/fm-fed.err
+#PBS -j oe
+
+set -euo pipefail
+
+: "${SUITE_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+# PBS copies the job script into a spool directory before running it, so BASH_SOURCE can
+# resolve somewhere that is not the checkout. Fail here with an instruction rather than
+# 20 lines later with a confusing ImportError.
+if [[ ! -d "${SUITE_ROOT}/src/appfl_bio_suite" ]]; then
+  echo "SUITE_ROOT='${SUITE_ROOT}' is not an appfl-bio-suite checkout." >&2
+  echo "Pass it explicitly:  qsub -v SUITE_ROOT=/path/to/appfl-bio-suite,... " >&2
+  exit 2
+fi
+cd "${SUITE_ROOT}"
+
+: "${FM_BASE_CONFIG:?set FM_BASE_CONFIG to the pipeline_config.yaml the baseline ran on}"
+: "${FM_FED_DIR:?set FM_FED_DIR to an output directory}"
+FM_WORKERS="${FM_WORKERS:-32}"
+FM_REPS="${FM_REPS:-3}"
+
+# PLINK writes large intermediates and /tmp is small and shared. Keep them on grand.
+export TMPDIR="${TMPDIR:-${FM_FED_DIR}/tmp}"
+mkdir -p "${TMPDIR}" "${FM_FED_DIR}" logs
+
+# One BLAS thread per process: the parallelism is across instances, and letting each
+# worker spawn its own thread pool oversubscribes the node and runs slower.
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+
+PYBIN="${FM_PYTHON:-$(command -v python)}"
+export PYTHONPATH="${SUITE_ROOT}/src:${PYTHONPATH:-}"
+
+# Derive the run config rather than requiring a hand-edited one: only `replicates` and
+# the output paths change, so the sweep cannot drift from the package the baseline used.
+FED_CONFIG="${FM_FED_DIR}/pipeline_config.federated.yaml"
+"${PYBIN}" - "$FM_BASE_CONFIG" "$FED_CONFIG" "$FM_FED_DIR" "$FM_REPS" <<'PY'
+import sys, yaml, pathlib
+base, dest, run_dir, reps = sys.argv[1:5]
+cfg = yaml.safe_load(pathlib.Path(base).read_text())
+cfg["architecture"]["replicates"] = int(reps)
+cfg["paths"]["reports_dir"] = f"{run_dir}/reports"
+cfg["paths"]["logs_dir"] = f"{run_dir}/logs"
+pathlib.Path(dest).write_text(yaml.safe_dump(cfg, sort_keys=False))
+print(f"derived {dest}  (replicates={reps})")
+PY
+
+echo "host        $(hostname)"
+echo "cores       $(nproc)"
+echo "workers     ${FM_WORKERS}"
+echo "replicates  ${FM_REPS}"
+echo "base config ${FM_BASE_CONFIG}"
+echo "run config  ${FED_CONFIG}"
+echo "out         ${FM_FED_DIR}"
+echo "started     $(date -Is)"
+
+"${PYBIN}" scripts/fine-mapping/run_stage.py federated \
+    --config "${FED_CONFIG}" --n-workers "${FM_WORKERS}"
+
+echo "finished    $(date -Is)"
+echo
+echo "next:  compare against the centralized baseline on the same instances"
+echo "  ${PYBIN} -m appfl_bio_suite.experiments.fine_mapping.figures.render \\"
+echo "      --results   <centralized fm_results.tsv> \\"
+echo "      --federated ${FM_FED_DIR}/reports/fed_fine_mapping/fed_fm_results.tsv \\"
+echo "      --out-dir   <figures>"
