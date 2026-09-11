@@ -694,13 +694,16 @@ def fed5_where_time_goes(
 # matched on sample size, then the whole federation, then the shortcut that avoids it.
 ARM_ORDER = ["covenant", "mbzuai", "anl", "federation_50k", "federation", "ld_borrowed"]
 ARM_LABEL = {
-    "covenant": "Covenant\nalone",
-    "mbzuai": "MBZUAI\nalone",
-    "anl": "ANL\nalone",
-    "federation_50k": "All three\nn matched",
-    "federation": "All three\nfull",
-    "ld_borrowed": "Covenant stats\n+ ANL LD",
+    "covenant": "Covenant alone",
+    "mbzuai": "MBZUAI alone",
+    "anl": "ANL alone",
+    "federation_50k": "All three, n matched",
+    "federation": "All three, full",
+    "ld_borrowed": "Covenant stats + ANL LD",
 }
+# Two lines per label is the natural way to write these and it does not survive six
+# arms: rotated, each label's second line juts right into its neighbour's first. One
+# line rotates cleanly at any length, so the labels stay whole rather than abbreviated.
 
 
 def arm_colors(arms: list[str]) -> list[str]:
@@ -733,7 +736,18 @@ def fed6_what_federation_buys(
     federation reaches more, and panel d says how much of that is simply three times the
     data rather than three times the diversity -- the ``n matched`` arm is the full
     federation restricted to one site's worth of people, so the gap between it and a solo
-    site is diversity and the gap between it and the full federation is sample size.
+    site is the cost of splitting a fixed cohort across ancestries, and the gap between
+    it and the full federation is sample size.
+
+    That first gap is deliberately NOT labelled "diversity". SuSiEx fits one effect per
+    ancestry column, so power tracks the size of the largest column rather than the total,
+    and the solo arms win it by being concentrated: Covenant puts 47,500 of its 50,000
+    people into AFR, where the n-matched federation's largest column is 20,000. The
+    controlled comparison is ANL (5 columns, largest 30,000) against the n-matched
+    federation (5 columns, largest 20,000) -- same total n, same column count, 14.6 pp
+    apart, p~1e-55. Calling the bar "diversity" would tell a reader that ancestral
+    diversity costs 30 points of power, which is not what it measures and is a claim this
+    design cannot support.
 
     The ``ld_borrowed`` arm is a different claim and is coloured as a warning rather than
     as a series. It is the cheap alternative to federating -- one site's summary
@@ -756,7 +770,7 @@ def fed6_what_federation_buys(
 
     d = parse_architecture(by_arm)
 
-    fig, axes = plt.subplots(1, 4, figsize=(16.8, 5.0))
+    fig, axes = plt.subplots(1, 4, figsize=(17.6, 5.2))
     ax_a, ax_b, ax_c, ax_d = axes
 
     def _bars(ax, col, ylabel, letter, title, pct=True):
@@ -811,7 +825,7 @@ def fed6_what_federation_buys(
     if best_solo and "federation_50k" in arms:
         a0 = _rate(d[d["arm"] == best_solo], "captured")[0]
         a1 = _rate(d[d["arm"] == "federation_50k"], "captured")[0]
-        lines.append(("diversity\n(same n, more ancestries)", a1 - a0, fs.PATH["federated"]))
+        lines.append(("splitting fixed n\nacross more ancestries", a1 - a0, fs.PATH["federated"]))
     if "federation_50k" in arms and "federation" in arms:
         a1 = _rate(d[d["arm"] == "federation_50k"], "captured")[0]
         a2 = _rate(d[d["arm"] == "federation"], "captured")[0]
@@ -851,7 +865,16 @@ def fed6_what_federation_buys(
 
     for ax in (ax_a, ax_b, ax_c):
         ax.set_xticks(x)
-        ax.set_xticklabels([ARM_LABEL.get(a, a) for a in arms], fontsize=8.5)
+        # Six arms of two-line labels do not fit a quarter of the canvas horizontally --
+        # they collide into each other and the panel becomes unreadable. Rotating past
+        # four arms keeps the four-arm case upright, which is easier to read.
+        ax.set_xticklabels(
+            [ARM_LABEL.get(a, a) for a in arms],
+            fontsize=8.5 if len(arms) <= 4 else 8.0,
+            rotation=0 if len(arms) <= 4 else 30,
+            ha="center" if len(arms) <= 4 else "right",
+            rotation_mode=None if len(arms) <= 4 else "anchor",
+        )
         ax.grid(axis="x", visible=False)
         for tick, a in zip(ax.get_xticklabels(), arms, strict=False):
             if a == "ld_borrowed":
@@ -890,7 +913,7 @@ def fed6_what_federation_buys(
         "differing only in which cohorts took part. Error bars are Wilson "
         "95% intervals. The `n matched` arm is the full federation "
         "restricted to one site's worth of people, stratified within site "
-        "and ancestry, so panel d can separate diversity from sample size. "
+        "and ancestry, so panel d can separate splitting a fixed cohort from adding to it. "
         "The borrowed-LD arm is the cheap alternative to federating and is "
         "drawn as a warning, not a series.",
     )
