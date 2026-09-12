@@ -1,0 +1,342 @@
+/* Federation-first shell; upstream run controls remain available under Runs. */
+.bio-viewer [hidden] { display: none !important; }
+.bio-viewer { --accent: #50d9c7; --green: #50d9c7; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; height: 100dvh; }
+[data-theme="dark"] .bio-viewer { --bg: #081219; --surface: #101d26; --border: #25343e; --text: #e1edf0; --muted: #93a8b3; --tile-filter: invert(1) hue-rotate(180deg) brightness(.72) saturate(.5); }
+[data-theme="light"] .bio-viewer { --bg: #edf3f3; --surface: #fff; --border: #d6e3e3; --text: #143038; --muted: #536c75; --accent: #087f75; --green: #087f75; }
+.bio-viewer button { font: inherit; }
+.bio-viewer button, .bio-viewer input, .bio-viewer summary { -webkit-tap-highlight-color: transparent; }
+.bio-viewer button:focus-visible, .bio-viewer input:focus-visible, .bio-viewer summary:focus-visible, .bio-viewer canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.bio-viewer button { cursor: pointer; }
+.bio-viewer header { height: 88px; padding: 0 30px; box-shadow: none; background: var(--bg); border-color: var(--border); gap: 24px; }
+.bio-viewer .logo { gap: 12px; flex-shrink: 0; }
+.bio-mark { color: var(--accent); font-size: 52px; line-height: 1; font-weight: 300; }
+.bio-brand { font-size: 18px; letter-spacing: -.4px; font-weight: 700; }
+.bio-brand span { font-weight: 400; color: var(--muted); }
+.bio-brand-note { font-size: 9px; letter-spacing: 1.5px; margin-top: 6px; color: var(--muted); }
+.bio-brand-note span { color: var(--accent); }
+.bio-viewer .header-stats { gap: 40px; margin-left: auto; margin-right: 28px; }
+.bio-viewer .stat-val { font-size: 23px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.bio-viewer .stat-label { font-size: 9px; letter-spacing: 1.3px; margin-top: 7px; }
+.bio-viewer .status-pill { font-size: 10px; padding: 8px 12px; background: transparent; }
+.bio-viewer .theme-btn { font-size: 21px; width: 34px; height: 34px; padding: 0; border-radius: 50%; }
+.bio-viewer .status-dot.live { animation: none; box-shadow: 0 0 8px #50d9c740; }
+.bio-viewer .sidebar { width: 326px; background: var(--bg); }
+.bio-tabs { display: grid; grid-template-columns: 1.3fr 1fr .8fr; margin: 20px 20px 0; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.bio-tabs button { background: none; color: var(--muted); border: none; padding: 14px 4px; font-size: 12px; font-weight: 600; border-bottom: 2px solid transparent; }
+.bio-tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+.bio-tabs button span { margin-left: 8px; opacity: .6; }
+#bio-experiments-panel, #bio-results-panel, #bio-runs-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+#bio-runs-panel { overflow: auto; }
+.bio-panel-intro { padding: 24px 22px 20px; }
+.bio-panel-intro h1 { font-size: 19px; font-weight: 550; letter-spacing: -.5px; }
+.bio-panel-intro p { font-size: 11px; color: var(--muted); margin-top: 7px; line-height: 1.6; }
+#bio-filters { border: 0; padding: 0 18px 21px; flex-shrink: 0; }
+.bio-filter { display: flex; align-items: center; gap: 11px; min-height: 44px; border: 1px solid transparent; border-radius: 8px; padding: 10px 12px; font-size: 12px; cursor: pointer; margin: 3px 0; }
+.bio-filter:hover { background: var(--surface); }
+.bio-filter.selected { background: #50d9c70b; border-color: #50d9c737; }
+.bio-filter input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+.bio-filter-count { margin-left: auto; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; background: var(--surface); min-width: 23px; text-align: center; padding: 3px 5px; border-radius: 4px; }
+.bio-sites-heading { display: flex; justify-content: space-between; font-size: 9px; letter-spacing: 1.6px; padding: 20px 22px 0; border-top: 1px solid var(--border); }
+#bio-site-count { letter-spacing: 0; color: var(--accent); font-size: 11px; }
+#bio-filter-note { color: var(--muted); padding: 8px 22px 12px; font-size: 10px; line-height: 1.5; }
+.bio-viewer .client-list { padding: 2px 16px 20px; }
+.bio-site-card { display: block; width: 100%; text-align: left; border: 1px solid var(--border); color: var(--text); background: var(--surface); border-radius: 10px; padding: 16px 14px 12px; margin-bottom: 10px; transition: border-color .15s, background .15s; }
+.bio-site-card:hover, .bio-site-card.selected { border-color: var(--accent); background: color-mix(in srgb, var(--surface) 95%, var(--accent)); }
+.bio-card-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.bio-site-name { font-weight: 600; font-size: 12px; line-height: 1.5; }
+.bio-site-location { display: block; color: var(--muted); font-size: 10px; margin-top: 5px; line-height: 1.5; }
+.bio-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
+.bio-tags span { font-size: 8px; letter-spacing: .3px; color: var(--accent); border: 1px solid #50d9c728; background: #50d9c707; border-radius: 4px; padding: 4px 6px; }
+.bio-card-bottom { display: flex; justify-content: space-between; font-size: 9px; color: var(--muted); border-top: 1px solid var(--border); margin-top: 13px; padding-top: 10px; }
+.bio-card-bottom span:last-child { color: var(--accent); }
+.bio-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #50d9c7; flex-shrink: 0; box-shadow: 0 0 0 3px #50d9c711; }
+.bio-dot.bio-hub { background: #f5bd66; box-shadow: 0 0 0 3px #f5bd6611; }
+.bio-viewer .map-area { min-width: 0; overflow: hidden; background: #08131d; }
+.bio-viewer #map { background: #122834; }
+.bio-map-toolbar { position: absolute; z-index: 500; top: 28px; left: 30px; right: 30px; display: flex; align-items: center; justify-content: space-between; gap: 14px; pointer-events: none; }
+.bio-map-toolbar > div { pointer-events: auto; }
+.bio-map-toolbar > div:first-child { padding: 12px 16px; background: color-mix(in srgb, var(--bg) 94%, transparent); border: 1px solid var(--border); border-radius: 10px; }
+.bio-eyebrow { font-size: 8px; letter-spacing: 2.3px; color: var(--accent); margin-bottom: 7px; }
+.bio-map-toolbar h2 { font-size: 17px; font-weight: 500; letter-spacing: -.4px; overflow-wrap: anywhere; }
+.bio-view-switch { display: flex; gap: 3px; padding: 4px; border: 1px solid var(--border); background: var(--bg); border-radius: 9px; flex-shrink: 0; }
+.bio-view-switch button { border: none; border-radius: 6px; padding: 9px 13px; background: transparent; color: var(--muted); font-size: 16px; display: flex; align-items: center; gap: 6px; }
+.bio-view-switch button span { font-size: 11px; font-weight: 500; }
+.bio-view-switch button[aria-pressed="true"] { background: var(--surface); color: var(--accent); box-shadow: 0 1px 3px #0003; }
+.bio-map-footer { position: absolute; z-index: 450; bottom: 31px; left: 30px; right: 30px; display: flex; justify-content: space-between; align-items: center; pointer-events: none; color: var(--muted); font-size: 9px; gap: 12px; }
+.bio-legend { display: flex; gap: 22px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.bio-legend span { display: flex; align-items: center; gap: 9px; white-space: nowrap; }
+#bio-geography-note { padding: 7px 10px; background: var(--bg); border-radius: 5px; }
+.bio-viewer .leaflet-control-zoom { margin-top: 133px; margin-left: 30px; border: 1px solid var(--border); box-shadow: none; }
+.bio-viewer .leaflet-control-zoom a { background: var(--bg); color: var(--text); border-color: var(--border); font-size: 18px; }
+.bio-viewer .leaflet-control-attribution { font-size: 9px; background: var(--bg); color: var(--muted); padding: 3px 10px; }
+.bio-viewer .leaflet-control-attribution a { color: var(--muted); }
+.bio-leaflet-marker span { display: block; width: 13px; height: 13px; margin: 3px; background: var(--site-color); border: 2px solid #eafff8; border-radius: 50%; box-shadow: 0 0 0 5px #50d9c725, 0 0 18px #50d9c766; }
+.bio-leaflet-hub span { display: block; width: 11px; height: 11px; margin: 4px; transform: rotate(45deg); background: #f5bd66; border: 1px solid #fff3d7; box-shadow: 0 0 0 4px #f5bd661a, 0 0 16px #f5bd6644; }
+.bio-viewer .leaflet-popup-content-wrapper { font-family: inherit !important; min-width: 235px; }
+.bio-viewer .popup-title { font-family: inherit; font-size: 15px; line-height: 1.5; }
+.bio-detail-location { font-size: 11px; color: var(--muted); margin: 6px 0 16px; }
+.bio-detail-row { display: flex; flex-direction: column; gap: 5px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 10px; line-height: 1.5; }
+.bio-detail-row > span { color: var(--muted); }
+.bio-detail-row strong { font-weight: 500; }
+.bio-metadata { margin-top: 14px; font-size: 11px; }
+.bio-metadata summary { color: var(--accent); cursor: pointer; padding: 5px 0; }
+.bio-metadata .client-metrics { margin-top: 10px; max-height: 220px; overflow: auto; }
+#bio-site-detail { position: absolute; top: 118px; right: 30px; z-index: 550; padding: 22px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 280px; max-height: calc(100% - 230px); overflow: auto; box-shadow: 0 12px 36px #0005; }
+.bio-detail-close { float: right; margin: -10px -9px 6px 6px; font-size: 22px !important; border: 0; background: none; color: var(--muted); padding: 4px 8px; }
+#bio-globe-container { position: relative; flex: 1; min-height: 0; width: 100%; overflow: hidden; }
+#bio-globe-controls { position: absolute; bottom: 93px; left: 50%; transform: translateX(-50%); z-index: 500; display: flex; align-items: center; gap: 5px; white-space: nowrap; border: 1px solid #284653; background: #0b1b26eb; padding: 6px; border-radius: 9px; box-shadow: 0 5px 24px #0003; }
+#bio-globe-controls button { background: transparent; border: 0; border-radius: 5px; color: #bad3dd; padding: 8px 11px; font-size: 12px; }
+#bio-globe-controls button:hover { background: #17303b; color: #50d9c7; }
+#bio-globe-controls button:first-child { background: #153039; color: #77e0d1; font-size: 10px; }
+#bio-globe-controls > span { display: none; }
+.bio-globe-view .bio-map-toolbar > div:first-child { background: transparent; border-color: transparent; padding-left: 0; }
+.bio-globe-view .bio-map-toolbar h2 { color: #e1edf0; }
+.bio-globe-view .bio-eyebrow { color: #50d9c7; }
+.bio-empty { text-align: center; padding: 30px 14px; }
+.bio-empty > span { font-size: 34px; color: var(--muted); }
+.bio-empty h3 { font-size: 13px; font-weight: 500; margin-top: 12px; }
+.bio-empty p { font-size: 11px; color: var(--muted); line-height: 1.7; margin-top: 8px; }
+#bio-map-message { position: absolute; z-index: 460; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 16px 22px; font-size: 12px; text-align: center; box-shadow: 0 5px 24px #0003; }
+.bio-viewer .runs-panel { width: auto; min-height: 190px; max-height: 38%; flex-shrink: 0; border: 0; background: transparent; }
+.bio-viewer .runs-panel-header { font-size: 10px; padding: 14px 22px; }
+.bio-viewer .runs-list { padding: 8px 14px; }
+.bio-viewer .run-item { display: block; width: 100%; text-align: left; background: transparent; }
+.bio-viewer .run-id-text, .bio-viewer .run-meta { display: block; }
+.bio-viewer .run-id-text { white-space: normal; overflow-wrap: anywhere; }
+.bio-viewer .run-item.active { border-color: var(--accent); background: #50d9c708; }
+.bio-viewer .sidebar-section { border-top: 1px solid var(--border); }
+.bio-viewer .sidebar-log-panel { margin-top: 14px; }
+.bio-text-button { color: var(--accent); border: 0; background: transparent; text-align: left; padding: 0 22px 16px; font-size: 11px !important; }
+.bio-run-note { color: var(--muted); font-size: 11px; line-height: 1.7; padding: 10px; }
+.bio-viewer .playback-bar { position: relative; z-index: 600; }
+.bio-viewer.bio-show-runs .bio-map-footer { bottom: 85px; }
+.bio-viewer #debug { top: 125px; right: 30px; z-index: 400; font-size: 9px; background: var(--bg); }
+.bio-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@media (min-width: 1500px) { .bio-viewer .sidebar { width: 356px; } .bio-viewer header { padding: 0 38px; } }
+@media (max-width: 1050px) {
+  .bio-viewer header { padding: 0 20px; gap: 16px; }
+  .bio-viewer .header-stats { gap: 22px; margin-right: 0; }
+  .bio-viewer .sidebar { width: 284px; }
+  .bio-map-toolbar { top: 22px; left: 20px; right: 20px; align-items: flex-start; }
+  .bio-map-toolbar h2 { font-size: 15px; }
+  .bio-map-toolbar > div:first-child { padding: 10px; }
+  .bio-view-switch button { padding: 9px; }
+  .bio-map-footer { left: 20px; right: 20px; }
+  #bio-geography-note { display: none; }
+  .bio-brand-note span { display: none; }
+}
+@media (max-width: 760px) {
+  .bio-viewer header { height: 72px; padding: 0 14px; gap: 10px; }
+  .bio-brand { font-size: 15px; }
+  .bio-mark { font-size: 40px; }
+  .bio-brand-note { font-size: 7px; letter-spacing: 1px; }
+  .bio-viewer .header-stats { gap: 14px; }
+  .bio-viewer .stat-val { font-size: 19px; }
+  .bio-viewer .stat-label { font-size: 7px; letter-spacing: .5px; }
+  .bio-viewer .status-pill { display: none; }
+  .bio-viewer .main { flex-direction: column-reverse; }
+  .bio-viewer .map-area { flex: 1; min-height: 270px; }
+  .bio-viewer .sidebar { width: 100%; height: 40%; min-height: 215px; border-right: 0; border-top: 1px solid var(--border); }
+  .bio-tabs { margin: 0 16px; }
+  .bio-tabs button { padding: 10px; }
+  #bio-experiments-panel { display: block; overflow: auto; }
+  .bio-panel-intro { padding: 14px 20px 8px; }
+  .bio-panel-intro h1 { font-size: 16px; }
+  .bio-panel-intro p { display: none; }
+  #bio-filters { display: flex; flex-wrap: wrap; padding: 0 14px 10px; gap: 3px; }
+  .bio-filter { min-height: 38px; font-size: 10px; padding: 8px; gap: 6px; }
+  .bio-filter-count { font-size: 9px; min-width: 17px; }
+  .bio-sites-heading { padding-top: 12px; }
+  .bio-viewer .client-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding-top: 3px; overflow: visible; }
+  .bio-site-card { margin: 0; padding: 12px; }
+  .bio-map-toolbar { top: 12px; left: 14px; right: 14px; gap: 8px; }
+  .bio-map-toolbar h2 { font-size: 13px; }
+  .bio-eyebrow { font-size: 6px; letter-spacing: 1.7px; margin-bottom: 4px; }
+  .bio-view-switch button { padding: 7px 9px; font-size: 13px; }
+  .bio-view-switch button span { font-size: 10px; }
+  .bio-viewer .leaflet-control-zoom { margin-top: 89px; margin-left: 15px; }
+  .bio-map-footer { bottom: 20px; left: 14px; right: 14px; font-size: 8px; }
+  .bio-legend { padding: 7px 10px; gap: 14px; }
+  #bio-globe-controls { left: auto; right: 12px; bottom: 22px; transform: none; padding: 3px; gap: 0; }
+  #bio-globe-controls button { padding: 7px 8px; }
+  #bio-globe-controls button:first-child { font-size: 8px; }
+  .bio-globe-view .bio-map-footer { bottom: 66px; }
+  .bio-viewer.bio-show-runs #bio-globe-controls { bottom: 75px; }
+  .bio-viewer.bio-show-runs .bio-map-footer { bottom: 117px; }
+  #bio-site-detail { top: 78px; right: 14px; width: 245px; max-height: calc(100% - 138px); padding: 16px; }
+  .bio-viewer .playback-bar { gap: 8px; padding: 8px; }
+  .bio-viewer .playback-mode { display: none; }
+  .bio-viewer #debug { top: 80px; right: 14px; }
+}
+@media (max-width: 440px) { .bio-viewer .header-stats .stat:last-child { display: none; } .bio-viewer .header-stats { gap: 12px; } .bio-viewer .theme-btn { width: 27px; height: 27px; } .bio-view-switch { gap: 1px; } .bio-view-switch button { padding: 7px; } }
+@media (prefers-reduced-motion: reduce) { .bio-viewer *, .bio-viewer *::before, .bio-viewer *::after { animation: none !important; transition: none !important; } }
+
+/* Keep the suite identity and the HiveWatch attribution visible at every size. */
+.bio-viewer .bio-suite-logo { display: block; width: 54px; height: 54px; flex: 0 0 54px; object-fit: contain; border-radius: 12px; }
+.bio-viewer .header-right { display: flex; align-items: center; gap: 17px; flex-shrink: 0; }
+.bio-hive-credit { display: flex; align-items: center; padding-right: 16px; border-right: 1px solid var(--border); flex-shrink: 0; }
+.bio-viewer .bio-hive-logo { display: block; width: auto; height: 33px; max-width: 108px; object-fit: contain; flex-shrink: 0; border-radius: 3px; }
+.bio-viewer #theme-btn { font-size: 0; }
+.bio-viewer #theme-btn::before { content: '◐'; font-size: 20px; }
+.bio-partner-stage { display: block; margin-top: 10px; color: var(--stage-color, var(--muted)); font-size: 9px; line-height: 1.6; }
+.bio-detail-row a { color: var(--accent); text-decoration: none; font-size: 10px; }
+.bio-detail-row a:hover { text-decoration: underline; }
+.bio-viewer select, .bio-viewer input { font: inherit; }
+.bio-viewer select:focus-visible, .bio-viewer a:focus-visible, .bio-table-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+
+/* Results use the full map workspace and preserve the selected map beneath it. */
+.bio-viewer.bio-show-results .map-area { background: var(--bg); }
+.bio-show-results #map, .bio-show-results #bio-globe-container,
+.bio-show-results .bio-map-toolbar, .bio-show-results .bio-map-footer,
+.bio-show-results #bio-globe-controls, .bio-show-results #bio-site-detail,
+.bio-show-results #bio-map-message, .bio-show-results #debug,
+.bio-show-results .playback-bar { display: none !important; }
+#bio-results-workspace { position: absolute; inset: 0; overflow: auto; overscroll-behavior: contain; background: var(--bg); color: var(--text); padding: 38px; scrollbar-gutter: stable; }
+#bio-results-panel { overflow: auto; padding-bottom: 24px; }
+.bio-results-label { display: block; margin: 2px 22px 9px; color: var(--muted); font-size: 9px; font-weight: 600; letter-spacing: 1.7px; }
+.bio-result-select { display: block; margin: 0 20px 22px; width: calc(100% - 40px); padding: 11px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 12px !important; cursor: pointer; }
+.bio-result-select:disabled { opacity: .6; cursor: default; }
+.bio-results-nav { display: grid; gap: 5px; padding: 0 18px; }
+.bio-results-nav button { display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid transparent; border-radius: 8px; background: none; color: var(--muted); padding: 12px; text-align: left; font-size: 12px; }
+.bio-results-nav button:hover { background: var(--surface); color: var(--text); }
+.bio-results-nav button[aria-pressed="true"] { border-color: color-mix(in srgb, var(--accent) 28%, transparent); background: color-mix(in srgb, var(--accent) 7%, transparent); color: var(--accent); }
+.bio-results-nav button span { min-width: 24px; border-radius: 5px; padding: 3px 6px; background: var(--surface); color: var(--muted); font-size: 10px; text-align: center; font-variant-numeric: tabular-nums; }
+.bio-results-note { margin: 24px 22px 0; border-top: 1px solid var(--border); padding-top: 18px; color: var(--muted); font-size: 10px; line-height: 1.8; }
+.bio-results-header { padding-bottom: 28px; margin-bottom: 28px; border-bottom: 1px solid var(--border); }
+.bio-results-header .bio-eyebrow { font-size: 9px; margin-bottom: 11px; }
+.bio-results-header h1 { font-size: clamp(23px, 2.6vw, 32px); line-height: 1.25; font-weight: 550; letter-spacing: -.8px; overflow-wrap: anywhere; }
+.bio-results-header p { margin-top: 12px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.bio-result-group { margin-bottom: 34px; }
+.bio-result-group > h2 { font-size: 17px; line-height: 1.5; font-weight: 600; letter-spacing: -.25px; }
+.bio-group-description { font-size: 12px; color: var(--muted); line-height: 1.7; margin-top: 6px; }
+.bio-group-description:empty { display: none; }
+.bio-result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 1fr)); gap: 18px; margin-top: 18px; }
+.bio-result-card { min-width: 0; overflow: hidden; padding: 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 5px 18px #0000000a; }
+.bio-result-table, .bio-result-report { grid-column: 1 / -1; }
+.bio-artifact-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.bio-artifact-header h3 { min-width: 0; font-size: 13px; line-height: 1.6; font-weight: 600; overflow-wrap: anywhere; }
+.bio-download { display: inline-flex; flex-shrink: 0; align-items: center; color: var(--accent); font-size: 10px; line-height: 1.8; text-decoration: none; border-bottom: 1px solid transparent; }
+.bio-download:hover { border-bottom-color: currentColor; }
+.bio-artifact-description { color: var(--muted); font-size: 11px; line-height: 1.7; margin-top: 9px; }
+.bio-figure-button { display: block; width: 100%; margin-top: 18px; padding: 8px; border: 1px solid var(--border); border-radius: 7px; background: #fff; overflow: hidden; cursor: zoom-in !important; }
+.bio-figure-button:hover { border-color: var(--accent); }
+img.bio-result-image { display: block; width: 100%; max-height: 360px; min-height: 150px; object-fit: contain; }
+.bio-table-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0 12px; }
+.bio-table-controls input { width: min(100%, 290px); min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); color: var(--text); font-size: 11px; }
+.bio-table-controls input::placeholder { color: var(--muted); opacity: 1; }
+.bio-table-controls > span { color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.bio-table-scroll { max-height: 420px; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--border); border-radius: 8px; }
+.bio-table-scroll table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 11px; font-variant-numeric: tabular-nums; text-align: left; }
+.bio-table-scroll th { position: sticky; top: 0; z-index: 1; background: var(--bg); color: var(--text); font-weight: 600; border-bottom: 1px solid var(--border); }
+.bio-table-scroll th button { display: block; width: 100%; text-align: left; border: 0; padding: 12px 14px; color: inherit; background: transparent; white-space: nowrap; font-size: 10px; }
+.bio-table-scroll th[aria-sort="ascending"], .bio-table-scroll th[aria-sort="descending"] { color: var(--accent); }
+.bio-table-scroll td { padding: 11px 14px; max-width: 360px; overflow-wrap: anywhere; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.5; }
+.bio-table-scroll tbody tr:nth-child(even) { background: color-mix(in srgb, var(--bg) 48%, transparent); }
+.bio-table-scroll tbody tr:hover { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.bio-table-scroll tbody tr:last-child td { border-bottom: 0; }
+.bio-table-note { font-size: 10px; color: var(--muted); line-height: 1.7; margin-top: 12px; }
+.bio-open-report, .bio-dialog-close { color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); border: 1px solid var(--border); border-radius: 7px; padding: 10px 14px; font-size: 11px !important; }
+.bio-open-report { margin-top: 18px; }
+.bio-open-report:hover, .bio-dialog-close:hover { border-color: var(--accent); }
+.bio-report-frame { display: block; width: 100%; height: 65vh; min-height: 320px; margin-top: 18px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+.bio-results-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; min-height: 260px; padding: 32px; border: 1px dashed var(--border); border-radius: 12px; color: var(--muted); text-align: center; font-size: 12px; line-height: 1.8; }
+.bio-results-empty > span { color: var(--accent); font-size: 34px; line-height: 1; }
+.bio-results-empty h2 { color: var(--text); font-size: 18px; font-weight: 500; }
+.bio-results-empty p { max-width: 370px; }
+.bio-figure-dialog { width: min(1200px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: calc(100dvh - 48px); margin: auto; overflow: auto; padding: 24px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text); box-shadow: 0 24px 100px #0008; }
+.bio-figure-dialog::backdrop { background: #061019bd; backdrop-filter: blur(6px); }
+.bio-dialog-close { float: right; margin: 0 0 18px 18px; }
+.bio-figure-dialog h2 { padding: 6px 0 22px; font-size: 17px; line-height: 1.5; font-weight: 550; }
+.bio-figure-dialog > img { display: block; width: 100%; height: auto; object-fit: contain; background: #fff; border-radius: 6px; clear: both; }
+
+/* The light globe has its own sky palette; the surrounding controls follow it. */
+[data-theme="light"] .bio-viewer .map-area,
+[data-theme="light"] #bio-globe-container { background: #eaf3f6; }
+[data-theme="light"] .bio-globe-view .bio-map-toolbar h2 { color: #163f4d; }
+[data-theme="light"] .bio-globe-view .bio-eyebrow { color: #087f75; }
+[data-theme="light"] #bio-globe-controls { background: #f7fcfbee; border-color: #c5dcdf; box-shadow: 0 5px 24px #244e6015; }
+[data-theme="light"] #bio-globe-controls button { color: #355d6c; }
+[data-theme="light"] #bio-globe-controls button:hover { background: #e1f0ef; color: #086d66; }
+[data-theme="light"] #bio-globe-controls button:first-child { background: #dcefeb; color: #086d66; }
+
+@media (max-width: 1200px) {
+  .bio-viewer .header-right { gap: 12px; }
+  .bio-hive-credit { padding-right: 12px; }
+  .bio-viewer .bio-hive-logo { max-width: 82px; height: 29px; }
+  .bio-viewer .header-stats { gap: 24px; margin-right: 0; }
+  #bio-results-workspace { padding: 28px; }
+}
+@media (max-width: 1050px) {
+  .bio-viewer .bio-suite-logo { width: 46px; height: 46px; flex-basis: 46px; border-radius: 10px; }
+  .bio-viewer .bio-hive-logo { max-width: 70px; height: 27px; }
+  .bio-viewer .header-stats { gap: 18px; }
+  .bio-viewer .header-right { gap: 10px; }
+  .bio-viewer .status-pill { padding: 7px 9px; }
+  .bio-tabs { margin-left: 16px; margin-right: 16px; }
+  .bio-tabs button { font-size: 11px; }
+  #bio-results-workspace { padding: 24px; }
+  .bio-result-card { padding: 17px; }
+}
+@media (max-width: 850px) {
+  .bio-viewer .status-pill { display: none; }
+  .bio-viewer header { gap: 14px; }
+  .bio-viewer .header-stats { gap: 16px; }
+}
+@media (max-width: 760px) {
+  .bio-viewer .bio-suite-logo { width: 40px; height: 40px; flex-basis: 40px; border-radius: 9px; }
+  .bio-viewer .logo { gap: 9px; }
+  .bio-viewer .bio-hive-logo { height: 27px; max-width: 67px; }
+  .bio-hive-credit { padding-right: 9px; }
+  .bio-viewer .header-right { gap: 9px; }
+  .bio-viewer .header-stats { gap: 14px; }
+  .bio-viewer.bio-show-results .sidebar { height: auto; min-height: 0; max-height: 43%; flex-shrink: 0; }
+  #bio-results-panel { padding-bottom: 12px; }
+  #bio-results-panel .bio-panel-intro { display: none; }
+  .bio-results-label { margin: 12px 20px 6px; font-size: 8px; }
+  .bio-result-select { padding: 8px 10px; margin-bottom: 9px; font-size: 11px !important; }
+  .bio-results-nav { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; padding: 0 16px; }
+  .bio-results-nav button { padding: 8px 6px; gap: 4px; font-size: 10px; }
+  .bio-results-nav button span { min-width: 16px; padding: 2px 4px; font-size: 9px; }
+  .bio-results-note { display: none; }
+  #bio-results-workspace { padding: 22px 18px; }
+  .bio-results-header { padding-bottom: 20px; margin-bottom: 20px; }
+  .bio-results-header h1 { font-size: 23px; }
+  .bio-results-header p { font-size: 11px; margin-top: 8px; }
+  .bio-result-grid { gap: 13px; }
+  .bio-result-group > h2 { font-size: 15px; }
+  .bio-result-card { padding: 15px; }
+  .bio-artifact-header { gap: 10px; }
+  .bio-artifact-header h3 { font-size: 12px; }
+  .bio-download { font-size: 9px; }
+  .bio-table-controls { gap: 9px; }
+  .bio-table-controls input { width: 100%; }
+  .bio-results-empty { min-height: 200px; padding: 22px; }
+  .bio-figure-dialog { max-width: calc(100vw - 20px); width: calc(100vw - 20px); max-height: calc(100dvh - 20px); padding: 15px; border-radius: 10px; }
+  .bio-figure-dialog h2 { font-size: 14px; }
+}
+@media (max-width: 600px) {
+  .bio-viewer .header-stats .stat { display: none; }
+  .bio-viewer .header-stats .stat:has(#hdr-clients) { display: block; }
+  .bio-viewer .header-stats { margin-left: auto; }
+  .bio-viewer .header-stats .stat-val { font-size: 19px; }
+  .bio-viewer .header-right { gap: 8px; }
+}
+@media (max-width: 440px) {
+  .bio-viewer header { padding: 0 10px; gap: 9px; }
+  .bio-viewer .bio-suite-logo { width: 35px; height: 35px; flex-basis: 35px; border-radius: 8px; }
+  .bio-viewer .logo { gap: 7px; }
+  .bio-brand { font-size: 13px; }
+  .bio-brand-note { font-size: 6px; letter-spacing: .8px; }
+  .bio-viewer .bio-hive-logo { height: 24px; max-width: 56px; }
+  .bio-hive-credit { padding-right: 7px; }
+  .bio-viewer .header-stats .stat-val { font-size: 17px; }
+  .bio-viewer .header-stats .stat-label { font-size: 6px; }
+  .bio-viewer .header-right { gap: 6px; }
+  .bio-tabs button { padding: 10px 4px; }
+  .bio-tabs button span { margin-left: 4px; }
+}
+@media (max-width: 350px) {
+  .bio-viewer .header-stats { display: none; }
+  .bio-viewer .header-right { margin-left: auto; }
+  .bio-results-nav button { font-size: 9px; }
+}

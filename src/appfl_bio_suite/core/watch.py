@@ -45,11 +45,16 @@ never reach the map at all. Those describe the inside of a partner's cluster.
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
+import queue
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from appfl_bio_suite.core.config import Federation, Site
@@ -69,6 +74,7 @@ __all__ = [
     "metadata_from_events",
     "write_network_run",
     "export_site",
+    "map_server",
     "write_sidecar",
     "watchable",
     "WATCHED_METRICS",
@@ -408,7 +414,11 @@ def metadata_from_events(events: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def write_network_run(
-    federation: Federation, runs_dir: Path | str = DEFAULT_RUNS_DIR, **kwargs
+    federation: Federation,
+    runs_dir: Path | str = DEFAULT_RUNS_DIR,
+    *,
+    catalog_path: Path | str | None = None,
+    **kwargs,
 ) -> tuple[Path, Path]:
     """Write the network view into a runs directory. Returns (jsonl, map.json).
 
@@ -416,8 +426,7 @@ def write_network_run(
     serves detail from ``*.map.json``. A network view with only the metadata file would
     load if you asked for it by name and would not appear in the run list.
     """
-    events = build_network_events(federation, **kwargs)
-    metadata = metadata_from_events(events)
+    events, metadata = _network_artifacts(federation, catalog_path, **kwargs)
 
     runs_dir = Path(runs_dir)
     runs_dir.mkdir(parents=True, exist_ok=True)
@@ -432,45 +441,36 @@ def write_network_run(
     return jsonl, mapjson
 
 
+def _network_artifacts(federation: Federation, catalog_path=None, **kwargs) -> tuple[list, dict]:
+    from appfl_bio_suite.core.watch_catalog import add_partners, load_catalog
+
+    try:
+        catalog = load_catalog(catalog_path)
+    except ValueError as exc:
+        raise WatchError(str(exc)) from exc
+    events = build_network_events(federation, **kwargs)
+    add_partners(events, catalog, kwargs.get("experiment"))
+    metadata = metadata_from_events(events)
+    results = [
+        group
+        for group in catalog["results"]
+        if not kwargs.get("experiment") or group["experiment"] == kwargs["experiment"]
+    ]
+    if results:
+        metadata["results"] = results
+    return events, metadata
+
+
 # ---------------------------------------------------------------------------
 # the publishable copy
 # ---------------------------------------------------------------------------
 
-# Appended to a COPY of hivewatch's viewer at export time. Two lines of behaviour, and
-# both are worth stating plainly because patching somebody else's page is a thing to do
-# reluctantly:
-#
-# hivewatch's `loadRunFromSource()` -- the code path a `?metadata_url=` load takes -- fills
-# in the round list and the scrubber but never calls `applyRound()`, so a statically
-# served page opens with an empty map until the viewer presses play. That is fine for a
-# run you are about to replay and wrong for a network view, which has one frame and
-# nothing to play. This applies the frames it loaded.
-#
-# The copy is re-made from the installed package on every export, so upstream fixes
-# arrive by upgrading hivewatch, and this becomes a no-op the day it renders on its own.
-_BOOTSTRAP = """
-<!-- appfl-bio-suite: render the loaded snapshot without waiting for a click on play. -->
-<script>
-(function () {
-  var tries = 0;
-  var timer = setInterval(function () {
-    tries += 1;
-    try {
-      if (typeof pb !== "undefined" && pb.rounds && pb.rounds.length) {
-        clearInterval(timer);
-        pb.rounds.forEach(applyRound);
-        pb.index = pb.rounds.length;
-        updateProgress();
-      } else if (tries > 100) {
-        clearInterval(timer);
-      }
-    } catch (err) {
-      clearInterval(timer);
-    }
-  }, 100);
-})();
-</script>
-"""
+# The extension is embedded into a fresh COPY of the pinned upstream viewer for both
+# live serving and export. Upstream owns events, playback and Leaflet; our extension owns
+# the federation UI and initialization. Keeping assets inline preserves the three-file
+# static export, including the globe's geography and rendering dependencies.
+_VIEWER_ASSETS = Path(__file__).parent / "watch_assets"
+_UPSTREAM_STARTUP = "initDraggableLogPanel();\nif (METADATA_URL || EVENTS_URL)"
 
 _INDEX = """<!doctype html>
 <meta charset="utf-8">
@@ -499,17 +499,90 @@ def _viewer_html() -> Path:
 
 
 def _patched_viewer() -> str:
-    """hivewatch's viewer with :data:`_BOOTSTRAP` spliced in before ``</body>``.
+    """Build our viewer without modifying the installed hivewatch package.
 
-    Appending past ``</html>`` would also work -- browsers hoist a stray script back into
-    the body -- but a file that is valid HTML is a file the next person can reason about.
+    Suppress upstream startup before installing the extension: it must own initial
+    loading so network snapshots render immediately and live connection events cannot
+    clear the selected view. Refuse an unexpected upstream layout rather than publishing
+    a page whose event handlers or geography overrides only partly apply.
     """
     html = _viewer_html().read_text(encoding="utf-8")
-    marker = "</body>"
-    index = html.rfind(marker)
-    if index == -1:
-        return html + _BOOTSTRAP
-    return html[:index] + _BOOTSTRAP + html[index:]
+    startup = html.find(_UPSTREAM_STARTUP)
+    script_end = html.find("</script>", startup)
+    if (
+        startup == -1
+        or html.count(_UPSTREAM_STARTUP) != 1
+        or script_end == -1
+        or "</head>" not in html
+        or "</body>" not in html
+    ):
+        raise WatchError(
+            "The installed hivewatch viewer has an unsupported layout. "
+            "This UI requires hivewatch==0.2.1; reinstall the pinned [watch] extra."
+        )
+    html = (
+        html[:startup]
+        + "// appfl-bio-suite: viewer.js initializes the federation view.\n"
+        + html[script_end:]
+    )
+    css = (_VIEWER_ASSETS / "viewer.css").read_text(encoding="utf-8")
+    html = html.replace("</head>", f'<style id="bio-viewer-style">\n{css}\n</style>\n</head>', 1)
+    scripts = ["<!-- appfl-bio-suite: federation viewer and globe -->"]
+    logo = base64.b64encode((_VIEWER_ASSETS / "suite-logo.png").read_bytes()).decode("ascii")
+    scripts.append(
+        '<script type="application/json" id="bio-branding-data">'
+        + json.dumps({"suite_logo": "data:image/png;base64," + logo})
+        + "</script>"
+    )
+    notices = (_VIEWER_ASSETS / "THIRD_PARTY.md").read_text(encoding="utf-8")
+    scripts.append(f'<script type="text/plain" id="bio-asset-notices">\n{notices}\n</script>')
+    for name in ("vendor.js", "land.js", "globe.js", "results.js", "viewer.js"):
+        source = (_VIEWER_ASSETS / name).read_text(encoding="utf-8")
+        scripts.append(f'<script data-bio-asset="{name}">\n{source}\n</script>')
+    return html.replace("</body>", "\n".join(scripts) + "\n</body>", 1)
+
+
+@contextmanager
+def map_server(
+    *, host: str = "0.0.0.0", port: int = DEFAULT_PORT, runs_dir: Path | str = DEFAULT_RUNS_DIR
+) -> Iterator[Any]:
+    """Keep the same viewer used by export available for the server's lifetime.
+
+    The temporary file belongs to this process; concurrent servers and exports never
+    overwrite each other's viewer or the installed package. The context always stops
+    the server before removing its HTML, including interruption and startup failures.
+    """
+    require_hivewatch()
+    from hivewatch.map import MapServer
+
+    class DirectoryMapServer(MapServer):
+        def publish(self, payload: dict) -> None:
+            # Hivewatch 0.2.1 sets _live_run_id for every published event, which makes
+            # /runs return only that run. This viewer browses a directory: broadcasting
+            # new activity must leave the network and all recorded runs discoverable.
+            # Preserve upstream's bounded-queue fanout without selecting a server run.
+            message = f"data: {json.dumps(payload)}\n\n"
+            with self._lock:
+                dead = []
+                for subscriber in self._subscribers:
+                    try:
+                        subscriber.put_nowait(message)
+                    except queue.Full:
+                        dead.append(subscriber)
+                for subscriber in dead:
+                    self._subscribers.remove(subscriber)
+
+    page = _patched_viewer()
+    with TemporaryDirectory(prefix="appfl-bio-watch-") as directory:
+        path = Path(directory) / "map.html"
+        path.write_text(page, encoding="utf-8")
+        server = DirectoryMapServer(
+            host=host, port=port, runs_dir=str(runs_dir), map_path=str(path), watch=True
+        )
+        try:
+            yield server
+        finally:
+            server.stop()
 
 
 def export_site(
@@ -517,6 +590,7 @@ def export_site(
     out_dir: Path | str,
     *,
     title: str = "APPFL federation network",
+    catalog_path: Path | str | None = None,
     **kwargs,
 ) -> Path:
     """Write a self-contained static site for the network view. Returns the directory.
@@ -534,8 +608,7 @@ def export_site(
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    events = build_network_events(federation, **kwargs)
-    metadata = metadata_from_events(events)
+    _, metadata = _network_artifacts(federation, catalog_path, **kwargs)
 
     (out_dir / "network.map.json").write_text(
         json.dumps(metadata, indent=2) + "\n", encoding="utf-8"

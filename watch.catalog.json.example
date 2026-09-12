@@ -1,0 +1,29 @@
+{
+  "partners": [
+    {
+      "id": "prospective-partner",
+      "name": "Example Research Institute",
+      "country": "Example country",
+      "projects": [
+        "fine-mapping"
+      ],
+      "stage": "1 - Initial Planning",
+      "contacts": [
+        {
+          "name": "Project coordinator",
+          "email": "research@example.org"
+        }
+      ],
+      "notes": "Replace with your partner's details or remove this entry.",
+      "location": null
+    }
+  ],
+  "results": [
+    {
+      "experiment": "fine-mapping",
+      "title": "Fine-mapping results",
+      "description": "Add selected figures, tables and reports from your experiment.",
+      "artifacts": []
+    }
+  ]
+}

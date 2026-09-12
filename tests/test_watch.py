@@ -20,8 +20,13 @@ feature warrants:
 from __future__ import annotations
 
 import json
+import queue
+from html.parser import HTMLParser
+from pathlib import Path
+from urllib.request import urlopen
 
 import pytest
+from click.testing import CliRunner
 
 from appfl_bio_suite.core.config import FederationError, load_federation
 from appfl_bio_suite.core.experiments import REGISTRY, repo_root
@@ -31,6 +36,7 @@ from appfl_bio_suite.core.watch import (
     WatchError,
     build_network_events,
     export_site,
+    map_server,
     participations,
     unplaced_report,
     unplaced_sites,
@@ -285,10 +291,153 @@ def test_export_is_three_self_contained_files(federation, tmp_path):
     index = (tmp_path / "index.html").read_text(encoding="utf-8")
     assert "map.html?metadata_url=network.map.json" in index
 
-    # The viewer is hivewatch's, plus the one documented splice, and it is still HTML.
+    # Renderer, geography and UI are embedded in the viewer, preserving static hosting.
     page = (tmp_path / "map.html").read_text(encoding="utf-8")
     assert page.count("</body>") == 1
-    assert page.index("appfl-bio-suite: render") < page.index("</body>")
+    assert page.index("appfl-bio-suite: federation viewer") < page.index("</body>")
+
+    class Assets(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.scripts = []
+            self.styles = []
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == "script" and "data-bio-asset" in attrs:
+                assert "src" not in attrs
+                self.scripts.append(attrs["data-bio-asset"])
+            if tag == "style":
+                self.styles.append(attrs.get("id"))
+
+    assets = Assets()
+    assets.feed(page)
+    assert assets.scripts == ["vendor.js", "land.js", "globe.js", "results.js", "viewer.js"]
+    assert "bio-viewer-style" in assets.styles
+    assert 'id="bio-asset-notices"' in page
+    assert "Permission to use, copy, modify, and/or distribute this software" in page
+
+
+def test_viewer_rejects_changed_upstream_initialization(tmp_path, monkeypatch):
+    """An upstream upgrade must not silently run two competing initializers."""
+    from appfl_bio_suite.core import watch
+
+    upstream = tmp_path / "upstream.html"
+    upstream.write_text("<html><head></head><body><script>start();</script></body></html>")
+    monkeypatch.setattr(watch, "_viewer_html", lambda: upstream)
+    with pytest.raises(WatchError, match="unsupported layout"):
+        watch._patched_viewer()
+
+
+def test_export_defers_loading_until_the_extension_is_installed(federation, tmp_path):
+    export_site(federation, tmp_path)
+    page = (tmp_path / "map.html").read_text(encoding="utf-8")
+    assert "initDraggableLogPanel();\nif (METADATA_URL || EVENTS_URL)" not in page
+    assert "function connect()" in page
+    assert "function startPlayback()" in page
+
+
+def test_watch_serve_uses_exported_viewer_and_cleans_up(federation, tmp_path, monkeypatch):
+    """Exercise the CLI with a blocking server boundary, without opening a real port."""
+    import hivewatch.map
+
+    from appfl_bio_suite.cli import main
+
+    export_site(federation, tmp_path / "export")
+    expected = (tmp_path / "export" / "map.html").read_text(encoding="utf-8")
+    observed = {}
+
+    class Server:
+        def __init__(self, **kwargs):
+            observed.update(kwargs)
+            self.path = Path(kwargs["map_path"])
+
+        def start(self):
+            assert self.path.read_text(encoding="utf-8") == expected
+            observed["started"] = True
+
+        def serve_forever(self):
+            raise KeyboardInterrupt
+
+        def stop(self):
+            assert self.path.is_file()
+            observed["stopped"] = True
+
+    monkeypatch.setattr(hivewatch.map, "MapServer", Server)
+    result = CliRunner().invoke(
+        main,
+        [
+            "watch",
+            "serve",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8081",
+            "--runs-dir",
+            str(tmp_path / "runs"),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert observed["started"] and observed["stopped"]
+    assert observed["host"] == "127.0.0.1"
+    assert observed["port"] == 8081
+    assert observed["runs_dir"] == str(tmp_path / "runs")
+    assert observed["watch"] is True
+    assert not Path(observed["map_path"]).exists()
+
+
+def test_server_failure_also_cleans_up_its_viewer(tmp_path, monkeypatch):
+    import hivewatch.map
+
+    paths = []
+
+    class Server:
+        def __init__(self, **kwargs):
+            paths.append(Path(kwargs["map_path"]))
+
+        def stop(self):
+            assert paths[0].is_file()
+
+    monkeypatch.setattr(hivewatch.map, "MapServer", Server)
+    with pytest.raises(RuntimeError, match="server failed"):
+        with map_server(runs_dir=tmp_path):
+            raise RuntimeError("server failed")
+    assert not paths[0].exists()
+
+
+def test_directory_server_keeps_all_runs_and_broadcasts_live_events(federation, tmp_path):
+    """Publishing an experiment must not make network/older runs disappear from /runs."""
+    write_network_run(federation, tmp_path)
+    event = {"event_type": "init", "run_id": "gwas-live", "algorithm": "GWAS"}
+    (tmp_path / "gwas-live.jsonl").write_text(json.dumps(event) + "\n", encoding="utf-8")
+
+    with map_server(host="127.0.0.1", port=0, runs_dir=tmp_path) as server:
+        # Publishing explicitly isolates this regression from the file polling thread.
+        server.watch = False
+        server.start()
+        base = f"http://127.0.0.1:{server._server.server_address[1]}"
+
+        def run_ids():
+            with urlopen(f"{base}/runs", timeout=3) as response:
+                return {run["run_id"] for run in json.load(response)}
+
+        expected = {"network", "gwas-live"}
+        assert run_ids() == expected
+        subscriber = server._subscribe()
+        stalled = queue.Queue(maxsize=1)
+        stalled.put_nowait("full")
+        server._subscribers.append(stalled)
+
+        server.publish(event)
+
+        assert server._live_run_id is None
+        assert run_ids() == expected
+        message = subscriber.get_nowait()
+        assert json.loads(message.removeprefix("data: ").strip()) == event
+        assert stalled not in server._subscribers
+        assert subscriber in server._subscribers
+        with urlopen(base, timeout=3) as response:
+            assert 'data-bio-asset="viewer.js"' in response.read().decode("utf-8")
 
 
 # ---------------------------------------------------------------------------
