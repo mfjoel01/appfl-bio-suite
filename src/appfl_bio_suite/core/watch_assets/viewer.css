@@ -258,7 +258,6 @@ img.bio-result-image { display: block; width: 100%; max-height: 360px; min-heigh
 [data-theme="light"] #bio-globe-controls button { color: #355d6c; }
 [data-theme="light"] #bio-globe-controls button:hover { background: #e1f0ef; color: #086d66; }
 [data-theme="light"] #bio-globe-controls button:first-child { background: #dcefeb; color: #086d66; }
-[data-theme="light"] .bio-viewer .bio-suite-logo { box-shadow: 0 2px 8px #173f4d14; }
 
 @media (max-width: 1200px) {
   .bio-viewer .header-right { gap: 12px; }
