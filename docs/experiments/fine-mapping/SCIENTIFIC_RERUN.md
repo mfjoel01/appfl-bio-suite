@@ -142,7 +142,13 @@ who sent SIGTERM, so that cause remains unconfirmed.
 
 Submission now requests `place=exclhost` for every stage. It prevents separate jobs
 from sharing a physical host, as defined by the [ALCF PBS placement documentation](https://docs.alcf.anl.gov/running-jobs/).
-This is a scheduling mitigation; it does not relax any scientific acceptance gate.
+Sophia rejected an exclusive one-GPU request with `invalid ngpus= value`; the
+accepted request reserves a full node (`ngpus=8:ncpus=256:mem=960gb`). The site hook
+normalizes placement to `scatter:excl`. Jobs `185867`–`185876` were accepted at
+20:46 UTC: re-scoring is queued for resources and subsequent stages are held by
+their success dependencies. Whole-node reservation can increase queue time and
+resource charges. This is a scheduling mitigation; it does not relax any scientific
+acceptance gate.
 The original frozen computation revision and data remain unchanged. To recover the
 terminal dependency graph while retaining output and validated caches:
 

@@ -164,7 +164,7 @@ def submit(root: Path, account: str, python: str) -> None:
             "-N",
             "fm-" + stage[:11],
             "-l",
-            "select=1:ngpus=1:ncpus=32:mem=120gb",
+            "select=1:ngpus=8:ncpus=256:mem=960gb",
             "-l",
             "walltime=04:00:00",
             "-l",
