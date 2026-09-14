@@ -582,6 +582,10 @@ class Experiment(_Strict):
     credible_set_level: float | None = None
     pval_thresh: float | None = None
     maf: float | None = None
+    keep_ambiguous: bool | None = None
+    n_signals: int | None = Field(default=None, gt=0)
+    max_iter: int | None = Field(default=None, gt=0)
+    tol: float | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")
     def _unique_client_ids(self) -> Experiment:

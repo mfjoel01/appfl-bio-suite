@@ -135,6 +135,12 @@ class FineMappingAggregator(BaseAggregator):
         self.aggregator_configs = aggregator_configs or {}
         cfg = self.aggregator_configs
 
+        from appfl_bio_suite.experiments.fine_mapping.inference import DEFAULT_OPTIONS
+
+        self.inference_options = {k: cfg.get(k, v) for k, v in DEFAULT_OPTIONS.items()}
+        self.population_order = list(
+            cfg.get("population_order", ["EUR", "AFR", "AMR", "EAS", "CSA", "MID"])
+        )
         self.level = float(cfg.get("level", DEFAULT_LEVEL))
         self.pval_thresh = float(cfg.get("pval_thresh", DEFAULT_PVAL_THRESH))
         self.maf = float(cfg.get("maf", DEFAULT_MAF))
@@ -323,6 +329,9 @@ class FineMappingAggregator(BaseAggregator):
                 if pop not in pops:
                     pops.append(pop)
 
+        pops = [p for p in self.population_order if p in pops] + sorted(
+            set(pops) - set(self.population_order)
+        )
         self._log_uplink(client_ids, manifests)
 
         rows: list[dict] = []
@@ -340,8 +349,7 @@ class FineMappingAggregator(BaseAggregator):
                     self.logger.warning(
                         f"  {locus_id}/{col.pop}: {col.n_incomplete_variants} window "
                         "variant(s) dropped as not fully observed at some site; the "
-                        "centralized comparator keeps them, so the exactness guarantee "
-                        "does not hold for this locus"
+                        "centralized comparator applies the same complete-variant policy"
                     )
             self.logger.info(
                 f"  {locus_id}: {len(blocks)} block(s) from "
@@ -423,6 +431,7 @@ class FineMappingAggregator(BaseAggregator):
                 self.level,
                 self.pval_thresh,
                 self.keep_work,
+                self.inference_options,
             )
 
         if self.n_workers <= 1:
@@ -445,6 +454,7 @@ class FineMappingAggregator(BaseAggregator):
                     self.level,
                     self.pval_thresh,
                     self.keep_work,
+                    self.inference_options,
                 )
                 for arch_id, rep, truth, pooled in jobs
             )
@@ -627,7 +637,7 @@ class FineMappingAggregator(BaseAggregator):
                     "power_any_causal": group["any_causal_captured"].mean(),
                     "mean_n_cs": group["n_credible_sets"].mean(),
                     "median_best_cs_size": group["best_cs_size"].median(),
-                    "mean_causal_pip": group["causal_pip_max"].mean(),
+                    "mean_causal_pip": group["causal_pip_mean"].mean(),
                 }
             )
 

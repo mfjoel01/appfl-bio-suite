@@ -179,6 +179,14 @@ class FineMappingConfig(BaseModel):
 
     min_gwas_n: int = 0
     maf: float = 0.005
+    keep_ambiguous: bool = True
+    n_signals: PositiveInt = 10
+    max_iter: PositiveInt = 1000
+    tol: PositiveFloat = 1e-6
+
+    def inference_options(self) -> dict:
+        return {k: getattr(self, k) for k in ("keep_ambiguous", "n_signals", "max_iter", "tol")}
+
 
     @model_validator(mode="after")
     def _check(self) -> "FineMappingConfig":
@@ -215,6 +223,11 @@ class SimulationConfig(BaseModel):
                     raise ValueError(
                         f"Site {site_name} references unknown superpop {pop}"
                     )
+        lower = -1.0 / (len(self.superpopulations) - 1) if len(self.superpopulations) > 1 else -1.0
+        if any(r <= lower for r in self.architecture.rg):
+            raise ValueError(f"Equicorrelation must be greater than {lower}")
+        if any(not 0 < h < 1 for h in self.architecture.h2):
+            raise ValueError("Heritability must lie strictly between zero and one")
         return self
 
     def resolved_path(self, key: str) -> Path:
@@ -439,7 +452,19 @@ def read_population_manifest(path: str | os.PathLike[str]) -> pd.DataFrame:
 
 def write_ids_file(df: pd.DataFrame, path: str | os.PathLike[str]) -> None:
     """Write a PLINK --keep style ID file (FID\\tIID, no header)."""
-    df[["FID", "IID"]].to_csv(path, sep="\t", index=False, header=False)
+    # Several locus shards publish the same cohort lists. Atomic replacement
+    # prevents another shard's PLINK process from reading a truncated keep file.
+    import tempfile
+    destination = Path(path)
+    with tempfile.NamedTemporaryFile(mode="w", dir=destination.parent,
+                                     prefix=f".{destination.name}.", delete=False) as handle:
+        temporary = Path(handle.name)
+        try:
+            df[["FID", "IID"]].to_csv(handle, sep="\t", index=False, header=False)
+        except BaseException:
+            temporary.unlink(missing_ok=True)
+            raise
+    temporary.replace(destination)
 
 
 def write_site_manifest(df: pd.DataFrame, path: str | os.PathLike[str]) -> None:

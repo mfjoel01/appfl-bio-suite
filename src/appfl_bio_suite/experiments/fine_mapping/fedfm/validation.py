@@ -93,6 +93,9 @@ def _site_io(config_path: str) -> tuple[dict, tuple[str, ...], str]:
         io[site] = {
             "prefix": str(prefix),
             "fam_iid": fam["IID"].to_numpy(),
+            "fam_keys": list(zip(fam["FID"], fam["IID"])),
+            "master_seed": cfg.master_seed,
+            "pop_names": cfg.superpopulations,
             "n": len(fam),
             "pop_index": pop_index,
             "snpid_to_vidx": pd.Series(bim.index.to_numpy(), index=bim["snp_id"].to_numpy()),
@@ -149,12 +152,35 @@ def _rederive_row(config_path: str, row: dict) -> list[dict]:
         ydf = pd.read_csv(pheno, sep="\t", dtype={"FID": str, "IID": str})
         n_rows = len(ydf)
         y_has_nan = bool(np.isnan(ydf["y"].to_numpy()).any())
-        y = ydf.set_index("IID")["y"].loc[s["fam_iid"]].to_numpy(dtype=np.float64)
+        if ydf.duplicated(["FID", "IID"]).any():
+            raise ValueError(f"Duplicate phenotype identifiers: {pheno}")
+        y = ydf.set_index(["FID", "IID"])["y"].loc[s["fam_keys"]].to_numpy(dtype=np.float64)
         y_var = float(np.var(y))
 
         # --- model under test: per-individual ancestry lookup ---
         g = _genetic_value(dosage, beta, s["pop_index"])
         g_var = float(np.var(g))
+        from .utils import derive_seed
+        rng = np.random.default_rng(derive_seed(
+            s["master_seed"], "noise", site, row["locus_id"], row["architecture_id"], int(row["replicate"])
+        ))
+        target = float(row["h2_target"])
+        noise_sd = np.sqrt(g_var * (1.0 - target) / target) if g_var > 0 else 1.0
+        expected_y = (g if g_var > 0 else np.zeros_like(g)) + rng.normal(0.0, noise_sd, len(g))
+        # Legacy effects were saved as float32 AFTER generation. Permit that known
+        # serialization error, but not reassignments of phenotypes to individuals.
+        vector_error = float(np.max(np.abs(y - expected_y)) / max(np.std(expected_y), 1e-12))
+        vector_match = bool(np.isfinite(vector_error) and vector_error < 5e-6)
+        per_pop = {}
+        residual = y - g
+        for pop, label in enumerate(s["pop_names"]):
+            take = s["pop_index"] == pop
+            if not take.any():
+                continue
+            gv = float(np.var(g[take])); ev = float(np.var(residual[take]))
+            per_pop[label] = {"n": int(take.sum()), "genetic_variance": gv,
+                              "residual_variance": ev, "genetic_mean": float(g[take].mean()),
+                              "within_ancestry_h2": gv / (gv + ev) if gv + ev > 0 else 0.0}
         rederived_h2 = g_var / y_var if y_var > 0 else 0.0
         mh2 = common["manifest_h2"]
         h2_relerr = abs(rederived_h2 - mh2) / mh2 if mh2 > 0 else abs(rederived_h2 - mh2)
@@ -167,7 +193,10 @@ def _rederive_row(config_path: str, row: dict) -> list[dict]:
 
         recs.append({
             **common,
-            "status": "ok",
+            "status": "ok" if vector_match else "phenotype_vector_mismatch",
+            "phenotype_vector_error_sd": vector_error,
+            "phenotype_vector_match": vector_match,
+            "per_ancestry_diagnostics_json": json.dumps(per_pop, sort_keys=True),
             "rederived_h2": rederived_h2,
             "h2_relerr": h2_relerr,
             "wrong_model_h2": wrong_h2,
@@ -206,6 +235,8 @@ def summarise_rederivation(df: pd.DataFrame, rtol: float) -> dict:
         "instances_ok": n,
         "instances_bad_status": int(len(bad_status)),
         "h2_match": n_pass,
+        "phenotype_vector_match": int(df.get("phenotype_vector_match", pd.Series(dtype=bool)).sum()),
+        "worst_vector_error_sd": float(df["phenotype_vector_error_sd"].max()) if "phenotype_vector_error_sd" in df else None,
         "h2_match_frac": n_pass / n if n else 0.0,
         "worst_h2_relerr": float(ok["h2_relerr"].max()) if n else None,
         "median_h2_relerr": float(ok["h2_relerr"].median()) if n else None,
@@ -517,6 +548,12 @@ def main() -> int:
                 raise FileNotFoundError(f"Missing re-derivation shard part: {p}")
             parts.append(pd.read_csv(p))
         rederiv = pd.concat(parts, ignore_index=True)
+        keys = ["locus_id", "architecture_id", "replicate", "site"]
+        expected = {(*key, site) for key in manifest[keys[:3]].itertuples(index=False, name=None)
+                    for site in cfg.sites}
+        observed = set(rederiv[keys].itertuples(index=False, name=None))
+        if rederiv.duplicated(keys).any() or observed != expected:
+            raise ValueError("Phenotype validation requires every instance/site exactly once")
         rederiv.to_csv(out / "rederivation_per_instance.csv", index=False)
         for r in range(args.n_shards):
             (out / f"rederivation_per_instance.part{r:03d}of{args.n_shards:03d}.csv").unlink()

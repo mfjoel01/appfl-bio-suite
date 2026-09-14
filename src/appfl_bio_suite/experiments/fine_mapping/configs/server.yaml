@@ -67,6 +67,11 @@ server_configs:
   aggregator: FineMappingAggregator
   aggregator_path: null     # resolved at run time; loaded LOCALLY, never shipped
   aggregator_kwargs:
+    keep_ambiguous: true
+    n_signals: 10
+    max_iter: 1000
+    tol: 1.0e-6
+    population_order: [EUR, AFR, AMR, EAS, CSA, MID]
     # SuSiEx settings. Defaults match the standalone driver's, so a run launched through
     # APPFL and one launched from the command line fine-map identically.
     level: 0.95             # credible-set coverage level

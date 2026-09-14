@@ -417,7 +417,17 @@ def _pick_tag_snps(
     pooled_blocks: list[np.ndarray] = []
     for site_name, h in handles.items():
         vidx = sub[f"vidx_{site_name}"].to_numpy()
-        pooled_blocks.append(read_bed_variants(h.bed_prefix, vidx, h.n_samples))
+        dosage = read_bed_variants(h.bed_prefix, vidx, h.n_samples)
+        alleles = h.bim.iloc[vidx][["a1", "a2"]].to_numpy()
+        if not pooled_blocks:
+            reference_alleles = alleles
+        else:
+            same = (alleles == reference_alleles).all(axis=1)
+            flip = (alleles[:, ::-1] == reference_alleles).all(axis=1)
+            if not (same | flip).all():
+                raise ValueError("Incompatible variant alleles during pooled tag pruning")
+            dosage[:, flip & ~same] = 2.0 - dosage[:, flip & ~same]
+        pooled_blocks.append(dosage)
     pooled = np.concatenate(pooled_blocks, axis=0)
     keep_local = light_ld_prune(pooled, prune_window, prune_threshold)
     sub = sub.iloc[keep_local].reset_index(drop=True)
@@ -449,7 +459,14 @@ def score_window(
             site: Path(cache_dir) / f"{window['window_id']}_{site}.npz"
             for site in handles
         }
-        if all(p.exists() for p in cached_paths.values()):
+        from ..inference import input_fingerprint
+        stamp = Path(cache_dir) / f"{window['window_id']}.inputs.json"
+        files = [Path(str(h.bed_prefix) + ext) for h in handles.values()
+                 for ext in (".bed", ".bim", ".fam")]
+        fingerprint = input_fingerprint(files, {"selection": cfg_ls.model_dump(), "seed": cfg.master_seed,
+                                                "protocol": "harmonized-pooling-v2"})
+        if (all(p.exists() for p in cached_paths.values()) and stamp.exists()
+                and stamp.read_text() == fingerprint):
             loaded = {s: np.load(p, allow_pickle=True) for s, p in cached_paths.items()}
             per_site_r2 = {s: z["r2"] for s, z in loaded.items()}
             n_tags = next(iter(per_site_r2.values())).shape[0]
@@ -510,6 +527,8 @@ def score_window(
                 snp_ids=tags["snp_id"].to_numpy(),
                 n_variants_in_window=np.int64(len(variants)),
             )
+
+        stamp.write_text(fingerprint)
 
     mean_div, pair_scores = pairwise_divergence(per_site_r2)
     out = {
