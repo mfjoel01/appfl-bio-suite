@@ -8,10 +8,12 @@ import hashlib
 import importlib.metadata
 import io
 import json
+import re
 import shutil
 import subprocess
 import sys
 import tarfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -166,6 +168,8 @@ def submit(root: Path, account: str, python: str) -> None:
             "-l",
             "walltime=04:00:00",
             "-l",
+            "place=exclhost",
+            "-l",
             "filesystems=home:grand",
             "-j",
             "oe",
@@ -205,6 +209,31 @@ def submit(root: Path, account: str, python: str) -> None:
     add("plots", dependency=f"afterok:{i}")
 
 
+def archive_terminal_attempt(root: Path) -> Path:
+    """Preserve the old graph and scheduler evidence before an explicit retry.
+
+    Reject retries while any recorded job is still queued, running or held.
+    Scientific source, data, completed parts and validated LD caches stay intact.
+    """
+    manifest = root / "jobs.json"
+    jobs = json.loads(manifest.read_text())
+    if not jobs:
+        raise ValueError("No submitted jobs to retry; use --submit-only")
+    history = {}
+    for stage, job in jobs.items():
+        output = subprocess.check_output(["qstat", "-xf", job["id"]], text=True)
+        state = re.search(r"^\s*job_state\s*=\s*(\w+)", output, re.MULTILINE)
+        if not state or state.group(1) != "F":
+            raise RuntimeError(f"Cannot retry while {stage} ({job['id']}) is not terminal")
+        history[stage] = output
+    destination = root / "attempts" / datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    destination.mkdir(parents=True)
+    (destination / "scheduler.json").write_text(json.dumps(history, indent=2))
+    manifest.replace(destination / "jobs.json")
+    print(f"Archived terminal job graph at {destination}", flush=True)
+    return destination
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--root", type=Path, required=True)
@@ -213,13 +242,20 @@ def main():
     p.add_argument("--python", default=sys.executable)
     p.add_argument("--submit", action="store_true")
     p.add_argument("--submit-only", action="store_true")
+    p.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="archive a terminal job graph and resubmit using existing data/caches",
+    )
     args = p.parse_args()
     root = args.root.resolve()
-    if not args.submit_only:
+    if args.retry_failed:
+        archive_terminal_attempt(root)
+    if not (args.submit_only or args.retry_failed):
         if not args.base_config:
             p.error("--base-config is required for preparation")
         prepare(root, args.base_config.resolve(), args.python)
-    if args.submit or args.submit_only:
+    if args.submit or args.submit_only or args.retry_failed:
         submit(root, args.account, args.python)
 
 
