@@ -214,6 +214,9 @@ def test_submit_graph_orders_simulation_validation_analysis_and_plots(tmp_path, 
     ]
     assert list(jobs) == stages
     assert all("place=exclhost" in job["command"] for job in jobs.values())
+    assert all(
+        "select=1:ngpus=8:ncpus=256:mem=960gb" in job["command"] for job in jobs.values()
+    )
     for before, after in zip(stages, stages[1:], strict=False):
         assert f"depend=afterok:{jobs[before]['id']}" in jobs[after]["command"]
     assert "0-1%3" in jobs["analysis"]["command"]
