@@ -334,6 +334,10 @@ def build_server_config(
         ("credible_set_level", "level"),
         ("pval_thresh", "pval_thresh"),
         ("maf", "maf"),
+        ("keep_ambiguous", "keep_ambiguous"),
+        ("n_signals", "n_signals"),
+        ("max_iter", "max_iter"),
+        ("tol", "tol"),
     ):
         value = getattr(exp, field, None)
         if value is not None:

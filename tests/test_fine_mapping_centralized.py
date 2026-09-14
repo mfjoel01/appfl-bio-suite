@@ -114,7 +114,8 @@ def test_parse_causal_not_captured(tmp_path: Path) -> None:
     assert m["n_causal_captured"] == 0
     import math
     assert math.isnan(m["best_cs_size"])
-    assert math.isnan(m["causal_pip_max"])
+    assert m["causal_pip_max"] == 0.0
+    assert m["n_excluded_causal"] == 1
 
 
 # --- no credible set (weak signal): header-only .cs, no .snp -----------------

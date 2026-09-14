@@ -760,7 +760,7 @@ def build_columns(
             continue
         pooled = pool_geno(blocks)
         freq = pooled.u / (2 * pooled.n)
-        keep = np.minimum(freq, 1.0 - freq) >= maf
+        keep = np.minimum(pooled.u, 2 * pooled.n - pooled.u) >= 2 * pooled.n * maf - 1e-10
         if not keep.any():
             raise RuntimeError(f"No variant survives MAF {maf} in the pooled {pop} column")
         idx = np.flatnonzero(keep)
@@ -789,7 +789,7 @@ def fed_finemap_instance(
     locus: pd.Series, arch_id: str, rep: int, truth_snps: list[str],
     columns: Sequence[FedColumn], pheno: dict[str, PooledPheno],
     work_root: Path, susiex: str, plink: str,
-    level: float, pval_thresh: float, keep_work: bool,
+    level: float, pval_thresh: float, keep_work: bool, options: dict | None = None,
 ) -> dict:
     """Coordinator side of one (locus, architecture, replicate): SuSiEx + eval.
 
@@ -825,14 +825,14 @@ def fed_finemap_instance(
             ld_list.append(col.ld_prefix)
             n_list.append(col.n)
         run_susiex(sumstats, ld_list, n_list, chrom, start, end,
-                   priv, "cs", susiex, plink, level, pval_thresh)
+                   priv, "cs", susiex, plink, level, pval_thresh, options=options)
         row.update(parse_susiex(priv, "cs", truth_snps))
         row["error"] = ""
     except Exception as exc:  # keep the shard alive; record the failure
         get_logger().warning("fed fine-map FAILED %s: %s", inst, exc)
         row.update(dict.fromkeys(_METRIC_COLS, np.nan))
         row.update({"any_causal_captured": False, "converged": False,
-                    "error": str(exc)[:200]})
+                    "fit_status": "execution_failure", "error": str(exc)[:200]})
     finally:
         # Sorted by ancestry, to match the centralized baseline's schema exactly. See
         # the same block in fine_mapping.py: column order matters to SuSiEx and differs
@@ -841,6 +841,8 @@ def fed_finemap_instance(
         for name in sorted(col.pop for col in columns):
             row[f"min_p_{name}"] = min_p.get(name, np.nan)
         row["runtime_s"] = round(time.time() - t0, 2)
+        from ..inference import archive_instance
+        archive_instance(priv, work_root.parent / "artifacts" / inst, truth_snps, row)
         if not keep_work:
             shutil.rmtree(priv, ignore_errors=True)
     return row
@@ -949,13 +951,11 @@ def run_fed_fine_mapping(
         columns = build_columns(geno_blocks, pops, locus_dir, maf)
         for col in columns:
             if col.n != expected_n.get(col.pop):
-                logger.warning("  %s pooled n=%d but the plan says %d",
-                               col.pop, col.n, expected_n.get(col.pop))
+                raise ValueError(f"{col.pop}: pooled n={col.n} differs from planned n={expected_n.get(col.pop)}")
             if col.n_incomplete_variants:
                 logger.warning(
                     "  %s: %d window variant(s) dropped as not fully observed; the "
-                    "centralized comparator keeps them, so Corollary 1's equality "
-                    "does not hold for this locus", col.pop, col.n_incomplete_variants)
+                    "centralized comparator uses the same complete-variant policy", col.pop, col.n_incomplete_variants)
         del geno_blocks
 
         by_inst: dict[str, dict[str, list[PhenoAggregate]]] = {}
@@ -972,7 +972,7 @@ def run_fed_fine_mapping(
         rows = Parallel(n_jobs=n_workers, backend="loky")(
             delayed(fed_finemap_instance)(
                 locus, aid, rep, truth, columns, pooled_pheno[inst], work_root,
-                susiex, plink, level, pval_thresh, keep_work)
+                susiex, plink, level, pval_thresh, keep_work, cfg.fine_mapping.inference_options())
             for (aid, rep, truth), inst in zip(jobs, instances)
         )
         all_rows.extend(rows)
@@ -993,6 +993,9 @@ def run_fed_fine_mapping(
         df.to_csv(fm_dir / "fed_fm_results.tsv", sep="\t", index=False)
         logger.info("Wrote %d result rows -> %s", len(df), fm_dir / "fed_fm_results.tsv")
         write_rollup(cfg, df)
+
+    from ..inference import require_successful_fits
+    require_successful_fits(df)
 
 
 def merge_fed_fm_results(cfg: SimulationConfig, n_shards: int) -> None:
@@ -1036,7 +1039,7 @@ def write_rollup(cfg: SimulationConfig, df: pd.DataFrame) -> None:
             "power_any_causal": g["any_causal_captured"].mean(),
             "mean_n_cs": g["n_credible_sets"].mean(),
             "median_best_cs_size": g["best_cs_size"].median(),
-            "mean_causal_pip": g["causal_pip_max"].mean(),
+            "mean_causal_pip": g["causal_pip_mean"].mean(),
         })
 
     for by, name in [(["ncsl", "h2_target", "rg"], "by_architecture"),

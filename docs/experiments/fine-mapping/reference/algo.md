@@ -1,3 +1,5 @@
+> Current protocol: [September scientific corrections and rerun](../SCIENTIFIC_RERUN.md). Historical numerical results and earlier exactness/calibration claims below require the new validation gates.
+
 # The SuSiEx algorithm and its federated formulation
 
 **Companion to** [`design.md`](design.md) (simulator).

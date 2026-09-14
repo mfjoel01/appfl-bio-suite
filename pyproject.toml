@@ -176,6 +176,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 appfl_bio_suite = [
     "experiments/*/configs/*.yaml",
+    "experiments/fine_mapping/fedfm/UPSTREAM.json",
     "experiments/*/configs/**/*.yaml",
     # The vendored DUO release. Package data rather than a download: a partner's worker
     # enforces its site's consent code with no outbound network, and an ontology that
@@ -195,21 +196,8 @@ markers = [
 line-length = 100
 target-version = "py312"
 
-# VENDORED CODE. Not linted, and deliberately so.
-#
-# `experiments/fine_mapping/fedfm/` is a byte-for-byte copy of the standalone FedFM
-# simulation repository, and tests/test_fine_mapping_configs.py asserts that with `cmp`.
-# The value of the copy is that the code producing the numbers is provably the code the
-# derivation and proofs are about -- so a `ruff --fix` pass over it, however harmless
-# each individual edit, destroys the one property it is here for.
-#
-# The six ported test files are excluded for the same reason: they are the upstream test
-# suite with nothing changed but their import paths, and they are what holds the vendored
-# code to its guarantees. Reformatting them makes it harder to tell whether a test was
-# ported faithfully or quietly altered.
-#
-# Everything this repository actually wrote -- trainer.py, aggregator.py, dataset.py,
-# simulation/, plotting.py, and the three new test files -- is linted normally.
+# Imported scientific modules retain upstream formatting. They are a maintained fork;
+# UPSTREAM.json records the original hashes and tests cover the corrected protocol.
 exclude = [
     "src/appfl_bio_suite/experiments/fine_mapping/fedfm/",
     "tests/test_fine_mapping_utils.py",

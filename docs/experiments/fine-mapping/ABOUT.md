@@ -1,3 +1,5 @@
+> Current protocol: [September scientific corrections and rerun](SCIENTIFIC_RERUN.md). Historical numerical results and earlier exactness/calibration claims below require the new validation gates.
+
 # Federated cross-ancestry fine-mapping
 
 **Statistical fine-mapping across institutions without pooling anybody's genome.**
@@ -150,9 +152,9 @@ differing only in who took part:
 | all three | the whole federation | 6 |
 | borrowed LD | one site's summary statistics against another's LD panel | 3 |
 
-The first three separate the two things federating supplies at once — more people, and
-more ancestries — because the *n*-matched arm holds sample size fixed and varies only
-diversity.
+The matched arm holds analyzed sample size fixed. Remaining differences reflect
+composition and participation, including allele frequencies, effects and phenotype noise.
+They cannot be attributed uniquely to LD diversity.
 
 The fourth is the objection rather than the design: the cheap alternative to shipping
 O(M²) is "send me your summary statistics and I'll use my own LD panel." That is the
@@ -179,13 +181,13 @@ src/appfl_bio_suite/experiments/fine_mapping/
 ├── aggregator.py  coordinator-side   — may import freely
 ├── plotting.py    coordinator-side   — the aggregator's figure entry point
 ├── figures/       coordinator-side   — the full figure set
-├── fedfm/         coordinator-side   — the vendored science, verbatim from upstream
+├── fedfm/         coordinator-side   — the maintained science fork; see UPSTREAM.json
 └── simulation/    coordinator-side   — never reaches a partner at all
 ```
 
-`fedfm/` is vendored **byte-for-byte** and `tests/test_fine_mapping_configs.py` asserts it
-with `cmp`. The site stage exists twice as a result — shipped source may not import the
-suite — and the two implementations are compared at zero tolerance by
+`fedfm/` is a maintained fork with upstream hashes and changed-module provenance in
+`fedfm/UPSTREAM.json`. The shipped site stage is self-contained; its numerical results
+are compared against the coordinator implementation at zero tolerance by
 `tests/test_fine_mapping_shipped_parity.py`.
 
 ## Running it
