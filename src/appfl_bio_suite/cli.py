@@ -724,7 +724,7 @@ def partner_bundle_cmd(
     a bundle, which makes "did I accidentally send them my internal notes" a structural
     impossibility rather than a judgment call.
     """
-    from appfl_bio_suite.core.partner import generate_bundle
+    from appfl_bio_suite.core.partner import generate_bundle, unresolved_fields
 
     fed = _load(federation_path)
     destination = generate_bundle(fed, experiment, site, out_dir)
@@ -733,6 +733,17 @@ def partner_bundle_cmd(
     for path in sorted(destination.rglob("*")):
         if path.is_file():
             click.echo(f"  {path.relative_to(destination)}")
+
+    # Said here rather than left for the partner to discover. The bundle's whole claim is
+    # that nothing in it needs interpreting, so the one case where something does must be
+    # stated to the person doing the sending.
+    blanks = unresolved_fields(fed, experiment, site)
+    if blanks:
+        click.echo(
+            f"\nNote: {', '.join(blanks)} for this site is not set in federation.yaml, so "
+            f"the endpoint\ntemplate carries a REPLACE_WITH_ marker instead. Either fill it "
+            "in there and\nregenerate, or tell the partner it is theirs to supply."
+        )
 
 
 # ---------------------------------------------------------------------------

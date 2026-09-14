@@ -44,7 +44,13 @@ from appfl_bio_suite.core.config import Federation
 from appfl_bio_suite.core.experiments import get_spec, repo_root
 from appfl_bio_suite.core.identity import build_mapping_document
 
-__all__ = ["generate_bundle", "BundleContents", "partner_docs_root", "render_context"]
+__all__ = [
+    "generate_bundle",
+    "BundleContents",
+    "partner_docs_root",
+    "render_context",
+    "unresolved_fields",
+]
 
 
 class BundleSecurityError(RuntimeError):
@@ -289,6 +295,30 @@ def generate_bundle(
     _write_bundle_manifest(destination, federation, experiment, entry, written)
 
     return destination
+
+
+def unresolved_fields(federation: Federation, experiment: str, site_key: str) -> list[str]:
+    """Scheduler values federation.yaml does not carry, which the partner must supply.
+
+    The bundle's promise is that nothing in it is left for a partner to interpret. These
+    two are the honest exception: a coordinator often genuinely does not know a partner's
+    scheduler account or queue before onboarding them, and inventing one would be worse
+    than asking.
+
+    What is NOT acceptable is rendering them empty, which is what used to happen --
+    `account:` with nothing after it parses as null, so the endpoint template looked
+    complete, installed cleanly, and failed at job submission on the partner's cluster
+    with an error naming neither the field nor the file. Returned here so the template can
+    mark them explicitly and so the coordinator is told, at generation time, that the
+    bundle they are about to send still has a blank in it.
+    """
+    site = federation.experiment_site(experiment, site_key).resolved_site
+    missing = []
+    if not site.account:
+        missing.append("account")
+    if not site.scheduler_slot_value:
+        missing.append(site.scheduler_slot)
+    return missing
 
 
 def _check_no_placeholders_remain(rendered: str, source: Path) -> None:
