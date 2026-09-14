@@ -213,6 +213,7 @@ def test_submit_graph_orders_simulation_validation_analysis_and_plots(tmp_path, 
         "plots",
     ]
     assert list(jobs) == stages
+    assert all("place=exclhost" in job["command"] for job in jobs.values())
     for before, after in zip(stages, stages[1:], strict=False):
         assert f"depend=afterok:{jobs[before]['id']}" in jobs[after]["command"]
     assert "0-1%3" in jobs["analysis"]["command"]
@@ -291,3 +292,30 @@ def test_sumstats_harmonization_preserves_test_but_reverses_signed_effect(tmp_pa
     assert got.se.iloc[0] == 0.2 and got.p.iloc[0] == 0.05
     with pytest.raises(ValueError, match="incompatible"):
         harmonize_sumstats(frame.assign(A1="T"), bim)
+
+
+def test_retry_preserves_history_and_refuses_live_job_graph(tmp_path, monkeypatch):
+    import importlib.util
+    import json
+    from pathlib import Path
+
+    import pytest
+
+    script = Path(__file__).resolve().parents[1] / "scripts/fine-mapping/submit_scientific_rerun.py"
+    spec = importlib.util.spec_from_file_location("fm_retry_test", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    manifest = tmp_path / "jobs.json"
+    original = json.dumps({"rescore": {"id": "123[].pbs"}})
+    manifest.write_text(original)
+    monkeypatch.setattr(module.subprocess, "check_output", lambda *a, **k: "    job_state = R\n")
+    with pytest.raises(RuntimeError, match="not terminal"):
+        module.archive_terminal_attempt(tmp_path)
+    assert manifest.read_text() == original
+    cache = tmp_path / "cached.npz"
+    cache.write_bytes(b"previous scientific work")
+    monkeypatch.setattr(module.subprocess, "check_output", lambda *a, **k: "    job_state = F\n")
+    archived = module.archive_terminal_attempt(tmp_path)
+    assert (archived / "jobs.json").read_text() == original
+    assert "job_state = F" in json.loads((archived / "scheduler.json").read_text())["rescore"]
+    assert not manifest.exists() and cache.read_bytes() == b"previous scientific work"

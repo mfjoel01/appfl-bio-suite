@@ -129,3 +129,31 @@ The audited production case `L0002_ncsl1_h2-0.001_rg1_rep2` passes the explicit 
 gate for all six ancestries and retains identical PIPs (maximum absolute difference 0)
 and the same causal-containing credible set after explicit GWAS allele harmonization.
 These checks do not replace the scheduled full-grid parity and calibration assessment.
+
+Scheduler incident and recovery: on 14 September, replacement array `185829[]`
+finished with two successful subjobs (1 and 3) and two terminated subjobs (0 and 2,
+exit 143 / SIGTERM). PBS cancelled dependent jobs `185830`–`185838` at 20:35 UTC;
+phenotype simulation, analysis and plotting had not started. The failed jobs used
+about 2.2 GB and 25 minutes against requests of 120 GB and four hours. Their logs
+contain no Python traceback. Both terminations coincided with successful completion
+of another subjob on the same physical node (`sophia-gpu-07`). This is consistent
+with interference during shared-node cleanup; the available logs do not identify
+who sent SIGTERM, so that cause remains unconfirmed.
+
+Submission now requests `place=exclhost` for every stage. It prevents separate jobs
+from sharing a physical host, as defined by the [ALCF PBS placement documentation](https://docs.alcf.anl.gov/running-jobs/).
+This is a scheduling mitigation; it does not relax any scientific acceptance gate.
+The original frozen computation revision and data remain unchanged. To recover the
+terminal dependency graph while retaining output and validated caches:
+
+```bash
+PYTHONPATH=src OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
+/soft/applications/miniconda3/3.12/bin/python \
+  scripts/fine-mapping/submit_scientific_rerun.py \
+  --root local/output/fine-mapping-full-rerun-20260914 --retry-failed
+```
+
+Retry verifies that every recorded job is terminal, archives its job IDs and PBS
+history under `attempts/`, then submits a new graph. It refuses to duplicate queued,
+held or running work. Re-scoring reuses its validated per-window caches. New job IDs
+are recorded in `jobs.json`; prior job histories are retained for diagnosis.
