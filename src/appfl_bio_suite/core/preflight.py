@@ -357,6 +357,20 @@ def _parse_constraints(path: Path) -> dict[str, str]:
 
 
 def _installed_versions() -> dict[str, str]:
+    """Map package name -> the version that will actually be *imported*.
+
+    FIRST match wins, not last. `distributions()` walks sys.path in order, so when the
+    same package is installed twice -- a ~/.local copy shadowing the environment's, which
+    is the situation the user-site check above exists for -- the first dist-info found is
+    the one whose package `import` resolves to. It is also what `importlib.metadata
+    .version()` returns.
+
+    Last-wins reported the SHADOWED version instead, which got the answer exactly
+    backwards in both directions: it hard-failed a launch over a skew that did not exist
+    (pinned numpy 1.26.4 in ~/.local, stale 2.2.6 in the env, reported as installed), and
+    in the opposite ordering it would have passed a launch over a real one. Either way
+    the number it printed was the one version that was guaranteed not to be loaded.
+    """
     from importlib.metadata import distributions
 
     out = {}
@@ -370,7 +384,7 @@ def _installed_versions() -> dict[str, str]:
             continue
         name = (metadata.get("Name") or "").lower().replace("_", "-")
         if name:
-            out[name] = dist.version
+            out.setdefault(name, dist.version)
     return out
 
 
