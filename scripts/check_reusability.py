@@ -100,13 +100,24 @@ SCOPED_EXEMPTIONS = [
 def _exempt(rel: str, label: str) -> bool:
     """Is this pattern legitimate at this path?"""
     return any(
-        rel.startswith(prefix) and label in labels
-        for prefix, labels, _reason in SCOPED_EXEMPTIONS
+        rel.startswith(prefix) and label in labels for prefix, labels, _reason in SCOPED_EXEMPTIONS
     )
 
+
 # Never scanned: not shipped, not tracked, or not text.
-SKIP_DIRS = {".git", "local", ".venv", "venv", "__pycache__", ".pytest_cache",
-             ".ruff_cache", ".mypy_cache", "build", "dist", "node_modules"}
+SKIP_DIRS = {
+    ".git",
+    "local",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".mypy_cache",
+    "build",
+    "dist",
+    "node_modules",
+}
 SKIP_SUFFIXES = {".png", ".jpg", ".gz", ".bed", ".bim", ".fam", ".pyc", ".whl", ".pdf"}
 
 
@@ -115,7 +126,9 @@ def tracked_files(root: Path) -> list[Path]:
     try:
         result = subprocess.run(
             ["git", "-C", str(root), "ls-files"],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if result.returncode == 0 and result.stdout.strip():
             return [root / line for line in result.stdout.splitlines() if line.strip()]

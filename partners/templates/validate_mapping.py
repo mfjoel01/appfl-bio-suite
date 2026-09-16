@@ -61,22 +61,26 @@ def main() -> int:
 
     # `status` matters: the mapper silently skips any identity record that is not
     # "used" or "private", which looks exactly like a bad regex.
-    record = [{
-        "id": args.identity_id,
-        "sub": args.identity_id,
-        "username": args.identity,
-        "status": "used",
-    }]
+    record = [
+        {
+            "id": args.identity_id,
+            "sub": args.identity_id,
+            "username": args.identity,
+            "status": "used",
+        }
+    ]
 
     mapped, anchored = [], False
-    for entry in (document if isinstance(document, list) else [document]):
+    for entry in document if isinstance(document, list) else [document]:
         try:
             mappers = load_mappers([entry], None, None)
         except Exception as exc:
             print(f"ERROR: could not load the mapping document: {type(exc).__name__}: {exc}")
             print()
             print("If this mentions an invalid '\\' expression, the `match` field contains an")
-            print("escape the mapper does not accept. Only \\. \\? \\* \\| \\( \\) \\\\ are allowed --")
+            print(
+                "escape the mapper does not accept. Only \\. \\? \\* \\| \\( \\) \\\\ are allowed --"
+            )
             print("in particular \\- is rejected and makes the whole file invalid.")
             return 2
         for mapper in mappers:
