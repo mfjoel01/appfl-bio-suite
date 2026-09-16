@@ -99,7 +99,7 @@ PYTHONPATH=src OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
 /soft/applications/miniconda3/3.12/bin/python \
   scripts/fine-mapping/submit_scientific_rerun.py \
   --base-config local/configs/fine-mapping/pipeline_config.clean.yaml \
-  --root local/output/fine-mapping-full-rerun-20260914 --submit
+  --root local/output/fine-mapping-full-rerun-20260914 --account "$PBS_ACCOUNT" --submit
 ```
 
 The source, executables, task configurations, subset manifests and package versions are
@@ -107,8 +107,8 @@ frozen and checked at job start. Source is exported using `git archive` from the
 revision, so concurrent uncommitted work cannot enter the PBS snapshot.
 `environment.json` records the committed revision;
 `jobs.json` records the actual PBS IDs and commands. A repeated `--submit-only` invocation
-reuses recorded job IDs instead of duplicating submissions. The allocation is `GeomicVar`
-on Sophia. These are centralized and standalone federated HPC computations. The two
+reuses recorded job IDs instead of duplicating submissions. Set `PBS_ACCOUNT` to your
+Sophia allocation; submission requires an explicit `--account`. These are centralized and standalone federated HPC computations. The two
 placeholder partner endpoints still require actual deployment and corrected bundle
 transfer before a remote federation can run.
 
@@ -156,7 +156,7 @@ terminal dependency graph while retaining output and validated caches:
 PYTHONPATH=src OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
 /soft/applications/miniconda3/3.12/bin/python \
   scripts/fine-mapping/submit_scientific_rerun.py \
-  --root local/output/fine-mapping-full-rerun-20260914 --retry-failed
+  --root local/output/fine-mapping-full-rerun-20260914 --account "$PBS_ACCOUNT" --retry-failed
 ```
 
 Retry verifies that every recorded job is terminal, archives its job IDs and PBS

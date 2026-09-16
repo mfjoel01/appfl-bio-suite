@@ -60,7 +60,7 @@ def test_smoke_test_installs_the_source_shipping_serializer(monkeypatch):
 
     class _FakeFuture:
         def result(self, timeout=None):
-            return {"node": "fl-cdac", "user": "flamby_svc", "cwd": "/", "python": "3.12.13"}
+            return {"node": "test-worker", "user": "flamby_svc", "cwd": "/", "python": "3.12.13"}
 
     class _FakeExecutor:
         def __init__(self, endpoint_id=None):
@@ -77,7 +77,7 @@ def test_smoke_test_installs_the_source_shipping_serializer(monkeypatch):
 
     monkeypatch.setattr(globus_compute_sdk, "Executor", _FakeExecutor)
 
-    result = smoke_test("84a675b1-3d68-4805-a489-18187904c7d6", label="Site4")
+    result = smoke_test("00000000-0000-0000-0000-000000000001", label="Test site")
 
     assert result.ok
     assert result.payload["user"] == "flamby_svc"

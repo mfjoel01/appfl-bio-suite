@@ -505,6 +505,12 @@ def main(argv: list[str] | None = None) -> int:
         sp = sub.add_parser(name, help=helptext)
         sp.add_argument("--as", dest="as_site", required=True, metavar="SITE")
         sp.add_argument("--federation", default="probe", help="which provisioned set to use")
+        if name != "env":
+            sp.add_argument(
+                "--fresh",
+                action="store_true",
+                help="discard cached tokens first, forcing a real re-authentication",
+            )
         sp.set_defaults(func=fn)
 
     sp = sub.add_parser("submit", help="run a function on an endpoint as one site")

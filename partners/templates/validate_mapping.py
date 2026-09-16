@@ -79,7 +79,8 @@ def main() -> int:
             print()
             print("If this mentions an invalid '\\' expression, the `match` field contains an")
             print(
-                "escape the mapper does not accept. Only \\. \\? \\* \\| \\( \\) \\\\ are allowed --"
+                "escape the mapper does not accept. "
+                "Only \\. \\? \\* \\| \\( \\) \\\\ are allowed --"
             )
             print("in particular \\- is rejected and makes the whole file invalid.")
             return 2

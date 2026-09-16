@@ -26,6 +26,80 @@ produced it is `scripts/globus_service_account_probe.py`.
 
 ---
 
+## What was measured
+
+Run on 2026-09-16 with globus-compute-sdk/endpoint 4.9.0, against real Globus Auth and
+Compute services. Two throwaway federations were provisioned — `probe-shared` (one client
+identity, two secrets, as proposed) and `probe-persite` (one client identity per site) —
+plus one real single-user endpoint registered under the shared identity on a login node.
+
+**Two secrets, one identity.** `whoami` under each site's credential:
+
+| federation | site | credential id | authenticates as |
+| --- | --- | --- | --- |
+| `probe-shared` | alpha | `2e166d8c…` | `c8791dcf…` |
+| `probe-shared` | beta | `e3022e05…` | `c8791dcf…` ← **same** |
+| `probe-persite` | alpha | `f193f6a9…` | `2d126934…` |
+| `probe-persite` | beta | `56699a3e…` | `496ca6b3…` ← **distinct** |
+
+Per-partner secrets do not produce per-partner identities. Everything downstream — endpoint
+ownership, submission authorization, whatever the service records — sees one actor.
+
+**A partner can run code on another partner's cluster.** `alpha` registered endpoint
+`017fd5b9…`. Asked what it could see, `beta`'s *separate* credential returned that
+endpoint; a `probe-persite` credential returned nothing. Submitting with beta's credential
+to alpha's endpoint:
+
+```
+submitting as beta (CHVy...M= (len 44)) -> 017fd5b9-...
+ACCEPTED. The task ran. It reported:
+  host         <the login node alpha's endpoint runs on>
+  posix_user   <the ordinary account that started it>
+  home         /home/<that same account>
+```
+
+Two things at once. Beta executed arbitrary code on alpha's machine — and it ran as
+the ordinary Unix account that started the endpoint, with that account's home directory,
+because there is no identity mapping in this design to redirect it to a service account.
+
+**Revocation works, with two caveats.** Deleting beta's credential and forcing
+re-authentication gives `401 UNAUTHORIZED — Basic auth failed`, while alpha is unaffected.
+So the mechanism Globus described does work. But:
+
+* *It is not immediate.* Immediately after revocation, beta submitted to alpha's endpoint
+  again and the task ran — the already-issued access token is still valid until it expires.
+  Cutting a partner off promptly means revoking the secret **and** dealing with their
+  tokens and endpoints.
+* *It does not undo ownership.* Endpoints the revoked partner registered remain owned by
+  the still-live shared identity.
+
+**Project administration is session-gated.** With a valid stored refresh token but no
+recent interactive login, `POST /v2/api/clients` returned:
+
+```
+403 FORBIDDEN — To access this project you must have an identity with admin privileges
+in session within the last 30 minutes.
+```
+
+After `globus-compute-endpoint login --force` the same call succeeded. Reads
+(`get_projects`) were never gated; writes were.
+
+> **Open item.** Whether `create_client_credential` — minting a *new secret for an existing
+> client*, which is the call an onboarding flow would automate — carries the same session
+> gate was not isolated: every mint in this run happened inside a fresh 30-minute window.
+> It is very likely gated the same way, being the same project-administration API. To
+> settle it, wait out the window and run:
+> `python scripts/globus_service_account_probe.py provision --federation probe-shared --sites gamma --shape shared`
+> Worth confirming with Globus directly, since a registration flow that silently requires a
+> human to re-authenticate every 30 minutes is not the automation it appears to be.
+
+**A practical gotcha, unrelated to the design.** `globus-compute-endpoint start` reads
+stdin and blocks silently if it is an open pipe or socket rather than a terminal — no log
+output, no `endpoint.json`, no error. Redirect `</dev/null` when starting one from a
+script or agent.
+
+---
+
 ## What the proposal gets right
 
 **The mechanism is real and first-class, not a workaround.** In globus-compute 4.9.0,
@@ -67,7 +141,8 @@ reconfigure those endpoints.
 
 Per-partner secrets do not change this. All of them authenticate as the *same identity*;
 they differ only in which string opens the door. This is the first of the two reasons the
-design was dropped here, and the suggestion does not address it.
+design was dropped here, and the suggestion does not address it. It is not a theoretical
+worry: beta's credential ran code on alpha's endpoint, measured above.
 
 For a biomedical federation this is the crux. The current model's guarantee to a partner is
 "we can run only what you have mapped one named identity to run, and you revoke us by
@@ -78,7 +153,8 @@ against your data".
 ### 2. There is no per-partner attribution
 
 A client-credentials token's subject is the client identity, not the credential used to
-obtain it. Compute therefore records one actor for the whole federation. You can revoke a
+obtain it — two distinct secrets resolved to one identity id in the table above. Compute
+therefore records one actor for the whole federation. You can revoke a
 partner individually but you cannot tell, from the service's records, which partner did
 anything — including which one submitted the job that touched patient data.
 
@@ -92,7 +168,8 @@ SDK call found here.)*
 Under the multi-user design, identity mapping enforces that a task runs as a named local
 account (`gwas_svc`, `flamby_svc`) regardless of who started the endpoint. Under this
 design, a task runs as **whoever started the endpoint** — an ordinary partner's Unix user,
-with that user's full filesystem access.
+with that user's full filesystem access. The probe task reported the starting account's own
+username and home directory.
 
 This is a silent change to something this codebase treats as evidence: the `user` field
 returned by `where_am_i()` (`core/endpoint.py`) exists specifically to prove the partner's
@@ -109,9 +186,10 @@ exposes credentials that reach every site in the federation.
 
 ### 5. Revocation is not immediate
 
-Deleting a credential stops that partner obtaining *new* tokens. It does not invalidate
-access tokens already issued, and it does not change who owns the endpoints they already
-registered — those stay under the federation identity. Cutting off a partner promptly means
+Deleting a credential stops that partner obtaining *new* tokens — confirmed, they get a
+401. It does not invalidate access tokens already issued (the revoked credential submitted
+a task successfully straight afterwards), and it does not change who owns the endpoints they
+already registered — those stay under the federation identity. Cutting off a partner promptly means
 deleting the credential *and* deleting or disowning their endpoints.
 
 ### 6. Minting secrets is not as automatable as it sounds
