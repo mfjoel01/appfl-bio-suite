@@ -44,7 +44,9 @@ def where_am_i() -> dict[str, str]:
     """Run on the worker and report where it landed.
 
     Imports live inside the function because this is serialized and shipped to a remote
-    interpreter -- it must not close over anything from the sending process.
+    interpreter -- it must not close over anything from the sending process. That is
+    necessary but not sufficient: see :func:`smoke_test` for why the body being
+    self-contained does not by itself make the function shippable.
 
     ``user`` is the load-bearing field. On a partner's multi-user endpoint it should be
     the experiment's service account, not the account that started the endpoint. If it is
@@ -136,12 +138,34 @@ def smoke_test(uuid: str, label: str = "", timeout: float = DEFAULT_TIMEOUT) -> 
 
     Runs no experiment code and touches no data, so it is safe to run against a partner's
     endpoint at any time -- including before they have staged anything.
+
+    THE PROBE SHIPS ITS OWN SOURCE
+    ------------------------------
+    The SDK's default code strategy (``DillCode``) serializes a module-level function *by
+    reference* -- the payload is the string ``appfl_bio_suite.core.endpoint.where_am_i``,
+    85 bytes of it -- so the worker has to import ``appfl_bio_suite`` to resolve the name.
+    Writing every import inside :func:`where_am_i` does nothing about that; the body is
+    never reached, because unpickling fails first.
+
+    That made this check strictly stricter than the run it is supposed to clear. An
+    experiment's dataset and model are shipped to a worker as source text precisely so a
+    partner need not install this package -- see
+    ``experiments/flamby_heart_disease/dataset.py`` -- so an endpoint that would train
+    perfectly well failed its smoke test with ``ModuleNotFoundError: No module named
+    'appfl_bio_suite'``, and the message pointed at serialization rather than at the
+    install it was really about.
+
+    ``CombinedCode`` packs the by-reference form *and* the function's source text, and the
+    worker uses whichever it can. Partners who installed the suite are unaffected; the one
+    who did not now passes, which is the correct answer for them.
     """
     from globus_compute_sdk import Executor
+    from globus_compute_sdk.serialize import CombinedCode, ComputeSerializer
 
     label = label or uuid
     started = time.time()
     executor = Executor(endpoint_id=uuid)
+    executor.serializer = ComputeSerializer(strategy_code=CombinedCode())
     try:
         future = executor.submit(where_am_i)
         payload = future.result(timeout=timeout)

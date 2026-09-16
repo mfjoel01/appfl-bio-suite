@@ -76,3 +76,31 @@ def test_duplicate_site_ids_are_named(tmp_path):
                 ],
             }
         )
+
+
+def test_shadowed_duplicate_reports_the_version_that_will_be_imported(monkeypatch):
+    """Two dist-infos for one package: the first on sys.path is the one `import` gets.
+
+    The pin check used to keep the LAST distribution `distributions()` yielded, which is
+    the shadowed one -- so on a machine with a pinned numpy in ~/.local and a stale copy
+    in the environment it reported the stale version and hard-failed a launch that was
+    correctly pinned. A pin check that names the one version guaranteed not to be loaded
+    is worse than no pin check.
+    """
+    import importlib.metadata
+
+    from appfl_bio_suite.core.preflight import _installed_versions
+
+    class _Dist:
+        def __init__(self, name, version):
+            self.metadata = {"Name": name}
+            self.version = version
+
+    # Yielded in sys.path order: the ~/.local copy first, the environment's second.
+    monkeypatch.setattr(
+        importlib.metadata,
+        "distributions",
+        lambda: iter([_Dist("numpy", "1.26.4"), _Dist("numpy", "2.2.6")]),
+    )
+
+    assert _installed_versions()["numpy"] == "1.26.4"

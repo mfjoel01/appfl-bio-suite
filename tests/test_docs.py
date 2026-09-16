@@ -236,3 +236,70 @@ def test_generated_bundle_has_no_placeholders(tmp_path):
                 continue  # a template by design; rendered when installed
             leftovers = re.findall(r"\{\{[^}]+\}\}", text)
             assert not leftovers, f"{path} still contains {leftovers}"
+
+
+def test_unknown_scheduler_fields_are_marked_not_left_blank(tmp_path):
+    """`account:` with nothing after it parses as null and fails on the partner's cluster.
+
+    federation.yaml legitimately may not carry a partner's scheduler account or queue --
+    the coordinator often does not know them before onboarding. Rendering them empty made
+    the endpoint template look complete and install cleanly, then fail at job submission
+    with an error naming neither the field nor the file. An explicit marker is the honest
+    form, and the coordinator is told which fields carry one.
+
+    The shipped example fills both fields in, so this builds a federation that does not.
+    Skipping instead would have made the test agree with whatever the example happened to
+    say, which is the one thing it must not do.
+    """
+    import yaml
+
+    from appfl_bio_suite.core.config import load_federation as _load
+    from appfl_bio_suite.core.partner import generate_bundle, unresolved_fields
+
+    path = tmp_path / "federation.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "coordinator": {"identity": "a.researcher@example.edu"},
+                # No `account`, no `partition`: the state this test exists for.
+                "sites": [{"id": "partner", "name": "Partner University", "scheduler": "slurm"}],
+                "experiments": {
+                    "flamby-heart-disease": {
+                        "enabled": True,
+                        "service_account": "flamby_svc",
+                        "endpoint_name": "flamby-ep",
+                        "dataset": "HeartDisease",
+                        "num_clients": 4,
+                        "rounds": 2,
+                        "sites": [
+                            {
+                                "site": "partner",
+                                "client_id": "Site1",
+                                "endpoint_uuid": "bbbbbbbb-0000-0000-0000-000000000001",
+                                "center": 0,
+                                "output_dir": "/home/flamby_svc/outputs",
+                                "expected_train_samples": 199,
+                            }
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    federation = _load(path)
+
+    assert unresolved_fields(federation, "flamby-heart-disease", "partner") == [
+        "account",
+        "partition",
+    ]
+
+    destination = generate_bundle(federation, "flamby-heart-disease", "partner", tmp_path / "out")
+    provider = yaml.safe_load(
+        (destination / "user_config_template.yaml.j2").read_text(encoding="utf-8")
+    )["engine"]["provider"]
+
+    for field in ("account", "partition"):
+        assert provider[field], f"{field} rendered empty rather than as an explicit marker"
+        assert str(provider[field]).startswith("REPLACE_WITH_"), provider[field]
