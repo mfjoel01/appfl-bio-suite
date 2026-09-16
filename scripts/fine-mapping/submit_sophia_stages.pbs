@@ -1,0 +1,118 @@
+#!/bin/bash
+# Run one or more fine-mapping pipeline stages, in order, on ONE Sophia node.
+#
+# A generic runner rather than a script per stage: every stage goes through the same
+# scripts/fine-mapping/run_stage.py entry point and differs only in its name, so a
+# per-stage script would be four copies of this file with one word changed.
+#
+# WALLTIME IS THE SCHEDULING CONSTRAINT, NOT CORES.
+#   Sophia's prod nodes are reserved for a standing queue of 24 h, whole-node jobs, so a
+#   long request waits for a drain window rather than for cores. Measured 2026-09-11: a
+#   4 h request backfilled onto a free node instantly while 6 h, 8 h and 12 h requests all
+#   sat queued behind a reservation ~14 h out, with prod nodes visibly idle. Keep requests
+#   at or under 4 h and shard the work; several short shards start at once where one long
+#   job does not start at all.
+#
+# SHARDING
+#   Submit as a PBS array (-J 0-3) and each task runs its own shard; then one merge job
+#   with FM_MERGE=1 reduces the parts:
+#     A=$(qsub -J 0-3 -v FM_STAGES=centralized,FM_N_SHARDS=4 ...)
+#     qsub -W depend=afterokarray:$A -v FM_STAGES=centralized,FM_N_SHARDS=4,FM_MERGE=1 ...
+#
+# Chain stages across jobs with PBS dependencies rather than listing them all here when
+# a single walltime cannot hold them:
+#   A=$(qsub ... -v FM_STAGES=sampling,phenotypes,bundle ...)
+#   qsub -W depend=afterok:$A ... -v FM_STAGES=centralized ...
+#
+# BEFORE YOU SUBMIT
+#   FM_CONFIG   a pipeline_config.yaml; every stage reads and writes the paths IN IT, so
+#               point it at the package you mean to build or analyse
+#   FM_STAGES   comma-separated stage names, run in the order given
+#
+# SUBMIT
+#   qsub -A <allocation> -v FM_CONFIG=...,FM_STAGES=sampling,phenotypes,bundle \
+#        scripts/fine-mapping/submit_sophia_stages.pbs
+#
+# KEEP THE DIRECTIVE BLOCK PURE: no trailing comments on a #PBS line, and no indented
+# lines inside it -- PBS stops scanning at the first line not starting with '#' and
+# silently drops every directive after it.
+
+#PBS -q single-node
+#PBS -l select=1
+#PBS -l walltime=04:00:00
+#PBS -l filesystems=home:grand
+#PBS -N fm-stages
+#PBS -o logs/fm-stages.out
+#PBS -e logs/fm-stages.err
+#PBS -j oe
+
+set -euo pipefail
+
+: "${SUITE_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+# PBS copies the job script into a spool directory before running it, so BASH_SOURCE can
+# resolve somewhere that is not the checkout. Fail here with an instruction rather than
+# 20 lines later with a confusing ImportError.
+if [[ ! -d "${SUITE_ROOT}/src/appfl_bio_suite" ]]; then
+  echo "SUITE_ROOT='${SUITE_ROOT}' is not an appfl-bio-suite checkout." >&2
+  echo "Pass it explicitly:  qsub -v SUITE_ROOT=/path/to/appfl-bio-suite,... " >&2
+  exit 2
+fi
+cd "${SUITE_ROOT}"
+
+: "${FM_CONFIG:?set FM_CONFIG to a pipeline_config.yaml}"
+: "${FM_STAGES:?set FM_STAGES to a comma-separated list of stage names}"
+FM_WORKERS="${FM_WORKERS:-32}"
+# Sharding. A PBS array sets PBS_ARRAY_INDEX; outside an array the shard index is 0.
+FM_N_SHARDS="${FM_N_SHARDS:-1}"
+FM_SHARD_INDEX="${FM_SHARD_INDEX:-${PBS_ARRAY_INDEX:-0}}"
+FM_MERGE="${FM_MERGE:-}"
+
+export TMPDIR="${TMPDIR:-${SUITE_ROOT}/local/scratch}"
+mkdir -p "${TMPDIR}" logs
+
+# One BLAS thread per process: the parallelism is across instances, and letting each
+# worker spawn its own thread pool oversubscribes the node and runs slower.
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+
+export PYTHONPATH="${SUITE_ROOT}/src:${PYTHONPATH:-}"
+PYBIN="${FM_PYTHON:-$(command -v python)}"
+# A compute node does not inherit the login shell's conda activation, so a bare `python`
+# there is often /usr/bin/python with no scientific stack. Check before spending the
+# allocation: without this the job dies on `import numpy` several minutes in, and every
+# job chained behind it is cancelled by the dependency.
+if ! "${PYBIN}" -c "import numpy, pandas, appfl_bio_suite" 2>/dev/null; then
+  echo "FATAL: '${PYBIN}' cannot import numpy/pandas/appfl_bio_suite." >&2
+  echo "Pass the interpreter that can:  qsub -v FM_PYTHON=/path/to/env/bin/python,... " >&2
+  "${PYBIN}" -c "import sys; print('  interpreter:', sys.executable)" >&2 || true
+  exit 3
+fi
+
+echo "host        $(hostname)"
+echo "cores       $(nproc)"
+echo "workers     ${FM_WORKERS}"
+echo "config      ${FM_CONFIG}"
+echo "stages      ${FM_STAGES}"
+echo "shard       ${FM_MERGE:+MERGE of }${FM_SHARD_INDEX}/${FM_N_SHARDS}"
+echo "started     $(date -Is)"
+echo
+
+IFS=',' read -ra STAGES <<< "${FM_STAGES}"
+for stage in "${STAGES[@]}"; do
+  echo "=== stage ${stage}  $(date -Is) ==="
+  # Only centralized and federated take --n-workers; the rest reject it as an unknown
+  # argument, which would fail the job at whichever stage happened to come first.
+  ARGS=(--config "${FM_CONFIG}")
+  case "${stage}" in
+    centralized|federated) ARGS+=(--n-workers "${FM_WORKERS}") ;;
+  esac
+  if [[ -n "${FM_MERGE}" ]]; then
+    ARGS+=(--merge --n-shards "${FM_N_SHARDS}")
+  elif [[ "${FM_N_SHARDS}" -gt 1 ]]; then
+    ARGS+=(--n-shards "${FM_N_SHARDS}" --shard-index "${FM_SHARD_INDEX}")
+  fi
+  "${PYBIN}" scripts/fine-mapping/run_stage.py "${stage}" "${ARGS[@]}"
+  echo "=== stage ${stage} OK  $(date -Is) ==="
+done
+
+echo
+echo "finished    $(date -Is)"

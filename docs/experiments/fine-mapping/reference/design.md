@@ -1,3 +1,5 @@
+> Current protocol: [September scientific corrections and rerun](../SCIENTIFIC_RERUN.md). Historical numerical results and earlier exactness/calibration claims below require the new validation gates.
+
 > **ARCHIVED RECORD (migrated 2026-08-21).** This document describes the standalone
 > standalone `fedfm-simulation` tree, which is retired. The body
 > below is preserved exactly as written; read its paths through this mapping: the source

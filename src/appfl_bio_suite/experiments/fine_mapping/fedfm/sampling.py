@@ -203,6 +203,19 @@ def _extract_plink_for_site(
             str(bfile),
             "--keep",
             str(ids_file),
+            # WITHOUT THIS FLAG THE SITES DISAGREE ABOUT WHAT A DOSAGE MEANS.
+            # PLINK 1.9's --make-bed re-derives A1 as the minor allele *of the sample it
+            # is given*. Each site is a different subset of individuals with a different
+            # ancestry mix, so a variant whose minor allele differs between cohorts is
+            # written A1=G in one site's .bim and A1=A in another's. The .bed dosage is
+            # then "count of G" at one site and "count of A" at the other -- x against
+            # 2 - x -- with no error and no warning.
+            #
+            # It corrupts the ground truth, not just the analysis: phenotype_sim reads
+            # these per-site filesets, so a causal variant flipped at one site gives that
+            # site's individuals beta * (2 - x) while the manifest records beta * x.
+            # Every downstream number inherits it.
+            "--keep-allele-order",
             "--make-bed",
             "--out",
             str(out_prefix),

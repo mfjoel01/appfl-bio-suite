@@ -207,37 +207,11 @@ def fed1_parity(
         )
 
     n_inst = len(merged)
-    n_drop = sum((dropped or {}).values())
-    if worst_overall == 0:
-        head = "The federated fit is identical to the centralized fit"
-    elif worst_overall < 1e-10:
-        head = "The federated fit equals the centralized fit to floating point"
-    else:
-        head = f"Identical credible sets; PIPs agree to {worst_overall:.2g}"
-    fig.suptitle(head, x=0.005, ha="left", fontsize=13, fontweight="semibold")
-
-    # State the precondition, then the result. Reporting the difference without the
-    # reason invites a reader to conclude the exactness claim failed, and reporting the
-    # claim without the difference would be worse.
-    if n_drop and worst_overall >= 1e-10:
-        why = (
-            f" Corollary 1's equality is conditional on both paths seeing the same "
-            f"variant list, and at this locus they did not: {n_drop} window "
-            f"variant(s) across "
-            + ", ".join(f"{k} ({v})" for k, v in sorted((dropped or {}).items()))
-            + " were dropped by the federated path as not fully observed at every "
-            "site, while the centralized comparator -- which sees one pooled "
-            "cohort -- kept them. The vendored code emits that warning itself. "
-            "The discrepancy is therefore accounted for, and it does not touch "
-            "the credible sets: every set and every set size is identical."
-        )
-    elif worst_overall >= 1e-10:
-        why = (
-            " This exceeds floating-point summation order and is NOT explained by a "
-            "variant-list difference; treat it as a bug in the federated path."
-        )
-    else:
-        why = " That is floating-point summation order, which is what Corollary 1 permits."
+    why = (
+        " This figure summarizes result-table differences. The separate production parity "
+        "gate checks the complete instance grid, variant eligibility, credible-set "
+        "membership, fit status and retained-component PIPs at their output precision."
+    )
     fs.footnote(
         fig,
         f"{n_inst:,} instances run on both paths over the same package; "
@@ -694,13 +668,16 @@ def fed5_where_time_goes(
 # matched on sample size, then the whole federation, then the shortcut that avoids it.
 ARM_ORDER = ["covenant", "mbzuai", "anl", "federation_50k", "federation", "ld_borrowed"]
 ARM_LABEL = {
-    "covenant": "Covenant\nalone",
-    "mbzuai": "MBZUAI\nalone",
-    "anl": "ANL\nalone",
-    "federation_50k": "All three\nn matched",
-    "federation": "All three\nfull",
-    "ld_borrowed": "Covenant stats\n+ ANL LD",
+    "covenant": "Covenant alone",
+    "mbzuai": "MBZUAI alone",
+    "anl": "ANL alone",
+    "federation_50k": "All three, n matched",
+    "federation": "All three, full",
+    "ld_borrowed": "Covenant stats + ANL LD",
 }
+# Two lines per label is the natural way to write these and it does not survive six
+# arms: rotated, each label's second line juts right into its neighbour's first. One
+# line rotates cleanly at any length, so the labels stay whole rather than abbreviated.
 
 
 def arm_colors(arms: list[str]) -> list[str]:
@@ -733,14 +710,26 @@ def fed6_what_federation_buys(
     federation reaches more, and panel d says how much of that is simply three times the
     data rather than three times the diversity -- the ``n matched`` arm is the full
     federation restricted to one site's worth of people, so the gap between it and a solo
-    site is diversity and the gap between it and the full federation is sample size.
+    site is the cost of splitting a fixed cohort across ancestries, and the gap between
+    it and the full federation is sample size.
+
+    That first gap is deliberately NOT labelled "diversity". SuSiEx fits one effect per
+    ancestry column, so power tracks the size of the largest column rather than the total,
+    and the solo arms win it by being concentrated: Covenant puts 47,500 of its 50,000
+    people into AFR, where the n-matched federation's largest column is 20,000. The
+    controlled comparison is ANL (5 columns, largest 30,000) against the n-matched
+    federation (5 columns, largest 20,000) -- same total n, same column count, 14.6 pp
+    apart, p~1e-55. Calling the bar "diversity" would tell a reader that ancestral
+    diversity costs 30 points of power, which is not what it measures and is a claim this
+    design cannot support.
 
     The ``ld_borrowed`` arm is a different claim and is coloured as a warning rather than
     as a series. It is the cheap alternative to federating -- one site's summary
     statistics against another's LD panel, O(M) instead of O(M^2) -- and it belongs here
     because "why not just meta-analyse?" is the first objection to this design.
     """
-    arms = [a for a in ARM_ORDER if a in set(by_arm["arm"])]
+    available = set(by_arm["arm"])
+    arms = [a for a in ARM_ORDER if a in available] + sorted(available - set(ARM_ORDER))
     if not arms:
         fig, ax = plt.subplots(figsize=(7, 4.5))
         fs.no_data(ax, "results carry no arm column")
@@ -756,7 +745,7 @@ def fed6_what_federation_buys(
 
     d = parse_architecture(by_arm)
 
-    fig, axes = plt.subplots(1, 4, figsize=(16.8, 5.0))
+    fig, axes = plt.subplots(1, 4, figsize=(17.6, 5.2))
     ax_a, ax_b, ax_c, ax_d = axes
 
     def _bars(ax, col, ylabel, letter, title, pct=True):
@@ -804,54 +793,38 @@ def fed6_what_federation_buys(
 
     _bars(ax_c, "pip95", "P(causal variant at PIP > 0.95)", "c", "High-confidence yield")
 
-    # (d) the decomposition, stated as numbers rather than left to be eyeballed off a.
-    solo = [a for a in arms if a in fs.SITE]
-    best_solo = max(solo, key=lambda a: _rate(d[d["arm"] == a], "captured")[0]) if solo else None
-    lines = []
-    if best_solo and "federation_50k" in arms:
-        a0 = _rate(d[d["arm"] == best_solo], "captured")[0]
-        a1 = _rate(d[d["arm"] == "federation_50k"], "captured")[0]
-        lines.append(("diversity\n(same n, more ancestries)", a1 - a0, fs.PATH["federated"]))
-    if "federation_50k" in arms and "federation" in arms:
-        a1 = _rate(d[d["arm"] == "federation_50k"], "captured")[0]
-        a2 = _rate(d[d["arm"] == "federation"], "captured")[0]
-        lines.append(("sample size\n(same ancestries, 3x n)", a2 - a1, fs.BLUE_RAMP[2]))
-    if "covenant" in arms and "ld_borrowed" in arms:
-        a0 = _rate(d[d["arm"] == "covenant"], "captured")[0]
-        ab = _rate(d[d["arm"] == "ld_borrowed"], "captured")[0]
-        lines.append(("borrowing LD\ninstead of federating", ab - a0, fs.STATUS["critical"]))
-    if lines:
-        y = np.arange(len(lines))
-        vals = [v for _, v, _ in lines]
-        ax_d.barh(y, vals, 0.5, color=[c for _, _, c in lines], edgecolor=fs.SURFACE, linewidth=1.4)
+    # Predeclared paired comparisons; no post-hoc selection of the best solo site.
+    from ..reporting import paired_arm_differences
+
+    differences = paired_arm_differences(by_arm)
+    if len(differences):
+        values = differences.power_difference.to_numpy()
+        errors = np.vstack([values - differences.ci_low, differences.ci_high - values])
+        y = np.arange(len(differences))
+        ax_d.errorbar(values, y, xerr=errors, fmt="o", color=fs.PATH["federated"], capsize=3)
         ax_d.axvline(0, color=fs.INK2, lw=1.2)
-        for yi, v in enumerate(vals):
-            ax_d.text(
-                v + (0.004 if v >= 0 else -0.004),
-                yi,
-                f"{v * 100:+.1f} pp",
-                va="center",
-                ha="left" if v >= 0 else "right",
-                fontsize=10,
-                fontweight="semibold",
-                color=fs.INK,
-            )
         ax_d.set_yticks(y)
-        ax_d.set_yticklabels([lbl for lbl, _, _ in lines], fontsize=9)
-        lim = max(abs(min(vals)), abs(max(vals))) * 1.7 or 0.05
-        ax_d.set_xlim(-lim, lim)
+        ax_d.set_yticklabels([ARM_LABEL.get(a, a) for a in differences.arm], fontsize=7)
         ax_d.xaxis.set_major_formatter(lambda v, _: f"{v * 100:+.0f}")
-        ax_d.set_xlabel("change in power (percentage points)")
+        ax_d.set_xlabel("full federation minus comparison (pp)")
         ax_d.invert_yaxis()
         ax_d.grid(axis="y", visible=False)
-        fs.panel_letter(ax_d, "d", "Where the gain comes from")
+        fs.panel_letter(ax_d, "d", "Paired power differences")
     else:
-        fs.no_data(ax_d, "needs the federation_50k and ld_borrowed arms")
-        fs.panel_letter(ax_d, "d", "Where the gain comes from")
+        fs.no_data(ax_d, "paired federation comparisons unavailable")
 
     for ax in (ax_a, ax_b, ax_c):
         ax.set_xticks(x)
-        ax.set_xticklabels([ARM_LABEL.get(a, a) for a in arms], fontsize=8.5)
+        # Six arms of two-line labels do not fit a quarter of the canvas horizontally --
+        # they collide into each other and the panel becomes unreadable. Rotating past
+        # four arms keeps the four-arm case upright, which is easier to read.
+        ax.set_xticklabels(
+            [ARM_LABEL.get(a, a) for a in arms],
+            fontsize=8.5 if len(arms) <= 4 else 8.0,
+            rotation=0 if len(arms) <= 4 else 30,
+            ha="center" if len(arms) <= 4 else "right",
+            rotation_mode=None if len(arms) <= 4 else "anchor",
+        )
         ax.grid(axis="x", visible=False)
         for tick, a in zip(ax.get_xticklabels(), arms, strict=False):
             if a == "ld_borrowed":
@@ -890,7 +863,7 @@ def fed6_what_federation_buys(
         "differing only in which cohorts took part. Error bars are Wilson "
         "95% intervals. The `n matched` arm is the full federation "
         "restricted to one site's worth of people, stratified within site "
-        "and ancestry, so panel d can separate diversity from sample size. "
+        "and ancestry, so panel d can separate splitting a fixed cohort from adding to it. "
         "The borrowed-LD arm is the cheap alternative to federating and is "
         "drawn as a warning, not a series.",
     )
@@ -922,6 +895,7 @@ def write_figures(
     by_arm=None,
     cohort=None,
     logger=None,
+    strict=False,
 ) -> list[Path]:
     """Draw every federation figure the available inputs support."""
     active = logger or log
@@ -976,6 +950,8 @@ def write_figures(
         try:
             p = draw(out_dir / name)
         except Exception as exc:  # noqa: BLE001
+            if strict:
+                raise RuntimeError(f"Could not draw {name}") from exc
             active.warning("could not draw %s: %s", name, exc)
             continue
         if p is None:

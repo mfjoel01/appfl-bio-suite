@@ -43,6 +43,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from ..inference import inclusion_probabilities
+
 log = logging.getLogger(__name__)
 
 __all__ = ["harvest_instance", "harvest_tree", "sample_instances", "run_sample"]
@@ -74,7 +76,11 @@ def _split_per_pop(value, n_pop: int) -> list[float]:
 
 
 def harvest_instance(
-    work_dir: Path, pops: list[str], truth_snps: list[str], out_name: str = "cs"
+    work_dir: Path,
+    pops: list[str],
+    truth_snps: list[str],
+    out_name: str = "cs",
+    include_variants: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """``(credible_sets, members, variants)`` for one instance's SuSiEx output.
 
@@ -90,13 +96,15 @@ def harvest_instance(
 
     def _read(suffix):
         p = work_dir / f"{out_name}{suffix}"
+        if not p.exists():
+            p = p.with_suffix(p.suffix + ".gz")
         if not p.exists() or p.stat().st_size == 0:
             return None
         try:
             df = pd.read_csv(p, sep="\t", comment="#")
         except (pd.errors.EmptyDataError, OSError, ValueError):
             return None
-        # SuSiEx writes a bare "NULL" line when nothing converged.
+        # SuSiEx writes NULL for a converged fit without retained credible sets.
         return None if df.empty or "NULL" in df.columns else df
 
     # ---- credible sets (one row each) ------------------------------------- #
@@ -181,7 +189,7 @@ def harvest_instance(
     mem_df = pd.DataFrame(mem_rows)
 
     # ---- every variant's PIP ---------------------------------------------- #
-    snp = _read(".snp")
+    snp = _read(".snp") if include_variants else None
     var_df = pd.DataFrame()
     if snp is not None and "SNP" in snp.columns:
         pip_cols = [c for c in snp.columns if c.startswith("PIP(")]
@@ -191,9 +199,8 @@ def harvest_instance(
                     "instance": inst,
                     "snp": snp["SNP"].astype(str),
                     "bp": snp["BP"] if "BP" in snp.columns else np.nan,
-                    # Max across credible sets, matching how the results table's top_pip is
-                    # defined, so a value here and a value there mean the same thing.
-                    "pip": snp[pip_cols].apply(pd.to_numeric, errors="coerce").max(axis=1),
+                    # Overall probability across the retained components.
+                    "pip": inclusion_probabilities(snp),
                 }
             )
             var_df["is_causal"] = var_df["snp"].isin(truth)

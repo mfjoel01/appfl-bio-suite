@@ -1,3 +1,5 @@
+> Current protocol: [September scientific corrections and rerun](SCIENTIFIC_RERUN.md). Historical numerical results and earlier exactness/calibration claims below require the new validation gates.
+
 # Fine-mapping — the data
 
 Synthetic throughout. No real genotypes are used, which is why aggregates ship in the

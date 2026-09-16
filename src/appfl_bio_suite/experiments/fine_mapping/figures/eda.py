@@ -16,7 +16,7 @@ Each figure answers a question a reader will otherwise ask in review:
   eda5_causal_maf              are the causal variants at frequencies all three sites
                                can actually see?
   eda6_h2_calibration          did the simulator hit the heritability it was asked for?
-  eda7_rg_recovery             did it hit the cross-ancestry genetic correlation?
+  eda7_rg_recovery             did it hit the cross-ancestry effect-draw correlation?
   eda8_design_grid             which cells of the ncsl x h2 x rg star design exist,
                                and how many instances landed in each?
 
@@ -486,9 +486,11 @@ def eda5_causal_maf(pkg: dict, out: Path) -> Path | None:
             d = json.loads(raw)
         except (TypeError, ValueError):
             continue
-        for site, maf in d.items():
-            if maf is not None and np.isfinite(maf):
-                rows.append((site, float(maf)))
+        for site, values in d.items():
+            # New manifests preserve every causal SNP in the declared order.
+            for value in values if isinstance(values, list) else [values]:
+                if value is not None and np.isfinite(value):
+                    rows.append((site, float(value)))
     if not rows:
         return None
     maf = pd.DataFrame(rows, columns=["site", "maf"])
@@ -696,7 +698,9 @@ def eda7_rg_recovery(pkg: dict, out: Path, max_files: int = 4000) -> Path | None
             continue
         beta = np.load(p)  # (ncsl, n_ancestries)
         if beta.ndim == 2 and beta.shape[1] >= 2:
-            stacked.setdefault(float(row.rg), []).append(beta)
+            beta = beta[np.all(beta != 0, axis=1)]
+            if len(beta):
+                stacked.setdefault(float(row.rg), []).append(beta)
     if not stacked:
         return None
     pooled = {rg: np.vstack(v) for rg, v in stacked.items()}
@@ -753,7 +757,7 @@ def eda7_rg_recovery(pkg: dict, out: Path, max_files: int = 4000) -> Path | None
         fontsize=8.5,
         color=fs.INK2,
     )
-    fs.panel_letter(ax1, "a", "Recovered genetic correlation")
+    fs.panel_letter(ax1, "a", "Recovered effect-draw correlation")
 
     pairs = [("EUR", "AFR"), ("EUR", "MID")]
     for k, (pair, ax) in enumerate(
@@ -924,7 +928,7 @@ FIGURES = [
 ]
 
 
-def write_figures(data_root, out_dir, logger=None) -> list[Path]:
+def write_figures(data_root, out_dir, logger=None, strict=False) -> list[Path]:
     """Draw every EDA figure the package supports. A figure that cannot be drawn is
     skipped with a note rather than failing the batch."""
     active = logger or log
@@ -936,6 +940,8 @@ def write_figures(data_root, out_dir, logger=None) -> list[Path]:
         try:
             p = draw(pkg, out_dir / name)
         except Exception as exc:  # noqa: BLE001 - one bad panel must not lose the batch
+            if strict:
+                raise RuntimeError(f"Could not draw {name}") from exc
             active.warning("could not draw %s: %s", name, exc)
             continue
         if p is None:

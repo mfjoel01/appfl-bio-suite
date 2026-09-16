@@ -1,58 +1,12 @@
-"""What federating buys: fine-map the same loci with each site alone, then together.
+"""Paired participation and LD-reference comparisons on a fixed simulation panel.
 
-COORDINATOR-SIDE. Never shipped to a worker.
+All arms use the same inference implementation and truth instances. Solo arms
+measure participation effects. Downsampled federation controls match analyzed N
+with several seeds; ancestry composition, allele frequencies, genetic effects and
+site noise may still differ. They do not isolate an LD-diversity effect.
 
-THE QUESTION THIS ANSWERS, AND WHY IT NEEDED A NEW MODULE
-----------------------------------------------------------
-Every result in this experiment so far was produced with all three sites participating.
-That measures whether federating is *correct* -- and ``fed1_parity`` shows it is, exactly
--- but it says nothing about whether federating is *worth it*, because there is no arm in
-which a site works alone. A reader's first question about a federation is "what would I
-get on my own?", and nothing in the results table could answer it.
-
-An arm is one fine-mapping run over the same 79 loci, the same architectures, the same
-ground truth, differing only in **who participated**:
-
-    anl        50,000 people, 5 ancestry columns, EUR-dominant
-    covenant   50,000 people, 3 ancestry columns, 95% AFR
-    mbzuai     50,000 people, 4 ancestry columns, MID/CSA
-    federation 150,000 people, 6 ancestry columns
-
-That is a federation axis, not an ancestry axis. Ancestry breadth comes along for the
-ride -- see ``downsampled``.
-
-THE THREE SITE-ALONE ARMS NEED NO CODE, ONLY A CONFIG
-------------------------------------------------------
-``plan_columns``, ``materialize_column_keeps`` and ``pooled_phenotype`` are all scoped by
-``cfg.sites``, so a config listing one site produces a genuine site-alone fit: that site's
-ancestry columns, that site's individuals, that site's LD. Nothing is stubbed and no
-vendored code is touched, which is what makes the arms comparable -- every one of them is
-the same estimator over the same truth.
-
-``downsampled`` IS THE CONFOUND CONTROL
-----------------------------------------
-Site-alone and federation differ in two things at once: 50,000 people vs 150,000, and 3-5
-ancestry columns vs 6. For the headline claim that is fine and arguably the point -- a
-site cannot obtain either on its own. But it leaves "is this just three times the sample
-size?" unanswered, so ``downsampled`` runs the full federation restricted to 50,000 people
-total, stratified to preserve each site's ancestry mix. Matched on n, any remaining gap is
-diversity.
-
-``materialize_column_keeps`` cross-checks the manifest against the config's declared
-composition and raises if they disagree, so a down-sampled arm cannot be faked by editing
-numbers -- it needs real subsetted manifests. :func:`build_downsampled_site_dir` writes
-them into a shadow ``processed/`` tree whose PLINK filesets are symlinks, so the arm costs
-a few megabytes rather than a copy of a 287 GB directory.
-
-``ld_borrowed`` IS THE ARGUMENT AGAINST THE SHORTCUT
-------------------------------------------------------
-The cheap alternative to federating is "just send me your summary statistics and I will
-use my own LD panel" -- it is O(M) instead of O(M^2) and needs no site-side compute. This
-arm does exactly that: GWAS from one site's cohort, LD from another's. It is the
-fine-mapping analogue of applying a model fitted on one cohort to another, and it is the
-failure mode the SuSiEx paper studies as LD mismatch. If it produces well-calibrated
-credible sets, the O(M^2) uplink is not justified; if it does not, that is the reason the
-uplink exists.
+The borrowed-LD arm uses Covenant statistics and independent ANL panels for the
+same ancestries. Its calibration is an empirical question, not a presupposed loss.
 """
 
 from __future__ import annotations
@@ -88,6 +42,7 @@ class Arm:
     fraction: float = 1.0
     ld_from: str | None = None  # borrow LD from this site instead of using own
     label: str = ""
+    seed: int = 20260601
 
     @property
     def is_solo(self) -> bool:
@@ -132,7 +87,34 @@ def build_downsampled_site_dir(
     rng = np.random.default_rng(seed)
     compositions: dict[str, dict[str, int]] = {}
 
-    for site in base_cfg["sites"]:
+    manifests = {
+        site: pd.read_csv(
+            processed / site / f"{site}_manifest.tsv", sep="\t", dtype={"FID": str, "IID": str}
+        )
+        for site in base_cfg["sites"]
+    }
+    target = int(round(sum(len(m) for m in manifests.values()) * fraction))
+    min_n = int(base_cfg.get("fine_mapping", {}).get("min_gwas_n", 0))
+    pooled = pd.concat(manifests.values())["superpopulation"].value_counts()
+    eligible = set(pooled.index[(pooled * fraction) >= min_n])
+    cells = [
+        (site, pop, grp)
+        for site, man in manifests.items()
+        for pop, grp in man.groupby("superpopulation")
+        if pop in eligible
+    ]
+    capacity = sum(len(grp) for _, _, grp in cells)
+    if not cells or target > capacity:
+        raise ValueError("Cannot match analyzed N after ancestry exclusions")
+    exact = np.array([len(grp) * target / capacity for _, _, grp in cells])
+    allocations = np.floor(exact).astype(int)
+    residual = target - int(allocations.sum())
+    allocations[np.argsort(-(exact - allocations), kind="stable")[:residual]] += 1
+    selected = {site: [] for site in manifests}
+    for (site, _pop, grp), n in zip(cells, allocations, strict=True):
+        if n:
+            selected[site].append(grp.iloc[rng.permutation(len(grp))[:n]])
+    for site in manifests:
         src, dst = processed / site, out_root / site
         dst.mkdir(parents=True, exist_ok=True)
         for f in src.iterdir():
@@ -141,18 +123,15 @@ def build_downsampled_site_dir(
             link = dst / f.name
             if not link.exists():
                 link.symlink_to(f.resolve())
-
-        man = pd.read_csv(src / f"{site}_manifest.tsv", sep="\t")
-        keep = []
-        for _pop, grp in man.groupby("superpopulation"):
-            n = int(round(len(grp) * fraction))
-            if n < 1:
-                continue
-            keep.append(grp.iloc[rng.permutation(len(grp))[:n]])
-        sub = pd.concat(keep, ignore_index=True) if keep else man.iloc[:0]
+        sub = pd.concat(selected[site], ignore_index=True)
         sub.to_csv(dst / f"{site}_manifest.tsv", sep="\t", index=False)
         compositions[site] = sub["superpopulation"].value_counts().to_dict()
-        log.info("  %s: %d of %d individuals kept", site, len(sub), len(man))
+    actual_pooled = {}
+    for comp in compositions.values():
+        for pop, n in comp.items():
+            actual_pooled[pop] = actual_pooled.get(pop, 0) + n
+    if sum(n for n in actual_pooled.values() if n >= min_n) != target:
+        raise ValueError("Analyzed sample size differs from the requested matched N")
     return compositions
 
 
@@ -188,7 +167,12 @@ def build_configs(
         if arm.fraction != 1.0:
             shadow = out_dir / f"{arm.name}_processed"
             log.info("arm %s: building shadow cohort at %.0f%%", arm.name, arm.fraction * 100)
-            comps = build_downsampled_site_dir(base, shadow, arm.fraction)
+            comps = build_downsampled_site_dir(base, shadow, arm.fraction, seed=arm.seed)
+            cfg["arm"] = {
+                "name": arm.name,
+                "sampling_seed": arm.seed,
+                "estimand": "composition_and_participation",
+            }
             cfg["paths"]["processed_dir"] = str(shadow)
             cfg["sites"] = {
                 s: {**base["sites"][s], "n": sum(comps[s].values()), "composition": comps[s]}
@@ -271,11 +255,11 @@ def run_arm(
     level: float = 0.95,
     pval_thresh: float = 1e-5,
 ) -> Path:
-    """Run one arm through the vendored driver, unchanged.
+    """Run one arm through the common maintained inference driver.
 
     Delegating rather than reimplementing is the whole point: an arm's numbers and the
     published run's numbers come from the same function, so a difference between arms is
-    participation and can be nothing else.
+    the stated participation/composition contrast.
     """
     from appfl_bio_suite.experiments.fine_mapping.fedfm.fine_mapping import (
         run_fine_mapping,
@@ -284,7 +268,9 @@ def run_arm(
 
     arm = ARMS_BY_NAME.get(arm_name)
     if arm is not None and arm.ld_from:
-        return run_ld_borrowed_arm(arm, config_path, n_workers, limit)
+        return run_ld_borrowed_arm(
+            arm, config_path, n_workers, limit, level, pval_thresh, shard_index, n_shards
+        )
 
     cfg = load_config(Path(config_path))
     run_fine_mapping(
@@ -296,6 +282,7 @@ def run_arm(
         pval_thresh=pval_thresh,
         keep_work=False,
         limit=limit,
+        maf=cfg.fine_mapping.maf,
     )
     return Path(cfg.resolved_path("reports_dir")) / "fine_mapping" / "fm_results.tsv"
 
@@ -307,6 +294,8 @@ def run_ld_borrowed_arm(
     limit: int | None = None,
     level: float = 0.95,
     pval_thresh: float = 1e-5,
+    shard_index: int = 0,
+    n_shards: int = 1,
 ) -> Path:
     """GWAS from one site's cohort, LD panel from another's.
 
@@ -396,6 +385,7 @@ def run_ld_borrowed_arm(
         for r in manifest.itertuples(index=False)
     }
 
+    loci = loci.iloc[shard_index::n_shards]
     rows: list[dict] = []
     for _, locus in loci.iterrows():
         ref_dir = ensure_dir(work_root / f"{locus['locus_id']}_refs")
@@ -403,8 +393,15 @@ def run_ld_borrowed_arm(
         win_own = extract_locus_window(cfg, locus, enrolled, ref_dir, plink2)
         lend_dir = ensure_dir(ref_dir / "lender")
         win_lend = extract_locus_window(lend_cfg, locus, lend_enrolled, lend_dir, plink2)
+        # The borrower retains its own eligible GWAS panel; only LD is borrowed.
+        precompute_ld(locus, shared, win_own, ref_dir / "own", plink, cfg.fine_mapping.maf)
         ld = precompute_ld(
-            locus, [lend_by_pop[c.pop] for c in shared], win_lend, lend_dir, plink, 0.005
+            locus,
+            [lend_by_pop[c.pop] for c in shared],
+            win_lend,
+            lend_dir,
+            plink,
+            cfg.fine_mapping.maf,
         )
 
         # Replicate count comes from the CONFIG, not from the manifest. The manifest
@@ -438,6 +435,7 @@ def run_ld_borrowed_arm(
                     level,
                     pval_thresh,
                     False,
+                    require_matching_variants=False,
                 )
                 for aid, rep, tr in jobs
             )
@@ -446,7 +444,12 @@ def run_ld_borrowed_arm(
         if limit is not None and len(rows) >= limit:
             break
 
-    out = fm_dir / "fm_results.tsv"
+    filename = (
+        f"fm_results.part{shard_index:03d}of{n_shards:03d}.tsv"
+        if n_shards > 1
+        else "fm_results.tsv"
+    )
+    out = fm_dir / filename
     pd.DataFrame(rows).to_csv(out, sep="\t", index=False)
     log.info("wrote %d row(s) -> %s", len(rows), out)
     return out

@@ -13,8 +13,8 @@ estimand the simulator is built against: effect sizes are indexed by
 superpopulation, not by site (``design.md`` §5.2), so an ancestry column is
 exactly one homogeneous effect — which is the population unit SuSiEx's model
 assumes. Maximal per-ancestry sample size and in-sample LD computed on the full
-pooled cohort make this the upper bound against which federated variants (which
-must reconstruct these columns from site-resident aggregates) are compared.
+pooled cohort define the comparator reconstructed by federated raw moments.
+This comparator is not a guaranteed upper bound on fine-mapping performance.
 
 For each (locus, architecture, replicate) instance this stage:
 
@@ -35,9 +35,9 @@ For each (locus, architecture, replicate) instance this stage:
 
 Note that the per-site phenotype noise calibration (``design.md`` §5.3) sets
 sigma^2_eps per *site*, so a pooled ancestry column concatenates phenotypes
-whose noise was calibrated against different site cohorts. The marginal effect
-estimates stay consistent; only the homoscedasticity assumption is mildly
-violated, which costs a little efficiency and nothing in correctness.
+whose noise was calibrated against different site cohorts. Equality of the two
+implementations does not establish calibrated uncertainty under heteroscedasticity;
+validation reports the realized per-site/per-ancestry noise and signal.
 
 SuSiEx is a C++ CLI (installed by ``scripts/install_susiex.sh`` into
 ``vendor/bin/SuSiEx``); we shell out to it exactly as we do for PLINK. It
@@ -70,6 +70,8 @@ from .utils import (
     get_logger,
     load_config,
     read_site_manifest,
+    read_bed_variants,
+    read_fam,
     run_plink,
     setup_logging,
     write_ids_file,
@@ -87,12 +89,11 @@ _LD_SUFFIXES = (".ld.bin", "_frq.frq", "_ref.bim")
 # Metric columns every result row carries, failed instances included, so the
 # result table has one schema regardless of how many instances errored.
 # ``parse_susiex`` returns exactly these (asserted in tests).
-_METRIC_COLS = (
-    "n_causal", "n_credible_sets", "cs_sizes_json", "total_cs_snps",
-    "n_causal_captured", "any_causal_captured", "best_cs_size",
-    "causal_pip_max", "causal_pip_mean", "top_pip",
-    "mean_cs_purity", "min_cs_purity", "converged",
+from ..inference import (
+    DEFAULT_OPTIONS, METRIC_COLS as _METRIC_COLS, PROTOCOL,
+    archive_instance, input_fingerprint, parse_outputs, pip_by_snp,
 )
+
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +133,7 @@ class FMColumn:
     n: int
     sites: tuple[str, ...] = ()
     keep_path: Path | None = None
+    analysis_prefix: Path | None = None
 
     @property
     def name(self) -> str:
@@ -191,7 +193,7 @@ def materialize_column_keeps(
 
 
 def pooled_ids_path(cfg: SimulationConfig, keep_dir: Path) -> Path:
-    """Write (once) the union of all enrolled individuals across the three sites.
+    """Write the validated union of all enrolled individuals across the three sites.
 
     The locus window is cut from the HAPNEST source fileset, which holds all
     1,008,000 synthetic individuals; this restricts it to the 150,000 actually
@@ -201,12 +203,13 @@ def pooled_ids_path(cfg: SimulationConfig, keep_dir: Path) -> Path:
     """
     ensure_dir(keep_dir)
     path = keep_dir / "enrolled.keep"
-    if not path.exists():
-        man = pd.concat(
-            [read_site_manifest(cfg.site_dir(s) / f"{s}_manifest.tsv") for s in cfg.sites],
-            ignore_index=True,
-        )
-        write_ids_file(man, path)
+    man = pd.concat(
+        [read_site_manifest(cfg.site_dir(s) / f"{s}_manifest.tsv") for s in cfg.sites],
+        ignore_index=True,
+    )
+    if man.duplicated(["FID", "IID"]).any():
+        raise ValueError("Individuals overlap across enrolled sites")
+    write_ids_file(man, path)
     return path
 
 
@@ -230,14 +233,19 @@ def extract_locus_window(
     chrom, start, end = int(locus["chrom"]), int(locus["start_bp"]), int(locus["end_bp"])
     ensure_dir(out_dir)
     prefix = out_dir / "pooled_ref"
-    if not prefix.with_suffix(".bed").exists():
-        bf = cfg.resolved_path("hapnest_dir") / f"chr{cfg.chromosome}"
+    bf = cfg.resolved_path("hapnest_dir") / f"chr{cfg.chromosome}"
+    stamp = out_dir / "pooled_ref.inputs.json"
+    fingerprint = input_fingerprint(
+        [bf.with_suffix(ext) for ext in (".bed", ".bim", ".fam")] + [enrolled_keep],
+        {"chrom": chrom, "start": start, "end": end, "plink2": plink2, "protocol": PROTOCOL})
+    if not (prefix.with_suffix(".bed").exists() and stamp.exists() and stamp.read_text() == fingerprint):
         run_plink(
             ["--bfile", str(bf), "--keep", str(enrolled_keep), "--chr", str(chrom),
              "--from-bp", str(start), "--to-bp", str(end),
              "--make-bed", "--out", str(prefix)],
             binary=plink2,
         )
+        stamp.write_text(fingerprint)
     return prefix
 
 
@@ -273,7 +281,15 @@ def precompute_ld(
         ref = window
         prefix = out_dir / f"{col.name}_ld"
         ld[col.name] = prefix
-        if _ld_ready(prefix):
+        col.analysis_prefix = Path(f"{prefix}_ref")
+        stamp = Path(f"{prefix}.inputs.json")
+        fingerprint = input_fingerprint(
+            [window.with_suffix(ext) for ext in (".bed", ".bim", ".fam")]
+            + ([col.keep_path] if col.keep_path is not None else []),
+            {"protocol": PROTOCOL, "maf": maf, "plink": plink},
+        )
+        if (_ld_ready(prefix) and col.analysis_prefix.with_suffix(".bed").exists()
+                and stamp.exists() and stamp.read_text() == fingerprint):
             continue
         # the variant list SuSiEx would extract: in-window variants of the panel
         bim = pd.read_csv(ref.with_suffix(".bim"), sep=r"\s+", header=None,
@@ -284,16 +300,35 @@ def precompute_ld(
         keep.to_csv(snp_list, index=False, header=False)
 
         extract = ["--bfile", str(ref), "--keep-allele-order", "--chr", str(chrom),
-                   "--extract", str(snp_list), "--maf", str(maf),
+                   "--extract", str(snp_list), "--geno", "0", "--maf", str(maf),
                    "--make-bed", "--out", f"{prefix}_ref"]
         if col.keep_path is not None:
             extract += ["--keep", str(col.keep_path)]
         run_plink(extract, binary=plink)
-        run_plink(["--bfile", f"{prefix}_ref", "--keep-allele-order",
-                   "--r", "square", "bin4", "--out", str(prefix)], binary=plink)
+        # Direct centralized in-sample correlation on the complete cohort.
+        # PLINK's float32 LD arithmetic introduced differences well above one ULP
+        # at biobank N. Compute from the centrally held genotypes in float64;
+        # the federated comparator obtains these quantities from separate site blocks.
+        panel_bim = pd.read_csv(f"{prefix}_ref.bim", sep=r"\s+", header=None)
+        n = len(read_fam(f"{prefix}_ref.fam"))
+        if n != col.n:
+            raise ValueError(f"Centralized {col.pop}: panel n={n}, planned n={col.n}")
+        X = read_bed_variants(Path(f"{prefix}_ref"), np.arange(len(panel_bim)), n)
+        if not np.isfinite(X).all():
+            raise ValueError("Centralized panel violates complete-variant policy")
+        X = X.astype(np.float64)
+        covariance = (X.T @ X) / n - np.outer(X.mean(axis=0), X.mean(axis=0))
+        sd = np.sqrt(np.maximum(np.diag(covariance), 0))
+        with np.errstate(invalid="ignore", divide="ignore"):
+            correlation = covariance / np.outer(sd, sd)
+        correlation[~np.isfinite(correlation)] = 0
+        np.fill_diagonal(correlation, 1)
+        correlation.astype(np.float32).tofile(f"{prefix}.ld.bin")
+        del X, covariance, correlation
         run_plink(["--bfile", f"{prefix}_ref", "--keep-allele-order",
                    "--freq", "--out", f"{prefix}_frq"], binary=plink)
-        junk = [snp_list, Path(f"{prefix}_ref.bed"), Path(f"{prefix}_ref.fam")]
+        junk = [snp_list]
+        stamp.write_text(fingerprint)
         junk += out_dir.glob(f"{prefix.name}*.log")
         junk += out_dir.glob(f"{prefix.name}*.nosex")
         for path in junk:
@@ -308,7 +343,7 @@ def precompute_ld(
 
 def run_gwas(
     ref_prefix: Path, pheno_path: Path, out_prefix: Path, plink2: str,
-    keep: Path | None = None,
+    keep: Path | None = None, expected_n: int | None = None,
 ) -> Path:
     """Per-ancestry quantitative GWAS on the window; write a SuSiEx sumstats file.
 
@@ -331,11 +366,18 @@ def run_gwas(
         raise FileNotFoundError(f"plink2 --glm produced no .glm.linear for {out_prefix}")
     g = pd.read_csv(globbed[0], sep="\t")
     g = g[g["TEST"] == "ADD"].copy()
+    if expected_n is not None and "OBS_CT" in g and not g["OBS_CT"].dropna().eq(expected_n).all():
+        raise ValueError("GWAS observation counts violate the common-cohort analysis protocol")
     a1, ref, alt = g["A1"], g["REF"], g["ALT"]
     g["A2"] = np.where(a1 == alt, ref, alt)
     out = g[["#CHROM", "ID", "POS", "A1", "A2", "BETA", "SE", "T_STAT", "P"]].copy()
     out.columns = _SUMSTATS_COLS
     out = out.dropna(subset=["beta", "se", "p"])
+    # PLINK2 may choose the ancestry's minor allele as the effect allele even
+    # when the BED panel retains the canonical allele order. Make this recoding
+    # explicit before either path reaches SuSiEx.
+    from ..inference import harmonize_sumstats
+    out = harmonize_sumstats(out, Path(f"{ref_prefix}.bim"))
     ss_path = out_prefix.with_suffix(".sumstats")
     out.to_csv(ss_path, sep="\t", index=False)
     return ss_path
@@ -367,7 +409,8 @@ def run_susiex(
     sumstats: list[Path], ld_prefixes: list[Path],
     n_gwas: list[int], chrom: int, start: int, end: int,
     out_dir: Path, out_name: str, susiex: str, plink: str,
-    level: float, pval_thresh: float, threads: int = 1,
+    level: float, pval_thresh: float, threads: int = 1, options: dict | None = None,
+    require_matching_variants: bool = True,
 ) -> None:
     """Shell out to SuSiEx for one instance across all sites.
 
@@ -382,7 +425,15 @@ def run_susiex(
         return ",".join(str(x) for x in xs)
 
     ncol = len(sumstats)
-    run_plink(
+    opts = {**DEFAULT_OPTIONS, **(options or {})}
+    out_dir.mkdir(parents=True, exist_ok=True)
+    from ..inference import variant_input_manifest
+    try:
+        variant_inputs = variant_input_manifest(sumstats, ld_prefixes, n_gwas, require_matching_variants)
+    except Exception as exc:
+        (out_dir / f"{out_name}.input_failure.json").write_text(json.dumps({"error": str(exc)}))
+        raise
+    result = run_plink(
         ["--sst_file", _csv(sumstats),
          "--n_gwas", _csv(n_gwas),
          "--ld_file", _csv(ld_prefixes),
@@ -393,87 +444,30 @@ def run_susiex(
          "--a2_col", _csv(["5"] * ncol), "--eff_col", _csv(["6"] * ncol),
          "--se_col", _csv(["7"] * ncol), "--pval_col", _csv(["9"] * ncol),
          "--plink", plink, "--level", str(level),
-         "--pval_thresh", str(pval_thresh), "--threads", str(threads)],
-        binary=susiex,
+         "--pval_thresh", str(pval_thresh), "--threads", str(threads),
+         "--keep-ambig", str(opts["keep_ambiguous"]),
+         "--n_sig", str(opts["n_signals"]), "--max_iter", str(opts["max_iter"]),
+         "--tol", str(opts["tol"]), "--mult-step", "False"],
+        binary=susiex, check=False,
     )
+    (out_dir / f"{out_name}.stdout.log").write_text(result.stdout)
+    (out_dir / f"{out_name}.stderr.log").write_text(result.stderr)
+    (out_dir / f"{out_name}.execution.json").write_text(json.dumps({
+        "command": result.cmd, "returncode": result.returncode, "protocol": PROTOCOL,
+        "options": opts, "sample_sizes": n_gwas, "variant_inputs": variant_inputs,
+        "input_sha256": {str(p): __import__("hashlib").sha256(p.read_bytes()).hexdigest()
+                         for p in sumstats},
+    }, indent=2))
+    if result.returncode:
+        raise RuntimeError(f"SuSiEx failed with exit {result.returncode}: {result.stderr[-500:]}")
 
 
 def _pip_by_snp(snp_file: Path) -> dict[str, float]:
-    """Map SNP id -> max PIP across all PIP(CSk) columns, from the ``.snp`` file."""
-    if not snp_file.exists():
-        return {}
-    try:
-        df = pd.read_csv(snp_file, sep="\t")
-    except (pd.errors.EmptyDataError, OSError):
-        return {}
-    pip_cols = [c for c in df.columns if c.startswith("PIP(")]
-    if "SNP" not in df.columns or not pip_cols:
-        return {}
-    pip = df[pip_cols].apply(pd.to_numeric, errors="coerce").max(axis=1)
-    return dict(zip(df["SNP"].astype(str), pip.astype(float)))
+    return pip_by_snp(snp_file)
 
 
 def parse_susiex(out_dir: Path, out_name: str, truth_snps: list[str]) -> dict:
-    """Standard fine-mapping metrics from SuSiEx ``.cs`` / ``.summary`` / ``.snp``."""
-    cs_file = out_dir / f"{out_name}.cs"
-    sum_file = out_dir / f"{out_name}.summary"
-    snp_file = out_dir / f"{out_name}.snp"
-    truth = set(truth_snps)
-
-    cs = pd.DataFrame()
-    if cs_file.exists():
-        try:
-            cs = pd.read_csv(cs_file, sep="\t", comment="#")
-        except (pd.errors.EmptyDataError, OSError):
-            cs = pd.DataFrame()
-    # SuSiEx can write a headerless "no credible set" note; guard on the columns.
-    has_cs = not cs.empty and {"CS_ID", "SNP"}.issubset(cs.columns)
-
-    cs_sizes: list[int] = []
-    total_cs_snps = 0
-    n_causal_captured = 0
-    best_cs_size = None
-    if has_cs:
-        for _cid, grp in cs.groupby("CS_ID"):
-            members = set(grp["SNP"].astype(str))
-            cs_sizes.append(len(members))
-            total_cs_snps += len(members)
-            if members & truth:
-                if best_cs_size is None or len(members) < best_cs_size:
-                    best_cs_size = len(members)
-        captured = set(cs["SNP"].astype(str)) & truth
-        n_causal_captured = len(captured)
-
-    # per-CS purity/length from the .summary table
-    mean_purity = min_purity = np.nan
-    if sum_file.exists():
-        try:
-            s = pd.read_csv(sum_file, sep="\t", comment="#")
-            if "CS_PURITY" in s.columns and len(s):
-                pur = pd.to_numeric(s["CS_PURITY"], errors="coerce")
-                mean_purity, min_purity = float(pur.mean()), float(pur.min())
-        except (pd.errors.EmptyDataError, OSError):
-            pass
-
-    pip_map = _pip_by_snp(snp_file)
-    causal_pips = [pip_map[s] for s in truth_snps if s in pip_map]
-    top_pip = max(pip_map.values()) if pip_map else np.nan
-
-    return {
-        "n_causal": len(truth_snps),
-        "n_credible_sets": len(cs_sizes),
-        "cs_sizes_json": json.dumps(sorted(cs_sizes)),
-        "total_cs_snps": total_cs_snps,
-        "n_causal_captured": n_causal_captured,
-        "any_causal_captured": bool(n_causal_captured > 0),
-        "best_cs_size": best_cs_size if best_cs_size is not None else np.nan,
-        "causal_pip_max": max(causal_pips) if causal_pips else np.nan,
-        "causal_pip_mean": float(np.mean(causal_pips)) if causal_pips else np.nan,
-        "top_pip": top_pip,
-        "mean_cs_purity": mean_purity,
-        "min_cs_purity": min_purity,
-        "converged": bool(has_cs or bool(pip_map)),
-    }
+    return parse_outputs(out_dir, out_name, truth_snps)
 
 
 # ---------------------------------------------------------------------------
@@ -485,6 +479,7 @@ def finemap_instance(
     truth_snps: list[str], columns: list[FMColumn], window: Path,
     ld: dict[str, Path], work_root: Path, susiex: str, plink: str, plink2: str,
     level: float, pval_thresh: float, keep_work: bool,
+    require_matching_variants: bool = True,
 ) -> dict:
     """Run GWAS -> SuSiEx -> eval for a single instance; return a result row.
 
@@ -505,15 +500,17 @@ def finemap_instance(
         pheno = pooled_phenotype(cfg, inst, priv / "pooled.pheno")
         sumstats, ld_list, n_list = [], [], []
         for col in columns:
-            ss = run_gwas(window, pheno, priv / col.name, plink2,
-                          keep=col.keep_path)
+            ss = run_gwas(col.analysis_prefix or window, pheno, priv / col.name, plink2,
+                          keep=col.keep_path, expected_n=col.n)
             ssdf = pd.read_csv(ss, sep="\t", usecols=["snp", "p"])
             min_p[col.name] = float(ssdf["p"].min()) if len(ssdf) else np.nan
             sumstats.append(ss)
             ld_list.append(ld[col.name])  # shared read-only, built once per locus
             n_list.append(col.n)
         run_susiex(sumstats, ld_list, n_list, chrom, start, end,
-                   priv, "cs", susiex, plink, level, pval_thresh)
+                   priv, "cs", susiex, plink, level, pval_thresh,
+                   options=cfg.fine_mapping.inference_options(),
+                   require_matching_variants=require_matching_variants)
         metrics = parse_susiex(priv, "cs", truth_snps)
         row.update(metrics)
         row["error"] = ""
@@ -523,7 +520,7 @@ def finemap_instance(
         # every instance fails must still emit the columns _write_rollup reads.
         row.update(dict.fromkeys(_METRIC_COLS, np.nan))
         row.update({"any_causal_captured": False, "converged": False,
-                    "error": str(exc)[:200]})
+                    "fit_status": "execution_failure", "error": str(exc)[:200]})
     finally:
         # Sorted by ancestry, NOT in `columns` order. The centralized and federated
         # paths order their SuSiEx columns differently -- this one follows
@@ -535,6 +532,7 @@ def finemap_instance(
         for name in sorted(col.name for col in columns):
             row[f"min_p_{name}"] = min_p.get(name, np.nan)
         row["runtime_s"] = round(time.time() - t0, 2)
+        archive_instance(priv, work_root.parent / "artifacts" / inst, truth_snps, row)
         if not keep_work:
             shutil.rmtree(priv, ignore_errors=True)
     return row
@@ -638,6 +636,9 @@ def run_fine_mapping(
         logger.info("Wrote %d result rows -> %s", len(df), fm_dir / "fm_results.tsv")
         _write_rollup(cfg, df)
 
+    from ..inference import require_successful_fits
+    require_successful_fits(df)
+
 
 def merge_fm_results(cfg: SimulationConfig, n_shards: int) -> None:
     """REDUCE: concat per-shard result parts, sort, write fm_results.tsv + rollup."""
@@ -676,7 +677,9 @@ def _write_rollup(cfg: SimulationConfig, df: pd.DataFrame) -> None:
             "power_any_causal": g["any_causal_captured"].mean(),
             "mean_n_cs": g["n_credible_sets"].mean(),
             "median_best_cs_size": g["best_cs_size"].median(),
-            "mean_causal_pip": g["causal_pip_max"].mean(),
+            "mean_causal_pip": g["causal_pip_mean"].mean(),
+            "cs_coverage": g["n_cs_containing_causal"].sum() / g["n_credible_sets"].sum() if g["n_credible_sets"].sum() else np.nan,
+            "n_nonconverged": g["fit_status"].eq("nonconverged").sum(),
         })
 
     for by, name in [(["ncsl", "h2_target", "rg"], "by_architecture"),

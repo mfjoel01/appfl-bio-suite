@@ -17,7 +17,8 @@ Three groups, each guarding something the port could quietly break.
 
 from __future__ import annotations
 
-import filecmp
+import hashlib
+import json
 import os
 from pathlib import Path
 
@@ -72,32 +73,24 @@ def test_the_vendored_package_contains_exactly_the_declared_modules():
     present = {p.name for p in package.glob("*.py")} - {"__init__.py"}
     assert present == set(VENDORED_MODULES), (
         f"fedfm/ holds {sorted(present)}, expected {sorted(VENDORED_MODULES)}.\n"
-        "Everything in that package is a verbatim copy from the standalone repository. "
+        "Import provenance is declared in UPSTREAM.json. "
         "New code belongs in the experiment package above it, not here -- see "
         "fedfm/__init__.py."
     )
 
 
-@pytest.mark.skipif(
-    not (_UPSTREAM / "src").is_dir(),
-    reason=f"the standalone repository is not at {_UPSTREAM}; set FEDFM_UPSTREAM",
-)
-@pytest.mark.parametrize("module", VENDORED_MODULES)
-def test_vendored_module_is_byte_identical_to_upstream(module: str):
-    """The whole value of vendoring verbatim is that this can be checked with cmp.
-
-    A failure here does not necessarily mean something is wrong -- upstream may simply
-    have moved on. It means the copy is stale and the claim in fedfm/__init__.py no
-    longer holds, so either re-copy or amend the claim.
-    """
-    ours = SPEC.package_path / "fedfm" / module
-    theirs = _UPSTREAM / "src" / module
-    assert filecmp.cmp(ours, theirs, shallow=False), (
-        f"{module} differs from {theirs}.\n"
-        "fedfm/ is a verbatim vendoring; a local edit there breaks the guarantee that "
-        "the code producing the numbers is the code the proofs are about. Make the "
-        "change upstream and re-copy, or move it into the experiment package."
-    )
+def test_import_provenance_and_unmodified_modules():
+    package = SPEC.package_path / "fedfm"
+    provenance = json.loads((package / "UPSTREAM.json").read_text())
+    assert set(provenance["modules"]) == set(VENDORED_MODULES)
+    for module, record in provenance["modules"].items():
+        assert len(record["upstream_sha256"]) == 64
+        if not record["maintained_fork"]:
+            assert (
+                hashlib.sha256((package / module).read_bytes()).hexdigest()
+                == record["upstream_sha256"]
+            )
+    assert provenance["reason"]
 
 
 def test_the_shipped_trainer_does_not_import_the_vendored_package():

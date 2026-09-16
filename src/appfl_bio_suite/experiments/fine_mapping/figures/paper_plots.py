@@ -15,7 +15,7 @@ architecture was simulated on it. So the paper's x-axis becomes ours:
     paper                             here
     which populations were combined   cross-site LD-divergence stratum
     discovery sample size             per-locus h2 (signal available)
-    cross-population r_g              cross-ancestry r_g  (same thing)
+    cross-population r_g              effect-draw correlation parameter
     method (SuSiEx / PAINTOR / ...)   analysis path (federated / centralized)
 
 Its metrics carry over unchanged, and are the reason to follow its forms at all:
@@ -96,6 +96,12 @@ def parse_architecture(df: pd.DataFrame) -> pd.DataFrame:
     for col, thresh in (("pip95", 0.95), ("pip50", 0.50)):
         has = "causal_pip_max" in df
         df[col] = (df["causal_pip_max"].fillna(-1) > thresh) if has else False
+    df["nonconverged"] = df.get("fit_status", pd.Series("unknown", index=df.index)).eq(
+        "nonconverged"
+    )
+    df["converged_no_cs"] = df.get("fit_status", pd.Series("unknown", index=df.index)).eq(
+        "converged_no_cs"
+    )
     df["single_cs"] = df.get("n_credible_sets", 0) == 1
     return df
 
@@ -107,8 +113,12 @@ def _strata_present(df: pd.DataFrame) -> list[str]:
 
 def _rate(sub: pd.DataFrame, col: str) -> tuple[float, float, float, int]:
     n = len(sub)
-    k = int(sub[col].fillna(False).astype(bool).sum())
-    p, lo, hi = fs.wilson(k, n)
+    from ..reporting import clustered_ratio
+
+    d = sub.copy()
+    d["_hits"] = sub[col].fillna(False).astype(int)
+    d["_one"] = 1
+    p, lo, hi = clustered_ratio(d, "_hits", "_one")
     return p, lo, hi, n
 
 
@@ -413,8 +423,9 @@ def pap3_convergence(df: pd.DataFrame, out: Path) -> Path:
         (
             "converged, no credible set",
             fs.STATUS["warning"],
-            lambda g: (~g["returned_cs"] & ~g["failed"]).sum(),
+            lambda g: g["converged_no_cs"].sum(),
         ),
+        ("nonconverged", fs.STATUS["critical"], lambda g: g["nonconverged"].sum()),
         ("error", fs.STATUS["critical"], lambda g: g["failed"].sum()),
     ]
 
@@ -520,6 +531,10 @@ def pap4_power_coverage(df: pd.DataFrame, out: Path, cs_detail: pd.DataFrame | N
     to commit; only the joint position says whether it did either. Each point is one
     (design cell x LD-divergence stratum) group.
     """
+    if cs_detail is None or cs_detail.empty:
+        fig, ax = plt.subplots(figsize=(8.0, 6.0))
+        fs.no_data(ax, "Calibration unavailable: per-credible-set membership is required")
+        return fs.save(fig, out, log)
     fig, ax = plt.subplots(figsize=(8.0, 6.0))
     strata = _strata_present(df)
     colors = dict(zip(strata, fs.ordinal_colors(len(strata), fs.VIOLET_RAMP), strict=False))
@@ -1311,7 +1326,7 @@ def pap9_coding_quality(df: pd.DataFrame, out: Path, flips: pd.DataFrame | None 
         f"{len(d):,} instances with a scored causal PIP. Inconsistent "
         "coding is detected by comparing the three sites' .bim A1 alleles "
         "at each causal variant. The defect attenuates pooled signal, so "
-        "the reported power is a lower bound on the design's.",
+        "direction and size of any bias require a paired corrected rerun.",
     )
     fig.tight_layout()
     return fs.save(fig, out, log)
@@ -1421,10 +1436,9 @@ def pap10_population_probability(
         fig,
         f"{len(cs_detail):,} credible sets over "
         f"{cs_detail['instance'].nunique():,} instances. The causal "
-        "variants here are SHARED across ancestries by construction "
-        "(the simulator draws one causal set per instance), so any "
-        "difference between columns in panel a is a difference in "
-        "evidence, not in truth. That is what makes panel b a clean test.",
+        "architecture is stated in the figure group. Differences between populations "
+        "can reflect sample size, frequencies and genetic effects; "
+        "this association with N does not isolate a sample-size effect.",
     )
     fig.tight_layout()
     return fs.save(fig, out, log)
@@ -1467,7 +1481,9 @@ def pap11_locuszoom(
     pip_cols = [c for c in snp.columns if c.startswith("PIP(")]
     if not pip_cols or "BP" not in snp.columns:
         return None
-    snp["pip"] = snp[pip_cols].apply(pd.to_numeric, errors="coerce").max(axis=1)
+    from ..inference import inclusion_probabilities
+
+    snp["pip"] = inclusion_probabilities(snp)
 
     n = len(sumstats)
     fig, axes = plt.subplots(
@@ -1766,12 +1782,14 @@ def load_cs_detail(detail_dir: Path, results: pd.DataFrame) -> pd.DataFrame | No
         ["locus_id", "architecture_id", "replicate", "stratum", "ncsl", "h2", "rg"]
     ].drop_duplicates()
     meta["replicate"] = meta["replicate"].astype("Int64")
-    return cs.merge(meta, on=["locus_id", "architecture_id", "replicate"], how="left")
+    return cs.merge(
+        meta, on=["locus_id", "architecture_id", "replicate"], how="inner", validate="many_to_one"
+    )
 
 
 # --------------------------------------------------------------------------- #
 def write_figures(
-    results, out_dir, data_root=None, detail_dir=None, loci=None, logger=None
+    results, out_dir, data_root=None, detail_dir=None, loci=None, logger=None, strict=False
 ) -> list[Path]:
     """Draw every paper-analogue figure. A figure whose inputs are absent is skipped."""
     active = logger or log
@@ -1782,6 +1800,9 @@ def write_figures(
         active.warning("no results to plot")
         return []
 
+    instance_ids = {
+        f"{r.locus_id}_{r.architecture_id}_rep{r.replicate}" for r in df.itertuples(index=False)
+    }
     flips = cs_detail = ld_strength = None
     exemplar_root = Path(detail_dir).parent / "exemplars" / "work" if detail_dir else None
     if data_root:
@@ -1817,6 +1838,11 @@ def write_figures(
         mp = Path(detail_dir) / "fm_cs_members.tsv"
         if mp.exists():
             members = pd.read_csv(mp, sep="\t")
+            instance_ids = {
+                f"{r.locus_id}_{r.architecture_id}_rep{r.replicate}"
+                for r in df.itertuples(index=False)
+            }
+            members = members[members.instance.isin(instance_ids)]
             active.info("credible-set members: %d rows", len(members))
 
     jobs = [
@@ -1869,6 +1895,8 @@ def write_figures(
         for d in sorted(Path(root).iterdir()):
             if not d.is_dir() or d.name in {"keeps"} or d.name.endswith("_refs"):
                 continue
+            if d.name not in instance_ids:
+                continue
             if not (d / "cs.snp").exists():
                 continue
             jobs.append(
@@ -1890,6 +1918,8 @@ def write_figures(
         try:
             p = draw(out_dir / name)
         except Exception as exc:  # noqa: BLE001 - a figure must never lose a run
+            if strict:
+                raise RuntimeError(f"Could not draw {name}") from exc
             active.warning("could not draw %s: %s", name, exc)
             continue
         if p is None:

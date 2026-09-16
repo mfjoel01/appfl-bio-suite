@@ -57,7 +57,7 @@ def arm_cohort_sizes(data_root, by_arm) -> dict[str, tuple[int, int]]:
     out: dict[str, tuple[int, int]] = {}
     for arm_name in by_arm["arm"].unique():
         arm = ARMS_BY_NAME.get(arm_name)
-        if arm is None or not data_root:
+        if not data_root:
             continue
         try:
             import yaml
@@ -71,14 +71,14 @@ def arm_cohort_sizes(data_root, by_arm) -> dict[str, tuple[int, int]]:
             ):
                 if cand.exists():
                     raw = yaml.safe_load(cand.read_text())
-                    sites = arm.sites if arm.ld_from else tuple(raw["sites"])
+                    sites = arm.sites if arm and arm.ld_from else tuple(raw["sites"])
                     pooled: dict[str, int] = {}
                     for s in sites:
                         for pop, n in raw["sites"][s]["composition"].items():
                             pooled[pop] = pooled.get(pop, 0) + n
                     floor = raw["fine_mapping"]["min_gwas_n"]
                     out[arm_name] = (
-                        sum(pooled.values()),
+                        sum(v for v in pooled.values() if v >= floor),
                         sum(1 for v in pooled.values() if v >= floor),
                     )
                     break

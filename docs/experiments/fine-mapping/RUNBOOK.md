@@ -1,3 +1,5 @@
+> Current protocol: [September scientific corrections and rerun](SCIENTIFIC_RERUN.md). Historical numerical results and earlier exactness/calibration claims below require the new validation gates.
+
 # Fine-mapping — how to run it
 
 Three things you can run, in increasing order of what they need.
@@ -82,9 +84,9 @@ Two arms are not plain site subsets and are worth knowing about:
 
 - `federation_50k` down-samples every site to a third, stratified within site and
   ancestry, into a shadow `processed/` tree whose PLINK filesets are symlinks. It holds
-  sample size fixed so the remaining gap is diversity. At a third of the package one
-  ancestry falls below `min_gwas_n`, so this arm has five columns rather than six — a real
-  consequence, not an artefact.
+  analyzed sample size at exactly 50,000 after ancestry exclusions. The corrected rerun
+  uses three sampling seeds and five ancestry columns. Remaining differences are
+  composition/participation effects, including differences in genetic signal and noise.
 - `ld_borrowed` pairs one site's summary statistics with another's LD panel, restricted to
   the ancestries both hold. It is the shortcut the O(M²) uplink exists to avoid.
 

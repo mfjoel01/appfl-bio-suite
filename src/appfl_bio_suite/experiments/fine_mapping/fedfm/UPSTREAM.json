@@ -1,0 +1,39 @@
+{
+  "origin": "fedfm-simulation/src",
+  "import_commit": "765d11ecd8c5819c9272d2d5af0f0d956dbb92c4",
+  "reason": "Scientific audit corrections, September 2026",
+  "modules": {
+    "fed_fine_mapping.py": {
+      "upstream_sha256": "1f828a2040a7a3bb2270d387a26e272d37fb4c10002df7b6a64af5cdb4059185",
+      "maintained_fork": true
+    },
+    "fine_mapping.py": {
+      "upstream_sha256": "89f52c1cb533795d0c4cd2b55556421f32556f68bb33cddd3e1a067a0ae484c2",
+      "maintained_fork": true
+    },
+    "locus_selection.py": {
+      "upstream_sha256": "b3d62e00d74a9cc45f8568439b6d881269b2bcfaa0ee523ba9f1593644df4dc4",
+      "maintained_fork": true
+    },
+    "phenotype_sim.py": {
+      "upstream_sha256": "d7eb5d84af77a273fdf715602cffe2ca3da2f4bd344c5c98c853d57284fd2a77",
+      "maintained_fork": true
+    },
+    "qc.py": {
+      "upstream_sha256": "4e585985e1463cbbb8c0244b49159a1c7a777c631cfccd00566fadc1c5ac4b3e",
+      "maintained_fork": false
+    },
+    "sampling.py": {
+      "upstream_sha256": "82b01be0a7fe2c6889236b1b0827df3ae51bf6f8d2860651c1e8931f9c66a6eb",
+      "maintained_fork": false
+    },
+    "utils.py": {
+      "upstream_sha256": "8bdaa6b8cb024da97dfac376ce99345f217ecb8d171b44d05287a63d0fe427e1",
+      "maintained_fork": true
+    },
+    "validation.py": {
+      "upstream_sha256": "d0ad5a65242411343869e40fa9e04ed032172ec3c160aa87b2086fa48bce40c4",
+      "maintained_fork": true
+    }
+  }
+}

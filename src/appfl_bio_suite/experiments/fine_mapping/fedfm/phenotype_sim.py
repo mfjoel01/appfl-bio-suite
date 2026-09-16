@@ -127,11 +127,15 @@ class SiteState:
 
 def _load_site_states(cfg: SimulationConfig) -> dict[str, SiteState]:
     states: dict[str, SiteState] = {}
+    reference = read_bim(cfg.resolved_path("hapnest_dir") / f"chr{cfg.chromosome}.bim").set_index("snp_id")
     pop_to_idx = {p: i for i, p in enumerate(cfg.superpopulations)}
     for site_name, site_cfg in cfg.sites.items():
         site_dir = cfg.site_dir(site_name)
         prefix = site_dir / f"{site_name}_chr{cfg.chromosome}"
         bim = read_bim(str(prefix) + ".bim")
+        aligned = reference.loc[bim["snp_id"], ["a1", "a2"]].to_numpy()
+        if not np.array_equal(aligned, bim[["a1", "a2"]].to_numpy()):
+            raise ValueError(f"{site_name}: phenotype generation requires reference-aligned allele coding")
         fam = read_fam(str(prefix) + ".fam")
         manifest = read_site_manifest(site_dir / f"{site_name}_manifest.tsv")
 
@@ -711,7 +715,7 @@ def run_phenotype_sim(
                 beta_path = gt_dir / "effect_sizes" / (
                     f"{locus['locus_id']}_{arch.architecture_id}_rep{rep}.npy"
                 )
-                np.save(beta_path, beta.astype(np.float32))
+                np.save(beta_path, beta.astype(np.float64))
 
                 # 5) Validate empirical h² is within tolerance (per site). Log warnings
                 # rather than hard-fail, since degenerate monomorphic-at-a-site cases
@@ -730,9 +734,7 @@ def run_phenotype_sim(
                 # 6) Record manifest + seed rows. ``causal`` spans the union set
                 #    in divergent mode (n_union rows), so iterate its actual rows.
                 per_site_maf_json = json.dumps(
-                    {s: float(causal[f"maf_{s}"].iloc[k])
-                     for k in range(len(causal))
-                     for s in site_names},
+                    {s: causal[f"maf_{s}"].astype(float).tolist() for s in site_names},
                     sort_keys=True,
                 )
                 manifest_rows.append({
@@ -754,9 +756,7 @@ def run_phenotype_sim(
                     "ancestry_specific_used": asc_used,
                     "ancestry_divergent_required": require_div,
                     "ancestry_divergent_used": div_used,
-                    "empirical_h2_anl": empirical_h2_per_site.get("anl", np.nan),
-                    "empirical_h2_covenant": empirical_h2_per_site.get("covenant", np.nan),
-                    "empirical_h2_mbzuai": empirical_h2_per_site.get("mbzuai", np.nan),
+                    **{f"empirical_h2_{s}": v for s, v in empirical_h2_per_site.items()},
                 })
                 seed_rows.append({
                     "locus_id": locus["locus_id"],
