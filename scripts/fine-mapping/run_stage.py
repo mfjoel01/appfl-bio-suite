@@ -62,8 +62,7 @@ from pathlib import Path
 # BLAS reads these at import time, so they have to be set before numpy is reachable.
 # Every stage fans out with joblib and pins one thread per worker; without these a
 # 32-worker shard tries to start 32x32 threads and a busy node refuses.
-for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
-             "NUMEXPR_NUM_THREADS"):
+for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
     os.environ.setdefault(_var, "1")
 
 # Importable from a checkout without installing. Harmless when the package is installed.

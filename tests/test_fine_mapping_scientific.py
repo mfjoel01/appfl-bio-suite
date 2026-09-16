@@ -123,12 +123,21 @@ def test_replicate_duplication_does_not_create_independent_loci():
 
 
 def test_central_and_federated_remain_equivalent_with_missing_genotypes(tmp_path):
-    from test_fine_mapping_federated import CHROM, M, _build_package
+    import pytest
+    from test_fine_mapping_federated import CHROM, REPO_ROOT, M, _build_package
 
     from appfl_bio_suite.experiments.fine_mapping.fedfm.fed_fine_mapping import run_fed_fine_mapping
-    from appfl_bio_suite.experiments.fine_mapping.fedfm.fine_mapping import run_fine_mapping
+    from appfl_bio_suite.experiments.fine_mapping.fedfm.fine_mapping import (
+        _resolve_binary,
+        run_fine_mapping,
+    )
     from appfl_bio_suite.experiments.fine_mapping.fedfm.utils import load_config
 
+    try:
+        for name in ("SuSiEx", "plink", "plink2"):
+            _resolve_binary(name, REPO_ROOT)
+    except FileNotFoundError as exc:
+        pytest.skip(f"fine-mapping binaries unavailable: {exc}")
     cfg = load_config(_build_package(tmp_path), repo_root=tmp_path)
     site = next(iter(cfg.sites))
     prefix = cfg.site_dir(site) / f"{site}_chr{CHROM}"
@@ -214,9 +223,7 @@ def test_submit_graph_orders_simulation_validation_analysis_and_plots(tmp_path, 
     ]
     assert list(jobs) == stages
     assert all("place=exclhost" in job["command"] for job in jobs.values())
-    assert all(
-        "select=1:ngpus=8:ncpus=256:mem=960gb" in job["command"] for job in jobs.values()
-    )
+    assert all("select=1:ngpus=8:ncpus=256:mem=960gb" in job["command"] for job in jobs.values())
     for before, after in zip(stages, stages[1:], strict=False):
         assert f"depend=afterok:{jobs[before]['id']}" in jobs[after]["command"]
     assert "0-1%3" in jobs["analysis"]["command"]
@@ -322,3 +329,23 @@ def test_retry_preserves_history_and_refuses_live_job_graph(tmp_path, monkeypatc
     assert (archived / "jobs.json").read_text() == original
     assert "job_state = F" in json.loads((archived / "scheduler.json").read_text())["rescore"]
     assert not manifest.exists() and cache.read_bytes() == b"previous scientific work"
+
+
+def test_submission_requires_account_before_archiving_or_preparing(tmp_path, monkeypatch):
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    import pytest
+
+    script = Path(__file__).resolve().parents[1] / "scripts/fine-mapping/submit_scientific_rerun.py"
+    spec = importlib.util.spec_from_file_location("fm_account_test", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    root = tmp_path / "run"
+    for flag in ("--submit", "--submit-only", "--retry-failed"):
+        monkeypatch.setattr(sys, "argv", [str(script), "--root", str(root), flag])
+        with pytest.raises(SystemExit) as exc:
+            module.main()
+        assert exc.value.code == 2
+        assert not root.exists()

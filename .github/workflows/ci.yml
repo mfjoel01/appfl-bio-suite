@@ -137,4 +137,4 @@ jobs:
       # The exactness result, at test scale. Skipped without the binaries, which is
       # exactly why this job installs them.
       - name: Federated equals centralized
-        run: pytest tests/test_fine_mapping_federated.py -v -m "not needs_network"
+        run: pytest tests/test_fine_mapping_federated.py tests/test_fine_mapping_scientific.py -v -m "not needs_network"

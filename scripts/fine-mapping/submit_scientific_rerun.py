@@ -238,7 +238,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--root", type=Path, required=True)
     p.add_argument("--base-config", type=Path)
-    p.add_argument("--account", default="GeomicVar")
+    p.add_argument("--account", help="PBS project allocation (required when submitting)")
     p.add_argument("--python", default=sys.executable)
     p.add_argument("--submit", action="store_true")
     p.add_argument("--submit-only", action="store_true")
@@ -248,6 +248,8 @@ def main():
         help="archive a terminal job graph and resubmit using existing data/caches",
     )
     args = p.parse_args()
+    if (args.submit or args.submit_only or args.retry_failed) and not args.account:
+        p.error("--account is required when submitting PBS jobs")
     root = args.root.resolve()
     if args.retry_failed:
         archive_terminal_attempt(root)

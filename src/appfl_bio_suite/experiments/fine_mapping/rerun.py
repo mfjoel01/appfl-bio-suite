@@ -112,11 +112,13 @@ def bundle(cfg, root: Path) -> None:
         destination / "ground_truth/causal_manifest.tsv",
     )
     scenario = load_scenario("three-site-hapnest")
-    registry = register_bundles(destination, list(cfg.sites), scenario, "drs.alcf.anl.gov", paths)
     # A replacement configuration is published locally only after all content IDs
     # exist. Remote endpoint IDs and paths remain explicit deployment facts.
     template = root / "federation.pending.yaml"
     config = yaml.safe_load(template.read_text())
+    registry = register_bundles(
+        destination, list(cfg.sites), scenario, config["ga4gh"]["drs"]["hostname"], paths
+    )
     config["ga4gh"]["drs"]["registry"] = str(destination / "drs_registry.json")
     exp = config["experiments"]["fine-mapping"]
     exp["causal_manifest"] = str(destination / "ground_truth/causal_manifest.tsv")
