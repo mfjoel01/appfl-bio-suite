@@ -6,9 +6,9 @@ if you ask for it — whether their endpoint is answering right now.
 
 Built on **[hivewatch](https://github.com/APPFL/hivewatch)**, APPFL's monitoring toolkit.
 hivewatch supplies the event schema, the map metadata format, the live server and the
-viewer. This suite supplies the one thing hivewatch cannot know: who is in *your*
-federation and what each of them is doing. That comes from `federation.yaml`, the same
-file everything else here reads from.
+base viewer. This suite adds a federation viewer with an interactive globe and experiment
+filters, and supplies who is in *your* federation and what each of them is doing. That
+comes from `federation.yaml`, the same file everything else here reads from.
 
 ```
 federation.yaml ──► appfl-bio-suite watch ──► hivewatch artifacts ──► the map
@@ -40,6 +40,79 @@ appfl-bio-suite watch serve          # open http://localhost:7070
 run under a fixed id, which is what lets it sit beside your real runs and appear
 alongside them in the viewer's run list. Rerun it whenever `federation.yaml` changes; it
 replaces rather than accumulates.
+
+### Exploring the federation
+
+The viewer opens in the familiar **Flat map** view. Switch to **Globe** for a rotating globe:
+drag to turn it, zoom to look closer, and select a site to inspect its details. You can
+pause rotation. Arrow keys rotate the focused globe, `+` and `-` zoom, `Space` toggles
+rotation, and `Home` resets the view. Rotation starts paused when your browser requests
+reduced motion. Both views use the same sites and experiment selection.
+The theme button also changes the globe: light mode uses pale oceans, mint land,
+and a bright sky, while dark mode retains the night palette. Both the suite logo
+and the smaller original HiveWatch logo remain in the header.
+
+The **Experiments** tab starts with **All experiments** selected, showing every site in
+the loaded federation. Select **Fine-mapping**, **GWAS**, or any combination of experiments
+to show sites participating in at least one selection. A site participating in several
+selected experiments still appears once. These controls filter the page locally; they
+do not change the federation configuration or launch experiments. Options are drawn from
+the loaded data: a federation with only fine-mapping configured shows only fine-mapping.
+Clear every checkbox to hide all sites; **All experiments** restores them. Selecting a
+different run resets the experiment filter to All; changing the map view preserves it.
+
+Run monitoring remains available under **Runs**, including selecting recorded runs and
+playback controls. The federation view takes priority, and round, global accuracy and
+global loss no longer occupy the page header. `watch serve` and `watch export` use the
+same viewer.
+
+### Partners and experiment results
+
+The **Results** tab sits between Experiments and Runs. Choose an experiment to see
+its published figures, tables, and reports in the main workspace. Figures expand;
+CSV/TSV tables support search and numeric or text sorting; HTML reports open in a
+sandboxed frame. Every artifact has a download link. Experiments without results
+show an empty state. Map filters remain independent and are preserved when returning
+to Experiments; a single selected map experiment becomes the initial Results selection.
+
+An optional JSON catalogue adds planning partners and explicitly selected result files:
+
+```bash
+mkdir -p local/watch
+cp watch.catalog.json.example local/watch/catalog.json
+# Edit the catalogue's partners and result paths, then:
+appfl-bio-suite watch build --catalog local/watch/catalog.json
+appfl-bio-suite watch serve
+# Or create the same static viewer:
+appfl-bio-suite watch export --catalog local/watch/catalog.json --out local/watch-site
+```
+
+Paths are resolved relative to the catalogue file, and absolute paths also work.
+For example, an artifact with `"path": "results/summary.tsv"` in that catalogue
+reads `local/watch/results/summary.tsv`. The catalogue is loaded only
+when `--catalog` is supplied. Rebuild or re-export after changing it.
+
+Each partner has a stable `id`, `name`, `country`, `projects` array and `stage`.
+Optional fields are `contacts`, `notes`, `location`, `location_basis`, and `source_url`.
+Use the existing federation site id to enrich that site without duplicating it;
+the federation's sample counts, coordinates and endpoint status stay authoritative.
+New partners have no declared sample count or compute endpoint. A planning stage
+does not imply that an experiment is running. Use `location: null` for an unresolved
+location, or document a representative institutional marker with its source.
+
+Each results group names an `experiment`, `title`, optional `description`, and an
+`artifacts` array of `{ "title": "...", "path": "..." }` objects. Artifact descriptions
+are optional. Supported files are PNG, JPEG, WebP, CSV, TSV and HTML, up to 16 MiB each.
+Tables preview the first 200 rows; search and sorting apply to that preview, while
+downloads contain the complete file. HTML report scripts are disabled in the viewer.
+For interactive report content, publish a static figure or table alongside the report.
+
+The catalogue publishes the listed contacts, notes, and entire selected file contents.
+Choose files intended for the viewer's audience. The catalogue's filesystem paths
+are not included in the generated metadata, and no result directories are scanned.
+Artifacts are embedded in `network.map.json`, so the export still contains three files.
+Use `local/` for your deployment's roster and catalogue; the repository example contains
+only a fictional partner and an empty results group ready for your selected files.
 
 ---
 
@@ -88,8 +161,8 @@ anyone their identity mapping does not name, so a leaked UUID grants nothing —
 "grants nothing" is a claim about *their* configuration, not yours, and this is a page
 meant to be handed out. For an internal deployment, opt in.
 
-Read `site/network.map.json` before you publish it. It is small and it is the whole
-payload.
+Read `site/network.map.json` before you publish it. It is the whole data payload;
+with a catalogue, it also contains embedded results and the partner details you selected.
 
 ---
 
@@ -180,8 +253,10 @@ appfl-bio-suite watch export  --out DIR [--experiment X] [--probe] [--title "...
 appfl-bio-suite run EXPERIMENT --watch
 ```
 
-`--experiment` narrows every command to one experiment's sites. The default is every
-enabled experiment, which is the point: one map, every experiment, one federation.
+`--experiment` on `watch build` and `watch export` limits the generated data to one
+experiment's sites. The default includes every enabled experiment. The viewer's
+checkboxes can filter the experiments present in that data; they cannot restore sites
+excluded when the data was generated.
 
 ---
 
@@ -198,6 +273,12 @@ viewer lists a client it cannot place; it does not invent a position.
 
 **The exported page is blank** — it was opened as `file://`. Serve the directory.
 
-**The map draws but there are no base tiles** — the viewer loads Leaflet and its tiles
-from the public internet. That is a property of hivewatch's viewer, not of the export;
-a browser with no web access renders the markers on an empty background.
+**The map draws but there are no base tiles** — the flat map loads Leaflet and its tiles
+from the public internet. The globe's geography and rendering code are embedded in the
+viewer, but the base viewer still requires Leaflet to initialize. Serve the page in a
+browser with web access.
+
+**`The installed hivewatch viewer has an unsupported layout`** — this suite extends the
+viewer shipped in the pinned `hivewatch==0.2.1`. Reinstall the `[watch]` extra using
+`constraints.txt`. The viewer is assembled into a separate file; the installed hivewatch
+package is never edited.
