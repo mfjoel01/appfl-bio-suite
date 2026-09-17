@@ -1,4 +1,4 @@
-> Current protocol: [September scientific corrections and rerun](SCIENTIFIC_RERUN.md). Historical numerical results and earlier exactness/calibration claims below require the new validation gates.
+> Current protocol: [September scientific corrections and rerun](SCIENTIFIC_RERUN.md). Its validation gates have passed and the run is complete; the findings and limitations are in that document's [outcome section](SCIENTIFIC_RERUN.md#outcome--17-september-2026). Numerical results below that predate the rerun are historical.
 
 # Federated cross-ancestry fine-mapping
 
@@ -165,6 +165,47 @@ whether the uplink is justified.
 Site-alone arms need no code — `plan_columns`, `materialize_column_keeps` and
 `pooled_phenotype` are all scoped by `cfg.sites`, so a config listing one site *is* a
 site-alone fit. See `experiments/fine_mapping/arms.py`.
+
+### What the arms found
+
+From the completed corrected run; full numbers, intervals and limitations in
+[SCIENTIFIC_RERUN.md](SCIENTIFIC_RERUN.md#outcome--17-september-2026).
+
+| arm | analyzed N | power | mean set size | coverage |
+| --- | ---: | ---: | ---: | ---: |
+| all three | 150,000 | **0.943** | **6.8** | 0.963 |
+| Covenant alone | 50,000 | 0.777 | 9.6 | 0.956 |
+| borrowed LD | 50,000 | 0.777 | 9.6 | 0.955 |
+| MBZUAI alone | 50,000 | 0.626 | 9.5 | 0.957 |
+| ANL alone | 50,000 | 0.622 | 12.7 | 0.947 |
+| all three, *n* matched | 50,000 | 0.489–0.497 | 9.2 | 0.946 |
+
+Federating wins on every axis at once — more power, more sets per locus, tighter sets,
+higher purity, and the lowest false-discovery rate at both PIP thresholds. So the uplink
+is justified, and the O(M²) cost buys something real.
+
+**But the gain is sample size, not diversity, and the matched arm proves it.** Hold
+analyzed N at 50,000 and the three-site composition becomes the *worst* arm in the run,
+below every single site, reproducibly across three independent draws. The reason is in
+the design above: SuSiEx fits one effect per ancestry column, so power tracks the
+**largest column** rather than the total. Covenant alone puts 47,500 of its 50,000 people
+into AFR; the matched federation's largest column is 20,339. Splitting a fixed cohort
+across ancestries costs power — 13.3 pp (12.3–14.3) in the controlled comparison that
+holds both N and column count fixed. Adding cohorts buys it back several times over.
+Neither bar measures ancestral diversity, and calling either one "diversity" inverts the
+finding.
+
+The borrowed-LD objection survives its test on this design: Covenant's statistics against
+ANL's AFR panel land within 0.0004 of Covenant's own power and 0.0007 of its coverage.
+That bounds the cost of *external-panel sampling* between same-ancestry panels drawn from
+one synthetic pool. It is not a mismatched reference, which is the failure mode the
+objection is really about.
+
+The one place credible sets stop being trustworthy is weak signal. At h² = 0.0005 the
+full federation still covers at 0.949, but every 50,000-person arm under-covers — down to
+**0.799** for the matched control, whose sets in that cell survive a 9.9% discovery rate
+and are selected on having got lucky. A 95% credible set from a single site at the weakest
+simulated signal is not a 95% credible set.
 
 ## Figures
 

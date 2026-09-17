@@ -682,8 +682,12 @@ def _write_rollup(cfg: SimulationConfig, df: pd.DataFrame) -> None:
             "n_nonconverged": g["fit_status"].eq("nonconverged").sum(),
         })
 
+    # h2_target is part of the rg grouping because the grid is a star, not a full
+    # factorial: rg 0.5/0.7 exist only at the centre h2. Grouping by (stratum, rg)
+    # alone pools three h2 levels into the rg=1.0 row and one into the others, which
+    # reverses the apparent direction of the rg effect.
     for by, name in [(["ncsl", "h2_target", "rg"], "by_architecture"),
-                     (["stratum", "rg"], "by_stratum_rg")]:
+                     (["stratum", "rg", "h2_target"], "by_stratum_rg")]:
         cols = [c for c in by if c in d.columns]
         if cols:
             d.groupby(cols).apply(_agg, include_groups=False).reset_index().to_csv(

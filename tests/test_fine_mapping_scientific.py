@@ -349,3 +349,70 @@ def test_submission_requires_account_before_archiving_or_preparing(tmp_path, mon
             module.main()
         assert exc.value.code == 2
         assert not root.exists()
+
+
+def test_no_figure_caption_claims_a_row_independent_interval():
+    """Audit finding 9: replicates share loci and several credible sets share an
+    instance, so every published rate interval is a locus-clustered bootstrap. The
+    computation was corrected but four captions kept printing "Wilson", which is the
+    interval the audit rejected. The helper is gone; assert the prose went with it."""
+    from pathlib import Path
+
+    figures = Path(__file__).resolve().parents[1] / (
+        "src/appfl_bio_suite/experiments/fine_mapping/figures"
+    )
+    offenders = {
+        path.name: [
+            line.strip() for line in path.read_text().splitlines() if "wilson" in line.lower()
+        ]
+        for path in sorted(figures.glob("*.py"))
+        if "wilson" in path.read_text().lower()
+    }
+    assert offenders == {}, offenders
+
+
+def test_stratum_rollup_keeps_heritability_out_of_the_rg_marginal():
+    """The grid is a star: rg 0.5/0.7 exist only at the centre h2. Grouping a rollup by
+    (stratum, rg) alone pools three h2 levels into the rg=1.0 row and one into each of
+    the others, which reverses the apparent direction of the rg effect."""
+    import inspect
+
+    from appfl_bio_suite.experiments.fine_mapping.aggregator import FineMappingAggregator
+    from appfl_bio_suite.experiments.fine_mapping.fedfm import (
+        fed_fine_mapping,
+        fine_mapping,
+    )
+
+    for owner, name in (
+        (fine_mapping._write_rollup, "centralized"),
+        (fed_fine_mapping.write_rollup, "federated"),
+        (FineMappingAggregator._write_rollups, "aggregator"),
+    ):
+        source = inspect.getsource(owner)
+        assert '"by_stratum_rg"' in source, name
+        grouping = source.split('"by_stratum_rg"')[0]
+        tail = grouping[grouping.rindex("[") :] if "[" in grouping else grouping
+        assert "h2_target" in tail, f"{name} rollup pools h2 inside the rg marginal"
+
+
+def test_every_emitted_participation_arm_has_a_reader_facing_label():
+    """An arm missing from ARM_LABEL is drawn with its raw identifier next to the other
+    arms' prose, which is how `federation_50k_seed2` reached a published figure."""
+    from appfl_bio_suite.experiments.fine_mapping.arms import (
+        ARMS,
+        MATCHED_N_SEEDS,
+        matched_n_arm_name,
+        matched_n_arms,
+    )
+    from appfl_bio_suite.experiments.fine_mapping.figures.federation import (
+        ARM_LABEL,
+        ARM_ORDER,
+    )
+
+    expected = {a.name for a in ARMS} | {a.name for a in matched_n_arms()}
+    assert expected <= set(ARM_LABEL), expected - set(ARM_LABEL)
+    assert expected <= set(ARM_ORDER), expected - set(ARM_ORDER)
+    assert len(set(ARM_LABEL.values())) == len(ARM_LABEL), "two arms share a label"
+    # Draw 1 keeps the bare name the published outputs are addressed by.
+    assert matched_n_arm_name(MATCHED_N_SEEDS[0]) == "federation_50k"
+    assert len(matched_n_arms()) == len(MATCHED_N_SEEDS)

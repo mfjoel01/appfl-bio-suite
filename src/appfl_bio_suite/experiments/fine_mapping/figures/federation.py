@@ -34,6 +34,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from appfl_bio_suite.experiments.fine_mapping import arms as _arms
 from appfl_bio_suite.experiments.fine_mapping.figures import figstyle as fs
 from appfl_bio_suite.experiments.fine_mapping.figures.figstyle import plt
 
@@ -666,12 +667,17 @@ def fed5_where_time_goes(
 # --------------------------------------------------------------------------- #
 # Arms in the order a reader should meet them: each site alone, then the federation
 # matched on sample size, then the whole federation, then the shortcut that avoids it.
-ARM_ORDER = ["covenant", "mbzuai", "anl", "federation_50k", "federation", "ld_borrowed"]
+# Three independent draws of ONE design, so they are numbered rather than named after
+# their seeds, and both the order and the labels come from the shared seed list. Leaving
+# the later draws out of this map printed them as raw `federation_50k_seed2` identifiers
+# beside the other arms' prose labels.
+_MATCHED = [_arms.matched_n_arm_name(s) for s in _arms.MATCHED_N_SEEDS]
+ARM_ORDER = ["covenant", "mbzuai", "anl", *_MATCHED, "federation", "ld_borrowed"]
 ARM_LABEL = {
     "covenant": "Covenant alone",
     "mbzuai": "MBZUAI alone",
     "anl": "ANL alone",
-    "federation_50k": "All three, n matched",
+    **{name: f"All three, n matched {i + 1}" for i, name in enumerate(_MATCHED)},
     "federation": "All three, full",
     "ld_borrowed": "Covenant stats + ANL LD",
 }
@@ -718,8 +724,9 @@ def fed6_what_federation_buys(
     and the solo arms win it by being concentrated: Covenant puts 47,500 of its 50,000
     people into AFR, where the n-matched federation's largest column is 20,000. The
     controlled comparison is ANL (5 columns, largest 30,000) against the n-matched
-    federation (5 columns, largest 20,000) -- same total n, same column count, 14.6 pp
-    apart, p~1e-55. Calling the bar "diversity" would tell a reader that ancestral
+    federation (5 columns, largest 20,339) -- same total analyzed n (50,000), same
+    column count, 13.3 pp apart (95% paired locus-clustered bootstrap 12.3 to 14.3).
+    Calling the bar "diversity" would tell a reader that ancestral
     diversity costs 30 points of power, which is not what it measures and is a claim this
     design cannot support.
 
@@ -813,6 +820,7 @@ def fed6_what_federation_buys(
     else:
         fs.no_data(ax_d, "paired federation comparisons unavailable")
 
+    rotated = len(arms) > 4
     for ax in (ax_a, ax_b, ax_c):
         ax.set_xticks(x)
         # Six arms of two-line labels do not fit a quarter of the canvas horizontally --
@@ -820,16 +828,22 @@ def fed6_what_federation_buys(
         # four arms keeps the four-arm case upright, which is easier to read.
         ax.set_xticklabels(
             [ARM_LABEL.get(a, a) for a in arms],
-            fontsize=8.5 if len(arms) <= 4 else 8.0,
-            rotation=0 if len(arms) <= 4 else 30,
-            ha="center" if len(arms) <= 4 else "right",
-            rotation_mode=None if len(arms) <= 4 else "anchor",
+            fontsize=8.0 if rotated else 8.5,
+            rotation=30 if rotated else 0,
+            ha="right" if rotated else "center",
+            rotation_mode="anchor" if rotated else None,
         )
         ax.grid(axis="x", visible=False)
         for tick, a in zip(ax.get_xticklabels(), arms, strict=False):
             if a == "ld_borrowed":
                 tick.set_color(fs.STATUS["critical"])
-    if cohort:
+    # Cohort size and column count per bar, but only while the tick labels stand upright.
+    # Two annotation rows below the axis were tuned for four arms at 34 and 46 points; a
+    # label rotated 30 degrees drops roughly half its own length, so "Covenant stats +
+    # ANL LD" reaches about 50 points and lands on top of both rows. Past four arms the
+    # same numbers go in the footnote, which has room for them, rather than being stacked
+    # into a gap that is not there.
+    if cohort and not rotated:
         fs.count_labels(ax_a, x, [cohort.get(a, (0, 0))[0] for a in arms], pad_pt=34, fmt="n={:,}")
         ax_a.set_xlabel("participating cohort", labelpad=30)
         for xi, a in enumerate(arms):
@@ -847,6 +861,8 @@ def fed6_what_federation_buys(
                     color=fs.MUTED,
                     annotation_clip=False,
                 )
+    elif cohort:
+        ax_a.set_xlabel("participating cohort", labelpad=10)
 
     fig.suptitle(
         "What federating buys, on the same loci and the same truth",
@@ -857,11 +873,30 @@ def fed6_what_federation_buys(
     )
     fs.footnote(
         fig,
-        f"{len(d):,} instances across {len(arms)} arm(s); "
-        f"{', '.join(f'{a}={n:,}' for a, n in zip(arms, ns, strict=False))}. "
-        "Every arm is the same estimator over the same ground truth, "
-        "differing only in which cohorts took part. Error bars are Wilson "
-        "95% intervals. The `n matched` arm is the full federation "
+        f"{len(d):,} instances across {len(arms)} arm(s)"
+        + (
+            f", {ns[0]:,} each. "
+            if len(set(ns)) == 1
+            else "; "
+            + ", ".join(f"{ARM_LABEL.get(a, a)}={n:,}" for a, n in zip(arms, ns, strict=False))
+            + ". "
+        )
+        + (
+            "Participating cohort: "
+            + "; ".join(
+                f"{ARM_LABEL.get(a, a)} n={cohort[a][0]:,}"
+                + (f", {cohort[a][1]} col" if cohort[a][1] else "")
+                for a in arms
+                if a in cohort
+            )
+            + ". "
+            if cohort and rotated
+            else ""
+        )
+        + "Every arm is the same estimator over the same ground truth, "
+        "differing only in which cohorts took part. Error bars are 95% "
+        "locus-clustered bootstrap intervals. The `n matched` arms are the "
+        "full federation "
         "restricted to one site's worth of people, stratified within site "
         "and ancestry, so panel d can separate splitting a fixed cohort from adding to it. "
         "The borrowed-LD arm is the cheap alternative to federating and is "

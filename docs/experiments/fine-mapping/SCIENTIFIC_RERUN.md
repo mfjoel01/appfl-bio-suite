@@ -163,3 +163,207 @@ Retry verifies that every recorded job is terminal, archives its job IDs and PBS
 history under `attempts/`, then submits a new graph. It refuses to duplicate queued,
 held or running work. Re-scoring reuses its validated per-window caches. New job IDs
 are recorded in `jobs.json`; prior job histories are retained for diagnosis.
+
+## Outcome — 17 September 2026
+
+The graph completed. Every execution gate passed: `bundles.accepted.json`,
+`analysis.accepted.json` (nine runs), `parity.json` and `plots.accepted.json`. Gate
+passage is not scientific sign-off; the findings below are the review those gates
+were built to make possible.
+
+### Exactness
+
+All 11,850 paired instances agree. Zero mismatches, maximum absolute PIP difference
+**0.0**, and every pair converged, so the count is not inflated by jointly-failed fits.
+Descending to the credible-set members strengthens this: across **102,150** harvested
+members the two paths agree exactly on membership, `cs_pip` and `ovrl_pip`. Twelve of the
+fourteen shared-mode inference figures are byte-identical between the centralized and
+federated trees, which is the same result read off the rendered output.
+
+The claim's scope is PIPs, credible-set membership and fit status — not every emitted
+number. Reviewing the per-ancestry statistics attached to those members found one
+residual difference, confined to **AFR**: 2,628 of 55,275 variants (4.8%) carry a
+different `beta_AFR`, `se_AFR` and `frq_AFR` between the paths. The bound is
+2.44 × 10⁻⁴ absolute on beta (4.8 × 10⁻⁴ relative), 1.38 × 10⁻⁵ on the standard error,
+and exactly one unit in the last emitted decimal on the frequency. It is essentially a fixed
+per-variant property rather than scattered noise: 2,624 of the 2,628 differ at every
+instance in which they appear and only four are inconsistent. The five other ancestries
+agree exactly. AFR is the largest pooled column — 60,000 people across all three sites —
+which is where accumulation order in the moment path has the most terms to disagree
+about. None of it reaches inference: the PIPs and sets built from these
+statistics are identical. The mechanism is consistent with summation order and is not
+established by this review; what is established is the bound and the absence of
+propagation.
+
+### Simulation validity
+
+Five of five validation checks pass. All **35,550** phenotype instances reconstruct from
+current genotypes, saved effects and the deterministic noise stream, in FID/IID order;
+worst relative heritability error 1.1 × 10⁻¹⁰ and worst phenotype-vector error
+4.2 × 10⁻⁹ SD. Site heritability lands within 0.43% of target at the median and 2.9% at
+the worst against a 20% tolerance. Effect-draw correlation recovers its `rg` parameter to
+within 0.0087, 0.0006 and 1.0 × 10⁻¹⁰ at 0.5, 0.7 and 1.0. Fourteen structural invariants
+hold. All 237 LD matrices are free of NaN and within tolerance, though every one of them
+overshoots |r| = 1 slightly on rounding — maximum 1.0043 against a 1.01 floor, and a
+maximum diagonal deviation of 4.3 × 10⁻³. The negative control fires as intended: the
+wrong site-level model is materially off for 99.9% of instances at `rg` 0.5 and 0.7, and
+for 2.4% at `rg` 1.0, where the two models coincide by construction.
+
+### Credible-set coverage
+
+Coverage is the fraction of **returned** credible sets containing a true causal variant,
+against a nominal 95%. Pooled over both causal modes, with a locus-clustered bootstrap:
+
+| arm | analyzed N | coverage | 95% CI | credible sets |
+| --- | ---: | ---: | --- | ---: |
+| all three, full | 150,000 | 0.9631 | 0.9594–0.9668 | 15,093 |
+| MBZUAI alone | 50,000 | 0.9570 | 0.9531–0.9608 | 8,828 |
+| Covenant alone | 50,000 | 0.9560 | 0.9516–0.9604 | 10,907 |
+| Covenant stats + ANL LD | 50,000 | 0.9553 | 0.9511–0.9595 | 10,903 |
+| ANL alone | 50,000 | 0.9472 | 0.9414–0.9525 | 8,876 |
+| all three, n matched (3 draws) | 50,000 | 0.9461 | 0.9422–0.9498 | 21,543 |
+
+Every arm is within 1.3 points of nominal, which is the headline. The deviations are
+nonetheless resolvable at this number of sets, and they are not symmetric: four arms sit
+**above** nominal and the pooled matched-N control sits **below** it, by 0.4 points. The
+sign tracks power rather than participation — better-powered arms are conservative, the
+weakest arm is slightly liberal — so the aggregate figure should not be read as evidence
+that coverage is unconditionally calibrated. Individual matched-N draws span
+0.9400–0.9515, a spread comparable to each draw's own interval, which is why the three
+are pooled here rather than quoted separately.
+
+The aggregate hides the one place coverage genuinely fails. Conditioning on `rg` = 1.0,
+the only level of the star design that spans all three heritabilities:
+
+| arm | h² = 0.0005 | h² = 0.001 | h² = 0.005 |
+| --- | --- | --- | --- |
+| all three, full | **0.949** (0.939–0.959) | 0.966 | 0.969 |
+| Covenant alone | 0.938 (0.923–0.952) | 0.961 | 0.954 |
+| MBZUAI alone | 0.901 (0.871–0.928) | 0.954 | 0.974 |
+| ANL alone | 0.878 (0.853–0.903) | 0.950 | 0.967 |
+| all three, n matched (draw 1) | **0.799** (0.755–0.842) | 0.946 | 0.973 |
+
+At the weakest signal the full federation is the only arm whose 95% sets still cover at
+95%. Every 50,000-person arm under-covers there, down to 80% for the matched-N control,
+whose 293 sets in that cell come from a 9.9% discovery rate — the few sets a weak arm
+does return are selected on having got lucky. This is a selection effect on which
+instances produce a set at all, and it is the sharpest limitation in the run: **a 95%
+credible set from a single site at h² = 0.0005 is not a 95% credible set.** Coverage
+also declines from the low to the high LD-divergence stratum in every arm, but
+`pap7_ld_divergence` establishes that this stratum tracks LD *abundance* rather than
+cross-site disagreement, so the honest reading is that more LD gives wider sets and
+slightly lower coverage, not that ancestral divergence breaks calibration.
+
+### False positives
+
+PIP thresholds are conservative everywhere. A PIP > *t* threshold should hold false
+discovery below 1 − *t*; both are met with room to spare, in every arm:
+
+| threshold | bound | observed range | full federation |
+| --- | ---: | --- | ---: |
+| PIP > 0.5 | 0.50 | 0.128–0.170 | 0.128 (0.118–0.138) |
+| PIP > 0.95 | 0.05 | 0.018–0.035 | 0.019 (0.015–0.024) |
+
+The full federation has the lowest false-discovery rate at both thresholds while
+returning by far the most high-confidence variants (6,225 at PIP > 0.95 against
+2,336–3,372 elsewhere), so the gain is not bought by committing less often. Note that
+this denominator counts any non-causal variant as false, including one in complete LD
+with the causal variant, which is unresolvable rather than wrong; the rates are therefore
+upper bounds.
+
+### Comparative performance
+
+Power is the probability that a returned set captures a causal variant. Paired
+locus-clustered bootstrap, full federation minus the arm, in percentage points:
+
+| arm | power | full federation minus arm |
+| --- | ---: | --- |
+| all three, full | 0.9433 | — |
+| Covenant alone | 0.7773 | +16.6 (15.8–17.4) |
+| Covenant stats + ANL LD | 0.7769 | +16.6 (15.9–17.4) |
+| MBZUAI alone | 0.6257 | +31.8 (30.8–32.7) |
+| ANL alone | 0.6224 | +32.1 (31.2–32.9) |
+| all three, n matched (3 draws) | 0.489–0.497 | +44.7 to +45.4 |
+
+Federating helps on every axis at once: power 0.94 against 0.62–0.78, causal recall 0.61
+against 0.35–0.44, mean credible-set size 6.8 variants against 9.5–12.7, mean purity
+0.981 against 0.937–0.955, and 1.27 sets per instance against 0.75–0.92. It finds more
+signals and localizes each one more tightly.
+
+**The gain is sample size, not diversity.** The matched-N control is decisive and points
+the other way: hold analyzed N at 50,000 and the three-site composition is the *worst*
+arm in the run, below every solo site, reproducibly across three independent draws.
+SuSiEx fits one effect per ancestry column, so power tracks the largest column rather
+than the total, and the solo arms win by concentration — Covenant puts 47,500 of its
+50,000 people into AFR, where the matched-N federation's largest column is 20,339. The
+controlled version of that comparison holds both N and column count fixed, ANL (5
+columns, largest 30,000) against matched-N draw 1 (5 columns, largest 20,339): **13.3 pp
+apart (12.3–14.3) in ANL's favour.** Splitting a fixed cohort across ancestries costs
+power. Adding cohorts buys it back several times over. Neither bar measures ancestral
+diversity, and labelling either one "diversity" would invert the finding.
+
+Borrowing a same-ancestry external LD panel is, on this design, close to free: Covenant
+statistics against ANL's AFR panel reach power 0.7769 against Covenant's own 0.7773 and
+coverage 0.9553 against 0.9560. This is the cheap alternative to an O(M²) uplink and it
+does not visibly break here. The panels are drawn from the same synthetic HAPNEST pool
+for the same ancestries, so this bounds the cost of *external-panel sampling*, not the
+cost of a genuinely mismatched reference. It is excluded from the exactness comparison by
+construction.
+
+### Limitations
+
+- **Ancestry-divergent architectures are not evaluated.** The mode carries 30 of 11,850
+  instances per arm (0.25%), yielding 3 to 31 credible sets. Per-arm divergent coverage
+  ranges from 0.75 to 1.00 and recall from 0.014 to 0.138; at those denominators neither
+  is an estimate. The separate divergent figure group renders from the same 30 instances,
+  and `pap4_power_coverage` correctly refuses to draw at all there. Ancestry-private
+  causal architectures remain an open question, not a negative result.
+- **Coverage is conditional on power.** See the h² table above. Nothing here licenses a
+  95% claim for a single site at the weakest signal.
+- **`rg` is the effect-draw correlation**, not realized genetic-value correlation, and the
+  grid is a star rather than a full factorial: `rg` 0.5 and 0.7 exist only at h² = 0.001.
+  Any marginal over `rg` is confounded with h², and pooling them reverses the sign of the
+  effect — within h² = 0.001 power rises with `rg` in every arm (full federation
+  0.969 → 0.974 → 0.978; ANL 0.581 → 0.597 → 0.719). The published rollups now carry
+  h² inside the `rg` grouping for this reason.
+- **Arm differences are composition and participation effects.** Matching analyzed N does
+  not match allele frequencies, realized effects or site noise, so no arm difference
+  isolates an LD-only cause.
+- **79 frozen loci on synthetic HAPNEST chr1.** Locus-clustered intervals treat these as
+  the locus sample; they are a fixed benchmark panel, not a genome-wide draw, and the
+  11,850 rows are not 11,850 independent regions.
+- **No homogeneous-noise or null-association arm**, so calibration of the association
+  model itself is untested. Implementation equality and variance-ratio checks do not
+  supply it.
+- **Still centralized and standalone-federated HPC computation.** The two placeholder
+  partner endpoints remain undeployed.
+
+### Corrections applied during this review
+
+The estimates above are the run's own; nothing was recomputed. Four reporting defects
+found while checking figure labels, denominators and uncertainty against the results were
+fixed, and the figures and stratum rollups re-rendered from the frozen results at the
+revision that carries the fix:
+
+1. **Four captions claimed Wilson intervals.** Audit finding 9 replaced row-independent
+   intervals with a locus-clustered bootstrap; `clustered_ratio` was adopted but the
+   prose in `pap1`, `pap2`, `pap4` and `fed6` was not updated. The drawn intervals were
+   always the clustered ones, so no number changes. The unused `wilson`/`binom_summary`
+   helpers are deleted so the assumption cannot return.
+2. **`pap1` reported the wrong denominator.** Each panel plots one arm of the star design
+   but the footnote printed the whole frame: 11,820 instances against the 7,100 and 7,090
+   actually drawn, and 30 against 10 and 20 in divergent mode.
+3. **The stratum rollup pooled h² inside the `rg` marginal**, putting 2,340 instances in
+   the `rg` = 1.0 row against 780 in the others and reversing the apparent direction of
+   the `rg` effect. `h2_target` is now part of that grouping in all three writers.
+4. **Two matched-N arms reached a published figure as raw identifiers.** The draws were
+   built inline by the submit script and labelled in the figure module, with no shared
+   source of truth, so `federation_50k_seed2` and `federation_50k_seed3` printed beside
+   the other arms' prose labels. `MATCHED_N_SEEDS` is now the single definition both read.
+   The same panel's cohort-size and column-count rows were positioned for four upright
+   tick labels and were overrun by eight rotated ones; past four arms those numbers move
+   to the footnote, where they are legible and carry the prose labels too. The stale
+   "14.6 pp" in `fed6`'s docstring is corrected to the measured 13.3 pp.
+
+`figures.before-caption-fix/` and `*.before-h2-split` retain the published versions.
+Three regression tests pin all four.

@@ -30,7 +30,24 @@ log = logging.getLogger(__name__)
 
 SITE_ORDER = ("anl", "covenant", "mbzuai")
 
-__all__ = ["Arm", "ARMS", "build_configs", "run_arm", "merge_arms", "main"]
+# The matched-N control is three independent draws of ONE design, not three designs:
+# same sites, same fraction, same analyzed N, different sampling seed. Anything that
+# enumerates or labels the arms reads this rather than hard-coding the draws, so a
+# fourth seed cannot reach a figure as a raw identifier.
+MATCHED_N_SEEDS: tuple[int, ...] = (20260601, 20260602, 20260603)
+
+
+__all__ = [
+    "Arm",
+    "ARMS",
+    "MATCHED_N_SEEDS",
+    "matched_n_arm_name",
+    "matched_n_arms",
+    "build_configs",
+    "run_arm",
+    "merge_arms",
+    "main",
+]
 
 
 @dataclass(frozen=True)
@@ -60,6 +77,28 @@ ARMS: tuple[Arm, ...] = (
     Arm("federation", SITE_ORDER, label="All three"),
 )
 ARMS_BY_NAME = {a.name: a for a in ARMS}
+
+
+def matched_n_arm_name(seed: int) -> str:
+    """Canonical arm name for a matched-N draw. The first seed keeps the bare name the
+    published run used, so existing outputs stay addressable."""
+    if seed == MATCHED_N_SEEDS[0]:
+        return "federation_50k"
+    return f"federation_50k_seed{MATCHED_N_SEEDS.index(seed) + 1}"
+
+
+def matched_n_arms() -> tuple[Arm, ...]:
+    """Every matched-N draw, `MATCHED_N_SEEDS` in order. Draw 1 is also in ``ARMS``."""
+    return tuple(
+        Arm(
+            matched_n_arm_name(seed),
+            SITE_ORDER,
+            fraction=1 / 3,
+            seed=seed,
+            label=f"All three, n matched to one site (draw {i + 1})",
+        )
+        for i, seed in enumerate(MATCHED_N_SEEDS)
+    )
 
 
 # --------------------------------------------------------------------------- #
