@@ -292,17 +292,35 @@ against 0.35–0.44, mean credible-set size 6.8 variants against 9.5–12.7, mea
 0.981 against 0.937–0.955, and 1.27 sets per instance against 0.75–0.92. It finds more
 signals and localizes each one more tightly.
 
-**The gain is sample size, not diversity.** The matched-N control is decisive and points
-the other way: hold analyzed N at 50,000 and the three-site composition is the *worst*
-arm in the run, below every solo site, reproducibly across three independent draws.
-SuSiEx fits one effect per ancestry column, so power tracks the largest column rather
-than the total, and the solo arms win by concentration — Covenant puts 47,500 of its
-50,000 people into AFR, where the matched-N federation's largest column is 20,339. The
-controlled version of that comparison holds both N and column count fixed, ANL (5
-columns, largest 30,000) against matched-N draw 1 (5 columns, largest 20,339): **13.3 pp
-apart (12.3–14.3) in ANL's favour.** Splitting a fixed cohort across ancestries costs
-power. Adding cohorts buys it back several times over. Neither bar measures ancestral
-diversity, and labelling either one "diversity" would invert the finding.
+**The power gain is sample size, not diversity — but diversity is not idle.** The two act
+at different stages and the marginal figures conflate them.
+
+At the discovery stage the matched-N control points against diversity, decisively. Hold
+analyzed N at 50,000 and the three-site composition is the *worst* arm in the run, below
+every solo site, reproducibly across three independent draws. SuSiEx fits one effect per
+ancestry column, so power tracks the largest column rather than the total, and the solo
+arms win by concentration — Covenant puts 47,500 of its 50,000 people into AFR, where the
+matched-N federation's largest column is 20,339. The controlled version of that comparison
+holds both N and column count fixed, ANL (5 columns, largest 30,000) against matched-N
+draw 1 (5 columns, largest 20,339): **13.3 pp apart (12.3–14.3) in ANL's favour.**
+
+At the localization stage it reverses. Restricting to the **4,987** instances where both
+arms returned a set — which removes the differential-discovery selection that makes a
+marginal resolution comparison unreadable — the diverse arm's best credible set is
+**2.16 variants smaller (95% CI 1.75–2.58)**, 8.50 against 11.05, with higher mean purity
+(0.963 against 0.954) and higher causal PIP (0.583 against 0.530). Capture rate within
+that subset is essentially equal (0.965 against 0.970), so this is sharper localization of
+the same signals, not a different set of them. That is the canonical cross-ancestry
+fine-mapping benefit — differing LD breaking ties between correlated variants — and it is
+present here.
+
+So at fixed N, ancestral composition trades discovery for resolution: fewer signals found,
+each one pinned down better. The full federation escapes the trade because it is not at
+fixed N — 150,000 people buy both, and it leads every arm on power *and* on set size
+(6.8 variants). Because matching N does not match allele frequencies, realized effects or
+site noise, the 2.16-variant gap is consistent with the LD-diversity mechanism rather than
+an isolated measurement of it. Labelling either bar simply "diversity" would misstate the
+finding in one direction or the other.
 
 Borrowing a same-ancestry external LD panel is, on this design, close to free: Covenant
 statistics against ANL's AFR panel reach power 0.7769 against Covenant's own 0.7773 and

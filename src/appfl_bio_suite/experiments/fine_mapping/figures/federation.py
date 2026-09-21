@@ -722,13 +722,22 @@ def fed6_what_federation_buys(
     That first gap is deliberately NOT labelled "diversity". SuSiEx fits one effect per
     ancestry column, so power tracks the size of the largest column rather than the total,
     and the solo arms win it by being concentrated: Covenant puts 47,500 of its 50,000
-    people into AFR, where the n-matched federation's largest column is 20,000. The
+    people into AFR, where the n-matched federation's largest column is 20,339. The
     controlled comparison is ANL (5 columns, largest 30,000) against the n-matched
     federation (5 columns, largest 20,339) -- same total analyzed n (50,000), same
     column count, 13.3 pp apart (95% paired locus-clustered bootstrap 12.3 to 14.3).
     Calling the bar "diversity" would tell a reader that ancestral
     diversity costs 30 points of power, which is not what it measures and is a claim this
     design cannot support.
+
+    Panel b is the other half of that, and it runs the other way. Conditioned on the 4,987
+    instances where BOTH arms returned a set -- necessary, because a weaker arm reports only
+    its easiest finds and would otherwise look sharp by selection -- the n-matched arm's
+    best set is 2.16 variants smaller than ANL's (95% paired locus-clustered bootstrap 1.75
+    to 2.58), at higher purity and higher causal PIP and an essentially equal capture rate.
+    So at fixed n the composition trades discovery for resolution, and panel a alone would
+    tell only the discouraging half. The full federation escapes the trade by not being at
+    fixed n: it leads on power AND on set size.
 
     The ``ld_borrowed`` arm is a different claim and is coloured as a warning rather than
     as a series. It is the cheap alternative to federating -- one site's summary

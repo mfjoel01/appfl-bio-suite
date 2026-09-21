@@ -184,16 +184,25 @@ Federating wins on every axis at once — more power, more sets per locus, tight
 higher purity, and the lowest false-discovery rate at both PIP thresholds. So the uplink
 is justified, and the O(M²) cost buys something real.
 
-**But the gain is sample size, not diversity, and the matched arm proves it.** Hold
-analyzed N at 50,000 and the three-site composition becomes the *worst* arm in the run,
-below every single site, reproducibly across three independent draws. The reason is in
-the design above: SuSiEx fits one effect per ancestry column, so power tracks the
+**But the *power* gain is sample size rather than diversity, and the matched arm shows
+it.** Hold analyzed N at 50,000 and the three-site composition becomes the *worst* arm in
+the run, below every single site, reproducibly across three independent draws. The reason
+is in the design above: SuSiEx fits one effect per ancestry column, so power tracks the
 **largest column** rather than the total. Covenant alone puts 47,500 of its 50,000 people
 into AFR; the matched federation's largest column is 20,339. Splitting a fixed cohort
-across ancestries costs power — 13.3 pp (12.3–14.3) in the controlled comparison that
-holds both N and column count fixed. Adding cohorts buys it back several times over.
-Neither bar measures ancestral diversity, and calling either one "diversity" inverts the
-finding.
+across ancestries costs 13.3 pp (12.3–14.3) in the controlled comparison that holds both N
+and column count fixed. Adding cohorts buys it back several times over.
+
+**Diversity earns its keep at the other end, though.** Among the 4,987 instances where both
+arms returned a set — comparing like with like, rather than letting the weaker arm look
+sharp because it only reports its easiest finds — the diverse arm's credible sets are
+**2.16 variants smaller (95% CI 1.75–2.58)**, with higher purity and higher causal PIP, at
+an essentially equal capture rate. That is the textbook cross-ancestry benefit: different
+LD across ancestries breaks ties between correlated variants.
+
+So at fixed N the trade is fewer signals found, each pinned down better. The full
+federation sidesteps it by not being at fixed N — 150,000 people buy both. Calling either
+matched-N bar simply "diversity" misstates the finding in one direction or the other.
 
 The borrowed-LD objection survives its test on this design: Covenant's statistics against
 ANL's AFR panel land within 0.0004 of Covenant's own power and 0.0007 of its coverage.
