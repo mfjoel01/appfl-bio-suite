@@ -227,12 +227,15 @@ def harvest_archives(root: Path, results: pd.DataFrame, destination: Path) -> pd
 
 def paired_arm_differences(frame: pd.DataFrame, reference: str = "federation") -> pd.DataFrame:
     """Paired locus bootstrap of power differences on identical simulation instances."""
-    base = frame[frame.arm == reference].set_index(KEY)
+    keys = KEY + (["sampling_seed"] if "sampling_seed" in frame else [])
+    if frame.duplicated(["arm", *keys]).any():
+        raise ValueError("Duplicate arm/instance keys in paired comparison")
+    base = frame[frame.arm == reference].set_index(keys)
     rows = []
     for arm, group in frame.groupby("arm"):
         if arm == reference:
             continue
-        other = group.set_index(KEY)
+        other = group.set_index(keys)
         if set(base.index) != set(other.index):
             raise ValueError(f"Arm {arm} is not paired with {reference}")
         other = other.loc[base.index]

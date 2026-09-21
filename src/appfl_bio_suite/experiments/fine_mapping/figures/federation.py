@@ -664,76 +664,45 @@ def fed5_where_time_goes(
 # --------------------------------------------------------------------------- #
 # fed6 -- what federating actually buys
 # --------------------------------------------------------------------------- #
-# Arms in the order a reader should meet them: each site alone, then the federation
-# matched on sample size, then the whole federation, then the shortcut that avoids it.
-ARM_ORDER = ["covenant", "mbzuai", "anl", "federation_50k", "federation", "ld_borrowed"]
+# Exactly five headline arms. Search candidates and legacy controls stay in tables.
+ARM_ORDER = ["anl", "covenant", "mbzuai", "federation_smart_50k", "federation"]
 ARM_LABEL = {
+    "anl": "ANL alone",
     "covenant": "Covenant alone",
     "mbzuai": "MBZUAI alone",
-    "anl": "ANL alone",
-    "federation_50k": "All three, n matched",
-    "federation": "All three, full",
-    "ld_borrowed": "Covenant stats + ANL LD",
+    "federation_smart_50k": "N matched, smart composition",
+    "federation": "All sites, full federation",
 }
-# Two lines per label is the natural way to write these and it does not survive six
-# arms: rotated, each label's second line juts right into its neighbour's first. One
-# line rotates cleanly at any length, so the labels stay whole rather than abbreviated.
 
 
 def arm_colors(arms: list[str]) -> list[str]:
-    """A site's own colour where the arm IS that site; the federated hue for a
-    federation; a status colour for the shortcut arm, which is a warning and not a
-    series."""
-    out = []
-    for a in arms:
-        if a in fs.SITE:
-            out.append(fs.SITE[a])
-        elif a == "ld_borrowed":
-            out.append(fs.STATUS["critical"])
-        else:
-            out.append(fs.PATH["federated"])
-    return out
+    mapping = {
+        **fs.SITE,
+        "federation_smart_50k": fs.brand.COLORS["anl-red"],
+        "federation": fs.PATH["federated"],
+    }
+    return [mapping.get(a, fs.MUTED) for a in arms]
 
 
 def fed6_what_federation_buys(
     by_arm: pd.DataFrame, out: Path, cohort: dict[str, tuple[int, int]] | None = None
 ) -> Path:
-    """The same loci, the same truth, differing only in who took part.
+    """Five paired arms on evaluation loci; selection is performed upstream.
 
-    THIS IS THE ARM THE OTHER FIGURES WERE MISSING. Everything else in this experiment is
-    computed with all three sites participating, which establishes that federating is
-    *correct* without ever showing that it is *worth it*. A reader's first question about
-    a federation is "what would I get on my own?", and until this figure there was no arm
-    that answered it.
-
-    Read the panels left to right as one argument: a site alone reaches some power, the
-    federation reaches more, and panel d says how much of that is simply three times the
-    data rather than three times the diversity -- the ``n matched`` arm is the full
-    federation restricted to one site's worth of people, so the gap between it and a solo
-    site is the cost of splitting a fixed cohort across ancestries, and the gap between
-    it and the full federation is sample size.
-
-    That first gap is deliberately NOT labelled "diversity". SuSiEx fits one effect per
-    ancestry column, so power tracks the size of the largest column rather than the total,
-    and the solo arms win it by being concentrated: Covenant puts 47,500 of its 50,000
-    people into AFR, where the n-matched federation's largest column is 20,000. The
-    controlled comparison is ANL (5 columns, largest 30,000) against the n-matched
-    federation (5 columns, largest 20,000) -- same total n, same column count, 14.6 pp
-    apart, p~1e-55. Calling the bar "diversity" would tell a reader that ancestral
-    diversity costs 30 points of power, which is not what it measures and is a claim this
-    design cannot support.
-
-    The ``ld_borrowed`` arm is a different claim and is coloured as a warning rather than
-    as a series. It is the cheap alternative to federating -- one site's summary
-    statistics against another's LD panel, O(M) instead of O(M^2) -- and it belongs here
-    because "why not just meta-analyse?" is the first objection to this design.
+    Never substitute a proportional matched arm for the selected composition. The
+    caller must provide all five arms; diagnostic candidates cannot become extra bars.
     """
-    available = set(by_arm["arm"])
-    arms = [a for a in ARM_ORDER if a in available] + sorted(available - set(ARM_ORDER))
-    if not arms:
-        fig, ax = plt.subplots(figsize=(7, 4.5))
-        fs.no_data(ax, "results carry no arm column")
-        return fs.save(fig, out, log)
+    fs.apply_style()
+    arms = ARM_ORDER
+    missing = set(arms) - set(by_arm["arm"])
+    if missing:
+        raise ValueError(f"fed6 requires all five headline arms; missing {sorted(missing)}")
+    by_arm = by_arm[by_arm.arm.isin(arms)].copy()
+    if "evaluation_split" in by_arm and not by_arm.evaluation_split.eq("evaluation").all():
+        raise ValueError("fed6 selected-composition comparison must use evaluation loci only")
+    from ..reporting import paired_arm_differences
+
+    differences = paired_arm_differences(by_arm).set_index("arm").loc[arms[:-1]].reset_index()
     colors = arm_colors(arms)
     x = np.arange(len(arms))
 
@@ -794,9 +763,6 @@ def fed6_what_federation_buys(
     _bars(ax_c, "pip95", "P(causal variant at PIP > 0.95)", "c", "High-confidence yield")
 
     # Predeclared paired comparisons; no post-hoc selection of the best solo site.
-    from ..reporting import paired_arm_differences
-
-    differences = paired_arm_differences(by_arm)
     if len(differences):
         values = differences.power_difference.to_numpy()
         errors = np.vstack([values - differences.ci_low, differences.ci_high - values])
@@ -829,24 +795,17 @@ def fed6_what_federation_buys(
         for tick, a in zip(ax.get_xticklabels(), arms, strict=False):
             if a == "ld_borrowed":
                 tick.set_color(fs.STATUS["critical"])
+    cohort_text = ""
     if cohort:
-        fs.count_labels(ax_a, x, [cohort.get(a, (0, 0))[0] for a in arms], pad_pt=34, fmt="n={:,}")
-        ax_a.set_xlabel("participating cohort", labelpad=30)
-        for xi, a in enumerate(arms):
-            k = cohort.get(a, (0, 0))[1]
-            if k:
-                ax_a.annotate(
-                    f"{k} col",
-                    xy=(xi, 0),
-                    xycoords=("data", "axes fraction"),
-                    xytext=(0, -46),
-                    textcoords="offset points",
-                    ha="center",
-                    va="top",
-                    fontsize=7.5,
-                    color=fs.MUTED,
-                    annotation_clip=False,
-                )
+        cohort_text = (
+            " Cohorts: "
+            + "; ".join(
+                f"{ARM_LABEL[a]} N={cohort[a][0]:,}, {cohort[a][1]} ancestries"
+                for a in arms
+                if a in cohort
+            )
+            + "."
+        )
 
     fig.suptitle(
         "What federating buys, on the same loci and the same truth",
@@ -855,17 +814,21 @@ def fed6_what_federation_buys(
         fontsize=13,
         fontweight="semibold",
     )
+    composition = ""
+    if "smart_composition" in by_arm:
+        labels = (
+            by_arm.loc[by_arm.arm.eq("federation_smart_50k"), "smart_composition"].dropna().unique()
+        )
+        if len(labels) == 1:
+            composition = f" Selected composition: {labels[0]}."
     fs.footnote(
         fig,
-        f"{len(d):,} instances across {len(arms)} arm(s); "
-        f"{', '.join(f'{a}={n:,}' for a, n in zip(arms, ns, strict=False))}. "
-        "Every arm is the same estimator over the same ground truth, "
-        "differing only in which cohorts took part. Error bars are Wilson "
-        "95% intervals. The `n matched` arm is the full federation "
-        "restricted to one site's worth of people, stratified within site "
-        "and ancestry, so panel d can separate splitting a fixed cohort from adding to it. "
-        "The borrowed-LD arm is the cheap alternative to federating and is "
-        "drawn as a warning, not a series.",
+        f"{d.locus_id.nunique():,} evaluation loci; {ns[0]:,} fits per arm "
+        "including sampling repeats. Error bars: 95% locus-clustered bootstrap intervals. "
+        "Composition selected on separate development regions; the same evaluation "
+        "instances are used for every arm. Sample size, composition and site noise "
+        "all affect these comparisons; this does not isolate an LD-diversity effect. "
+        "Resolution is conditional on causal capture." + composition + cohort_text,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     return fs.save(fig, out, log)

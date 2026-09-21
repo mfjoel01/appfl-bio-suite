@@ -59,21 +59,53 @@ people) and varies the **locus** instead. So its x-axis becomes ours:
 the genotypes are synthetic, so no variant carries a functional annotation to bin by.
 Figure 1 and Extended Data Figure 1 are method schematics rather than plots of data.
 
-## `fed6` is the one that says whether federating was worth it
+## Five-arm fed6 comparison
 
-Every other figure holds all three sites participating, which establishes that federating
-is **correct** while never showing that it is **worth it**. `fed6_what_federation_buys`
-runs the same loci with different cohorts taking part — each site alone, all three
-down-sampled to one site's worth of people, all three in full, and the borrowed-LD
-shortcut — so the gap between a solo site and the *n*-matched federation is diversity, the
-gap between *n*-matched and full is sample size, and the borrowed-LD arm says whether the
-O(M²) uplink earns its cost. Feed it with:
+`fed6_what_federation_buys` shows exactly five arms: ANL alone, Covenant alone,
+MBZUAI alone, a selected 50,000-person composition, and the full federation.
+The selected arm is named `federation_smart_50k`; legacy proportional subsamples,
+individual search candidates, repeat seeds and borrowed-LD controls stay in the
+supporting tables. A missing selected arm is an error, never a relabeled old arm.
+
+Use `scripts/fine-mapping/submit_composition.py` to prepare and submit the search
+against a completed scientific run. It preserves the source run, partitions genomic
+regions before selecting a cohort, tests the five AFR/EUR allocations with two site
+recruitment policies and three sampling seeds, then freezes the development winner.
+All five displayed arms are evaluated on the same held-out instances. Repeated
+sampling seeds are combined into one bar, with locus-clustered uncertainty; copies
+of the solo baselines are pairing controls, not additional independent observations.
+
+The objective is unconditional causal-capture power. Coverage, false discovery rate
+at PIP > 0.95, and high-confidence yield are reported alongside it. A winner is not
+guaranteed to outperform a solo site. These comparisons vary ancestry composition,
+site recruitment and noise as well as sample size; they do not isolate LD diversity.
+
+## Argonne colors and Helvetica
+
+All scientific plotting entry points use `core/plot_style.py`, including EDA,
+paper panels, federation panels, QC report images, and GWAS Manhattan/QQ plots.
+The packaged `core/plot_assets/argonne-palette.css` is the supplied palette;
+light-mode categorical, sequential and diverging tokens are read directly from it.
+
+Install licensed Helvetica fonts on the rendering machine, or set
+`BIOSIM_FONT_PATH=/path/to/Helvetica-font-directory` (a single font file also works).
+Use `BIOSIM_REQUIRE_HELVETICA=1` to reject rendering if Helvetica is unavailable.
+Without the font, previews explicitly warn and use DejaVu Sans. The composition
+run's `plots.json` records the actual font and the palette checksum. Font binaries
+are not distributed with this repository.
 
 ```bash
-python -m ...figures.render --results <by_arm.tsv> --by-arm <by_arm.tsv> ...
+/your/python scripts/fine-mapping/submit_composition.py \
+  --source /path/to/completed-run --root /path/to/new-composition-run --submit
 ```
 
-built by `experiments/fine_mapping/arms.py`.
+The dependency graph is development → selection → evaluation → finish. A parallel
+plot job recolors the existing supported figures; finish adds the five-arm fed6.
+`development_ranking.tsv`, `selection.json`, `evaluation_summary.tsv` and
+`paired_vs_smart.tsv` document the choice and its held-out performance. Candidate
+configs record exact ancestry and site counts. Covenant-first recruitment may use
+fewer than three sites when their capacity suffices; the full federation always
+uses all sites.
 
 ## The divergence stratum is confounded — read `pap7`'s docstring
 
