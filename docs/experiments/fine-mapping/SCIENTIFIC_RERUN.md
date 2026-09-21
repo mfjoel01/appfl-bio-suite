@@ -67,7 +67,9 @@ same-ancestry references, not European LD substituted for African LD.
 Rates and paired-arm differences use a bootstrap over whole loci, retaining replicates
 and credible sets within each locus. Coverage means the fraction of returned credible
 sets containing a true causal variant, distinct from per-instance power. Shared and
-divergent causal modes have separate summaries and figure groups. The effect-draw `rg`
+divergent causal modes had separate summaries and figure groups; the divergent mode has
+since been withdrawn (see
+[Ancestry-divergent architectures](#ancestry-divergent-architectures)). The effect-draw `rg`
 parameter is distinguished from realized genetic-value correlation, and site-marginal
 heritability from within-ancestry heritability. Homogeneous-noise, null-association and
 LD-isolation studies would be needed for stronger general calibration or causal claims.
@@ -312,12 +314,9 @@ construction.
 
 ### Limitations
 
-- **Ancestry-divergent architectures are not evaluated.** The mode carries 30 of 11,850
-  instances per arm (0.25%), yielding 3 to 31 credible sets. Per-arm divergent coverage
-  ranges from 0.75 to 1.00 and recall from 0.014 to 0.138; at those denominators neither
-  is an estimate. The separate divergent figure group renders from the same 30 instances,
-  and `pap4_power_coverage` correctly refuses to draw at all there. Ancestry-private
-  causal architectures remain an open question, not a negative result.
+- **Ancestry-divergent architectures are not evaluated, and the mode is now off.** See
+  [Ancestry-divergent architectures](#ancestry-divergent-architectures) below. Nothing in
+  this run speaks to ancestry-private causal variants.
 - **Coverage is conditional on power.** See the h² table above. Nothing here licenses a
   95% claim for a single site at the weakest signal.
 - **`rg` is the effect-draw correlation**, not realized genetic-value correlation, and the
@@ -337,6 +336,41 @@ construction.
   supply it.
 - **Still centralized and standalone-federated HPC computation.** The two placeholder
   partner endpoints remain undeployed.
+
+### Ancestry-divergent architectures
+
+Withdrawn. The mode simulated a causal set that differs by ancestry — a union of shared
+variants plus one private to each superpopulation — as a stress test of the assumption the
+whole method rests on, that the causal variant is the same in every ancestry. The question
+is the right one and the compute was negligible: 2.7 core-hours, 0.23% of the run. The
+design could not answer it, for two independent reasons.
+
+It was far too small. `min_per_stratum: 1` selected three (locus, architecture) pairs, so
+the mode was 30 of 11,850 instances per arm, yielding 3 to 31 credible sets. Per-arm
+coverage ranged from 0.75 to 1.00 and recall from 0.014 to 0.138; at those denominators
+neither is an estimate.
+
+More instances would not have rescued it, because the comparison is confounded. A
+divergent instance draws a union of `ncsl - n_private` shared variants plus
+`n_private_per_pop` for each of six superpopulations, while keeping the architecture's
+target h². An architecture **labelled** `ncsl2` therefore carried **seven** causal
+variants where its shared counterpart carried two, making each effect roughly 3.5 times
+fainter, and the shared grid spans `ncsl` 1–3 only, so there is no seven-causal cell to
+compare against. The observed recall drop — 0.615 shared against 0.138 divergent for the
+full federation, with every arm falling 27 to 48 points — mixes ancestry-private
+architecture with much weaker per-variant effects and cannot separate them.
+
+`ancestry_divergent_causal` is consequently `enabled: false` in the shipped configuration,
+and no future run emits a divergent figure group. The implementation is retained, and
+`_assign_ancestry_divergent_flags` now warns once at simulation setup whenever the grid
+lacks a shared cell at the union size — which is exactly the condition that made this run's
+contrast unreadable. Re-enabling it responsibly needs both a larger `min_per_stratum` and
+a matched `ncsl` cell equal to `n_shared + 6 x n_private_per_pop`.
+
+The completed 14 September run is left intact as a frozen artifact: its divergent figures
+and `plots.accepted.json` still list what that run produced, with a `NOT-EVALUATED.md`
+marker placed in each divergent figure directory. Nothing in this repository cites a
+divergent number as a result.
 
 ### Corrections applied during this review
 
