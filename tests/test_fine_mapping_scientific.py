@@ -349,3 +349,172 @@ def test_submission_requires_account_before_archiving_or_preparing(tmp_path, mon
             module.main()
         assert exc.value.code == 2
         assert not root.exists()
+
+
+def test_no_figure_caption_claims_a_row_independent_interval():
+    """Audit finding 9: replicates share loci and several credible sets share an
+    instance, so every published rate interval is a locus-clustered bootstrap. The
+    computation was corrected but four captions kept printing "Wilson", which is the
+    interval the audit rejected. The helper is gone; assert the prose went with it."""
+    from pathlib import Path
+
+    figures = Path(__file__).resolve().parents[1] / (
+        "src/appfl_bio_suite/experiments/fine_mapping/figures"
+    )
+    offenders = {
+        path.name: [
+            line.strip() for line in path.read_text().splitlines() if "wilson" in line.lower()
+        ]
+        for path in sorted(figures.glob("*.py"))
+        if "wilson" in path.read_text().lower()
+    }
+    assert offenders == {}, offenders
+
+
+def test_stratum_rollup_keeps_heritability_out_of_the_rg_marginal():
+    """The grid is a star: rg 0.5/0.7 exist only at the centre h2. Grouping a rollup by
+    (stratum, rg) alone pools three h2 levels into the rg=1.0 row and one into each of
+    the others, which reverses the apparent direction of the rg effect."""
+    import inspect
+
+    from appfl_bio_suite.experiments.fine_mapping.aggregator import FineMappingAggregator
+    from appfl_bio_suite.experiments.fine_mapping.fedfm import (
+        fed_fine_mapping,
+        fine_mapping,
+    )
+
+    for owner, name in (
+        (fine_mapping._write_rollup, "centralized"),
+        (fed_fine_mapping.write_rollup, "federated"),
+        (FineMappingAggregator._write_rollups, "aggregator"),
+    ):
+        source = inspect.getsource(owner)
+        assert '"by_stratum_rg"' in source, name
+        grouping = source.split('"by_stratum_rg"')[0]
+        tail = grouping[grouping.rindex("[") :] if "[" in grouping else grouping
+        assert "h2_target" in tail, f"{name} rollup pools h2 inside the rg marginal"
+
+
+def test_every_emitted_participation_arm_has_a_reader_facing_label():
+    """An arm missing from ARM_LABEL is drawn with its raw identifier next to the other
+    arms' prose, which is how `federation_50k_seed2` reached a published figure."""
+    from appfl_bio_suite.experiments.fine_mapping.arms import (
+        ARMS,
+        MATCHED_N_SEEDS,
+        matched_n_arm_name,
+        matched_n_arms,
+    )
+    from appfl_bio_suite.experiments.fine_mapping.figures.federation import (
+        ARM_LABEL,
+        ARM_ORDER,
+    )
+
+    expected = {a.name for a in ARMS} | {a.name for a in matched_n_arms()}
+    assert expected <= set(ARM_LABEL), expected - set(ARM_LABEL)
+    assert expected <= set(ARM_ORDER), expected - set(ARM_ORDER)
+    assert len(set(ARM_LABEL.values())) == len(ARM_LABEL), "two arms share a label"
+    # Draw 1 keeps the bare name the published outputs are addressed by.
+    assert matched_n_arm_name(MATCHED_N_SEEDS[0]) == "federation_50k"
+    assert len(matched_n_arms()) == len(MATCHED_N_SEEDS)
+
+
+def test_ancestry_divergent_mode_stays_off_in_shipped_configs():
+    """Withdrawn 2026-09-21. The mode was 30 of 11,850 instances AND confounded: it draws
+    a union of shared + per-superpop-private variants at the architecture's target h2, so
+    a cell labelled ncsl2 carried seven causal variants against two for its shared
+    counterpart, with no seven-causal shared cell to compare against. More instances could
+    not fix that, so it must not drift back on by default."""
+    import yaml
+
+    from appfl_bio_suite.core.experiments import repo_root
+
+    configs = repo_root() / "src/appfl_bio_suite/experiments/fine_mapping/configs/simulation"
+
+    def find(node):
+        if isinstance(node, dict):
+            if "ancestry_divergent_causal" in node:
+                return node["ancestry_divergent_causal"]
+            for value in node.values():
+                found = find(value)
+                if found is not None:
+                    return found
+        return None
+
+    seen = 0
+    for path in sorted(configs.glob("*.yaml")):
+        block = find(yaml.safe_load(path.read_text()))
+        if block is None:
+            continue
+        seen += 1
+        assert block["enabled"] is False, (
+            f"{path.name} re-enables ancestry_divergent_causal. It needs a matched shared "
+            "cell at the union size first -- see SCIENTIFIC_RERUN.md."
+        )
+    assert seen, "no shipped simulation config declares ancestry_divergent_causal"
+
+
+def test_divergent_mode_warns_when_the_grid_cannot_support_the_comparison():
+    """The confound is silent otherwise: the architecture label says ncsl2 while the
+    instance carries the union. Anyone re-enabling the mode must be told."""
+    import logging
+
+    import pandas as pd
+
+    from appfl_bio_suite.experiments.fine_mapping.fedfm.phenotype_sim import (
+        _assign_ancestry_divergent_flags,
+        build_architecture_grid,
+    )
+    from appfl_bio_suite.experiments.fine_mapping.fedfm.utils import (
+        AncestryDivergentCausalConfig,
+        AncestrySpecificCausalConfig,
+        ArchitectureConfig,
+        SimulationConfig,
+        get_logger,
+    )
+
+    architectures = build_architecture_grid(ncsl=[1, 2, 3], h2=[0.001], rg=[1.0], mode="extended")
+    loci = pd.DataFrame({"locus_id": ["L0", "L1", "L2"], "stratum": ["low", "medium", "high"]})
+
+    # ncsl spans 1-3, so a divergent union of 1 shared + 6 private = 7 has no shared cell.
+    cfg = SimulationConfig.model_construct(
+        master_seed=1,
+        superpopulations=["EUR", "AFR", "AMR", "EAS", "CSA", "MID"],
+        architecture=ArchitectureConfig(
+            ncsl=[1, 2, 3],
+            h2=[0.001],
+            rg=[1.0],
+            factorial_mode="extended",
+            replicates=1,
+            ancestry_specific_causal=AncestrySpecificCausalConfig(
+                enabled=False,
+                min_per_stratum=0,
+                common_maf_threshold=0.05,
+                rare_maf_threshold=0.01,
+            ),
+            ancestry_divergent_causal=AncestryDivergentCausalConfig(
+                enabled=True, n_private_per_pop=1, min_per_stratum=1
+            ),
+        ),
+    )
+    # Capture off the logger the simulator actually writes to. setup_logging() sets
+    # propagate = False on it, so pytest's caplog (which handles the ROOT logger) goes
+    # blind as soon as any earlier test in the session initialises logging.
+    records: list[logging.LogRecord] = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    logger = get_logger()
+    handler = _Capture(level=logging.WARNING)
+    logger.addHandler(handler)
+    previous = logger.level
+    logger.setLevel(logging.WARNING)
+    try:
+        flags = _assign_ancestry_divergent_flags(loci, architectures, cfg)
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous)
+
+    assert flags, "the mode should still assign when explicitly enabled"
+    assert any("union size" in r.getMessage() for r in records), [r.getMessage() for r in records]

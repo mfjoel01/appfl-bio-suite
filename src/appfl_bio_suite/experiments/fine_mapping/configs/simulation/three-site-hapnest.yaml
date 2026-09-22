@@ -142,9 +142,30 @@ pipeline:
       rare_maf_threshold: 0.01
     # Distinct from ancestry_specific_causal above: this diverges the causal SET
     # (a union of shared + per-superpop-private variants), not just one variant's
-    # MAF. Opt-in; default off so the current dataset stays valid until re-run.
+    # MAF.
+    #
+    # OFF, and re-enabling it needs a design change first. As configured it
+    # produced a comparison that cannot be read, for two independent reasons:
+    #
+    #   1. min_per_stratum: 1 yields three (locus, architecture) pairs, so the
+    #      whole mode is 30 of 11,850 instances per arm. Per-arm divergent
+    #      coverage landed on 3 to 31 credible sets -- not an estimate.
+    #   2. Worse, it is confounded. A divergent instance draws a union of
+    #      n_shared + 6 * n_private_per_pop variants, so an architecture
+    #      LABELLED ncsl2 carries seven causal variants while its shared
+    #      counterpart carries two -- at the same target h2. Each effect is
+    #      therefore roughly 3.5x fainter, and the shared grid has no
+    #      seven-causal cell to compare against (it spans ncsl 1-3 only). The
+    #      observed recall drop, 0.615 shared against 0.138 divergent for the
+    #      full federation, mixes ancestry-private architecture with much
+    #      weaker per-variant effects and cannot separate them.
+    #
+    # More instances alone will not fix (2). Re-enabling needs a matched shared
+    # control at the same union size, i.e. an ncsl cell equal to
+    # n_shared + 6 * n_private_per_pop. See docs/experiments/fine-mapping/
+    # SCIENTIFIC_RERUN.md, "Ancestry-divergent architectures".
     ancestry_divergent_causal:
-      enabled: true
+      enabled: false
       n_private_per_pop: 1
       min_per_stratum: 1
 

@@ -641,9 +641,11 @@ class FineMappingAggregator(BaseAggregator):
                 }
             )
 
+        # See the standalone writer: the rg arm of the grid exists at one h2 only, so
+        # h2_target has to stay in the grouping or the rg=1.0 row pools three levels.
         for by, name in (
             (["ncsl", "h2_target", "rg"], "by_architecture"),
-            (["stratum", "rg"], "by_stratum_rg"),
+            (["stratum", "rg", "h2_target"], "by_stratum_rg"),
         ):
             cols = [c for c in by if c in frame.columns and frame[c].notna().any()]
             if not cols:
