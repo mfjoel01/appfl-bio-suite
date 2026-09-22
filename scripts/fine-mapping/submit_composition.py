@@ -85,7 +85,10 @@ def submit(root: Path, account: str, python: str, concurrency: int = 3) -> dict:
             "-l",
             "place=exclhost",
             "-l",
-            "walltime=04:00:00",
+            "walltime="
+            + {"select": "00:10:00", "finish": "00:15:00", "plots": "01:00:00"}.get(
+                stage, "04:00:00"
+            ),
             "-l",
             "filesystems=home:grand",
             "-j",

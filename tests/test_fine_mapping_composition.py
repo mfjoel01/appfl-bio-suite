@@ -229,5 +229,8 @@ def test_submit_selection_precedes_evaluation_and_finish_waits_for_plots(tmp_pat
     assert "depend=afterok:1.pbs" in jobs["select"]["command"]
     assert "depend=afterok:2.pbs" in jobs["evaluation"]["command"]
     assert "depend=afterok:3.pbs:4.pbs" in jobs["finish"]["command"]
+    assert "walltime=00:10:00" in jobs["select"]["command"]
+    assert "walltime=00:15:00" in jobs["finish"]["command"]
+    assert "walltime=04:00:00" in jobs["evaluation"]["command"]
     module.submit(tmp_path, "account", "/python")
     assert len(calls) == 5
