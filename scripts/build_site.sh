@@ -4,7 +4,7 @@
 #     scripts/build_site.sh [OUTDIR]          # default: _site
 #
 # The pages in website/ are hand-written. The network-map preview under OUTDIR/map is
-# exported here, from federation.yaml.example -- the fictional federation in the repo,
+# exported here, from website/demo-federation.yaml -- twenty invented institutions,
 # never local/federation.yaml, which names real partners and carries their contacts.
 # check_site_preview.py enforces that rather than trusting this comment.
 #
@@ -38,7 +38,7 @@ cp -R website/. "$out"/
 cp src/appfl_bio_suite/core/watch_assets/suite-logo.png "$out"/assets/suite-logo.png
 
 "$cli" watch export \
-  --federation federation.yaml.example \
+  --federation website/demo-federation.yaml \
   --out "$out/map" \
   --title "APPFL Bio Suite federation network" >/dev/null
 

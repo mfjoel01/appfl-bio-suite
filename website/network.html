@@ -10,6 +10,18 @@
 <meta property="og:type" content="website">
 <link rel="icon" href="./assets/suite-logo.png">
 <link rel="stylesheet" href="./assets/site.css">
+<script>
+  /* Resolve the theme before first paint: an explicit choice, else the OS preference.
+     Inline and synchronous on purpose -- a deferred script would paint dark first. */
+  (function () {
+    var stored = null;
+    try { stored = localStorage.getItem('appfl-bio-suite:theme'); } catch (e) {}
+    document.documentElement.dataset.theme =
+      stored === 'light' || stored === 'dark' ? stored
+        : window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  })();
+</script>
+<script src="./assets/site.js" defer></script>
 </head>
 <body>
 
@@ -24,8 +36,14 @@
       <a href="./#experiments">Experiments</a>
       <a href="./#design">Design</a>
       <a href="./#standards">Standards</a>
+      <a href="./#reproducibility">Reproducibility</a>
+      <a href="./#quickstart">Quickstart</a>
       <a href="./network.html" aria-current="page">Network map</a>
       <a class="nav-repo" href="https://github.com/mfjoel01/appfl-bio-suite">GitHub ↗</a>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light theme" title="Switch to light theme" aria-pressed="false">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.6M12 19.4V22M4.2 4.2l1.9 1.9M17.9 17.9l1.9 1.9M2 12h2.6M19.4 12H22M4.2 19.8l1.9-1.9M17.9 6.1l1.9-1.9"/></svg>
+      </button>
     </nav>
   </div>
 </header>
@@ -57,16 +75,30 @@
         <span class="spacer"></span>
         <a href="./map/map.html?metadata_url=network.map.json&amp;view=globe" target="_blank" rel="noopener">Open full screen ↗</a>
       </div>
-      <iframe
-        src="./map/map.html?metadata_url=network.map.json&amp;view=globe"
+      <iframe id="map-frame"
         title="Federation network map — interactive preview"
         allow="fullscreen"></iframe>
+      <script>
+        /* Set here rather than in the attribute above so the viewer opens already in
+           this page's theme. Inline and immediate: the element is parsed, nothing has
+           been fetched yet, so this costs no extra request. */
+        (function () {
+          var frame = document.getElementById('map-frame');
+          frame.src = './map/map.html?metadata_url=network.map.json&view=globe&theme=' +
+            (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
+        })();
+      </script>
+      <noscript>
+        <iframe src="./map/map.html?metadata_url=network.map.json&amp;view=globe"
+          title="Federation network map — interactive preview"></iframe>
+      </noscript>
     </div>
     <p class="embed-note">
       This preview is a real export of the viewer, regenerated on every deploy from
-      <a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/federation.yaml.example"><code>federation.yaml.example</code></a>
-      — a fictional three-site federation in the repository. Drag the globe, switch to the
-      flat map, filter by experiment, or open a site for its details.
+      <a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/website/demo-federation.yaml"><code>website/demo-federation.yaml</code></a>
+      — twenty invented institutions on six continents, with three experiments whose
+      memberships overlap. Drag the globe, switch to the flat map, filter by experiment,
+      or open a site for its details.
     </p>
   </div>
 </section>
@@ -80,8 +112,9 @@
       <div class="card">
         <h3>Globe and flat map</h3>
         <p>The same federation, two projections. The globe is for the shape of the thing —
-          three continents, one hub — and the flat map is for reading labels and clicking
-          sites. Arcs run from the coordinator to each participating site.</p>
+          how far apart these institutions actually are — and the flat map is for reading
+          labels and clicking sites. Arcs run from the coordinator to each participating
+          site.</p>
       </div>
       <div class="card">
         <h3>Experiments</h3>
@@ -225,8 +258,10 @@ appfl-bio-suite run gwas --watch          <span class="c"># a live run, on the s
       </ul>
     </div>
     <p class="colophon">
-      The preview above carries no real partner data. It is generated at deploy time from
-      the fictional federation in <code>federation.yaml.example</code>.
+      The preview above carries no real partner data. Every institution, coordinate,
+      endpoint and sample count in it is invented; it is generated at deploy time from
+      <code>website/demo-federation.yaml</code>, and the build fails if it was generated
+      from anything else.
     </p>
   </div>
 </footer>

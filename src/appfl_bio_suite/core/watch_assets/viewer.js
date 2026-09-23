@@ -26,7 +26,11 @@
     [String(c.partnership_stage || '').slice(0, 1)] || { idle: '#f5bd66', dropped: '#f08085', failed: '#f08085' }[c.status] || '#50d9c7');
   const statusLabel = c => c.partnership_stage || (ui.runId === 'network' ? `Member · ${c.status || 'active'}` : c.status || 'active');
 
-  document.documentElement.dataset.theme = 'dark';
+  // ?theme=light and ?view=globe let an embedding page open the viewer already matching
+  // itself, rather than flashing the default and then being corrected. Neither is
+  // remembered: the viewer's own controls own the state from here on.
+  const params = new URLSearchParams(location.search);
+  document.documentElement.dataset.theme = params.get('theme') === 'light' ? 'light' : 'dark';
   document.body.classList.add('bio-viewer');
   document.title = 'Federation network · Hive Watch';
   const branding = JSON.parse($('bio-branding-data')?.textContent || '{}');
@@ -520,9 +524,7 @@
   window.bioWatch = { memberships, placed, getState: () => ({ view: ui.view, tab: ui.tab,
     selected: ui.selected === null ? null : [...ui.selected], runId: ui.runId,
     visibleSites: visible().map(([id]) => id), experiments: [...ui.experiments] }) };
-  // ?view=globe lets an embedding page land on the globe rather than the flat map, which
-  // is what the suite website links to. Any other value keeps the default, including a typo.
-  if (new URLSearchParams(location.search).get('view') === 'globe') setView('globe');
+  if (params.get('view') === 'globe') setView('globe');
   renderSidebar();
   if (ui.source) {
     loadRuns();

@@ -10,6 +10,18 @@
 <meta property="og:type" content="website">
 <link rel="icon" href="./assets/suite-logo.png">
 <link rel="stylesheet" href="./assets/site.css">
+<script>
+  /* Resolve the theme before first paint: an explicit choice, else the OS preference.
+     Inline and synchronous on purpose -- a deferred script would paint dark first. */
+  (function () {
+    var stored = null;
+    try { stored = localStorage.getItem('appfl-bio-suite:theme'); } catch (e) {}
+    document.documentElement.dataset.theme =
+      stored === 'light' || stored === 'dark' ? stored
+        : window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  })();
+</script>
+<script src="./assets/site.js" defer></script>
 </head>
 <body>
 
@@ -24,8 +36,14 @@
       <a href="#experiments">Experiments</a>
       <a href="#design">Design</a>
       <a href="#standards">Standards</a>
+      <a href="#reproducibility">Reproducibility</a>
+      <a href="#quickstart">Quickstart</a>
       <a href="./network.html">Network map</a>
       <a class="nav-repo" href="https://github.com/mfjoel01/appfl-bio-suite">GitHub ↗</a>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light theme" title="Switch to light theme" aria-pressed="false">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.6M12 19.4V22M4.2 4.2l1.9 1.9M17.9 17.9l1.9 1.9M2 12h2.6M19.4 12H22M4.2 19.8l1.9-1.9M17.9 6.1l1.9-1.9"/></svg>
+      </button>
     </nav>
   </div>
 </header>
@@ -365,7 +383,8 @@ appfl-bio-suite ga4gh duo | drs | trs | tes          <span class="c">data use, d
           Every institution on a world map — flat or on a globe — which experiments each
           runs, what kind of data each holds, how many samples they declared, and whether
           their endpoint is answering. It is drawn from <code>federation.yaml</code> alone,
-          so the map exists before any run does.
+          so the map exists before any run does. The live preview draws twenty invented
+          institutions on six continents.
         </p>
         <p style="margin-top:20px">
           <a class="btn btn-primary" href="./network.html">See the live preview →</a>
@@ -373,7 +392,7 @@ appfl-bio-suite ga4gh duo | drs | trs | tes          <span class="c">data use, d
       </div>
       <div class="teaser-art">
         <svg viewBox="0 0 200 200" role="img" aria-label="A globe with three connected sites">
-          <circle cx="100" cy="100" r="78" fill="#0c1f29" stroke="var(--accent-dim)"/>
+          <circle cx="100" cy="100" r="78" fill="var(--surface-2)" stroke="var(--accent-dim)"/>
           <g fill="none" stroke="var(--accent-dim)" stroke-width="1" opacity=".55">
             <ellipse cx="100" cy="100" rx="78" ry="30"/>
             <ellipse cx="100" cy="100" rx="78" ry="58"/>
@@ -459,8 +478,8 @@ appfl-bio-suite preflight</code></pre>
     <p class="colophon">
       MIT licensed, with third-party terms recorded for APPFL, FLamby and PGS Catalog data.
       This site is built from the repository on every push to <code>main</code>; the
-      network map preview is generated from <code>federation.yaml.example</code>, a
-      fictional federation.
+      network map preview is generated from <code>website/demo-federation.yaml</code>,
+      twenty invented institutions.
     </p>
   </div>
 </footer>
