@@ -100,6 +100,11 @@ pandas==2.2.2
 scipy==1.16.2
 scikit-learn==1.7.2
 
+# Pure-Python, and the simulation imports it directly: phenotypes.py pins BLAS to a
+# single thread around the polygenic-score accumulation so the reduction order does not
+# follow the machine's core count. See docs/coordinator/releasing.md.
+threadpoolctl==3.6.0
+
 # ---------------------------------------------------------------------------
 # Support
 # ---------------------------------------------------------------------------
