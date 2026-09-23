@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "appfl-bio-suite"
-version = "0.1.0"
+version = "0.2.0"
 description = "Cross-silo federated learning experiments in computational biology, built on APPFL and Globus Compute"
 readme = "README.md"
 license = { file = "LICENSE" }
