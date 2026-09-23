@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Federation network map — APPFL Bio Suite</title>
+<meta name="description" content="Every institution in the federation on a world map or a globe: which experiments each runs, what data each holds, and whether its endpoint is answering. Built on HiveWatch.">
+<meta property="og:title" content="Federation network map — APPFL Bio Suite">
+<meta property="og:description" content="A live preview of the federation network map: flat map, globe, per-experiment filters and run playback. Built on HiveWatch.">
+<meta property="og:type" content="website">
+<link rel="icon" href="./assets/suite-logo.png">
+<link rel="stylesheet" href="./assets/site.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="./">
+      <img src="./assets/suite-logo.png" alt="" width="34" height="34">
+      <b>APPFL <span>Bio Suite</span></b>
+    </a>
+    <nav class="site-nav" aria-label="Main">
+      <a href="./#about">About</a>
+      <a href="./#experiments">Experiments</a>
+      <a href="./#design">Design</a>
+      <a href="./#standards">Standards</a>
+      <a href="./network.html" aria-current="page">Network map</a>
+      <a class="nav-repo" href="https://github.com/mfjoel01/appfl-bio-suite">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<section class="hero" style="padding-bottom:34px">
+  <div class="wrap">
+    <p class="eyebrow">The federation network map</p>
+    <h1 style="font-size:clamp(32px,5.2vw,48px)">A federation you can <span>look at.</span></h1>
+    <p class="lead">
+      Every institution on a world map or a rotating globe: which experiments each runs,
+      what kind of data each holds, how many samples they declared, and whether their
+      endpoint is answering. Coordinator and partners open the same page.
+    </p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="./map/map.html?metadata_url=network.map.json&amp;view=globe" target="_blank" rel="noopener">Open full screen ↗</a>
+      <a class="btn" href="./">← Back to the suite</a>
+    </div>
+  </div>
+</section>
+
+<section id="preview" style="padding-top:8px">
+  <div class="wrap">
+    <div class="embed">
+      <div class="embed-bar">
+        <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>Federation network · live preview</span>
+        <span class="spacer"></span>
+        <a href="./map/map.html?metadata_url=network.map.json&amp;view=globe" target="_blank" rel="noopener">Open full screen ↗</a>
+      </div>
+      <iframe
+        src="./map/map.html?metadata_url=network.map.json&amp;view=globe"
+        title="Federation network map — interactive preview"
+        allow="fullscreen"></iframe>
+    </div>
+    <p class="embed-note">
+      This preview is a real export of the viewer, regenerated on every deploy from
+      <a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/federation.yaml.example"><code>federation.yaml.example</code></a>
+      — a fictional three-site federation in the repository. Drag the globe, switch to the
+      flat map, filter by experiment, or open a site for its details.
+    </p>
+  </div>
+</section>
+
+<section id="reading-it">
+  <div class="wrap">
+    <p class="eyebrow">What you are looking at</p>
+    <h2 class="section-title">Four things on one page</h2>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <h3>Globe and flat map</h3>
+        <p>The same federation, two projections. The globe is for the shape of the thing —
+          three continents, one hub — and the flat map is for reading labels and clicking
+          sites. Arcs run from the coordinator to each participating site.</p>
+      </div>
+      <div class="card">
+        <h3>Experiments</h3>
+        <p>Every site is a card: institution, city and country, the experiments it takes
+          part in, and the samples it declared for each. Filtering by experiment redraws
+          the map to that experiment's federation.</p>
+      </div>
+      <div class="card">
+        <h3>Results</h3>
+        <p>Selected figures, tables and reports from completed runs, opened in place beside
+          the map rather than as a directory of files somebody has to be sent.</p>
+      </div>
+      <div class="card">
+        <h3>Runs</h3>
+        <p>A live run streams onto the same map as it happens — per round, per site — and a
+          finished run can be replayed from its recorded events.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="properties">
+  <div class="wrap">
+    <p class="eyebrow">Why it works this way</p>
+    <h2 class="section-title">Three decisions worth knowing about</h2>
+
+    <div class="points">
+      <div>
+        <h3>The map exists before any run does</h3>
+        <p>It is drawn from <code>federation.yaml</code> alone, so the day the config names a
+          partner, that partner is on the map. That is what makes it a picture of the
+          network rather than a dashboard for one job — partners are recruited and stand up
+          endpoints long before anybody launches anything, and there has to be something to
+          look at in the meantime.</p>
+      </div>
+      <div>
+        <h3>Geography is declared, not detected</h3>
+        <p>Site coordinates come from <code>federation.yaml</code> and are never resolved from
+          an IP address. A partner's compute node has no outbound web access, so the lookup
+          would fail; if it succeeded it would return the institution's border router rather
+          than the cluster; and it would add an outbound call from inside a partner's
+          security boundary for the sole purpose of drawing a dot. A site with no
+          coordinates is reported as unplaced rather than drawn at a guess.</p>
+      </div>
+      <div>
+        <h3>What is deliberately not published</h3>
+        <p>Site names, countries, coordinates, sample counts and experiment names are in the
+          published data by design — that is the map. Service accounts, cluster paths, the
+          coordinator's Globus identity and, by default, full endpoint UUIDs are not.
+          Endpoint UUIDs are truncated to a fingerprint unless you opt in.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="build-your-own">
+  <div class="wrap">
+    <p class="eyebrow">Your own federation</p>
+    <h2 class="section-title">Three static files anyone can host</h2>
+    <p class="section-lead">
+      The export is a viewer, a metadata file and an index. No server of ours, no Python at
+      the other end — drop it on GitHub Pages, an institutional web host, or any object
+      store, and everyone in your federation has the same page.
+    </p>
+
+    <pre><code>pip install <span class="k">'appfl-bio-suite[watch]'</span> -c constraints.txt
+
+appfl-bio-suite watch build               <span class="c"># draw it from federation.yaml</span>
+appfl-bio-suite watch serve               <span class="c"># look at it locally</span>
+appfl-bio-suite watch export --out site/  <span class="c"># three static files anyone can host</span>
+appfl-bio-suite run gwas --watch          <span class="c"># a live run, on the same map</span></code></pre>
+
+    <div class="callout" style="margin-top:22px">
+      <strong>Check what you are publishing.</strong> <code>watch export</code> writes the
+      site names, countries, coordinates, sample counts and experiment names that make the
+      map a map. Pass <code>--experiment</code> to publish one experiment's federation, and
+      read <a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/docs/coordinator/network-map.md">docs/coordinator/network-map.md</a>
+      before handing the URL out.
+    </div>
+
+    <p style="margin-top:22px;color:var(--muted);font-size:14.5px">
+      Appending <code>?view=globe</code> to the viewer URL opens it on the globe, which is
+      what this page's embed does.
+    </p>
+  </div>
+</section>
+
+<section id="credit">
+  <div class="wrap">
+    <p class="eyebrow">Built on</p>
+    <h2 class="section-title">HiveWatch and APPFL</h2>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <h3>HiveWatch</h3>
+        <p>APPFL's monitoring toolkit. It supplies the event schema, the map metadata
+          format, the SSE server and the Leaflet viewer. What this suite adds is the
+          federation itself: HiveWatch knows how to draw a client, and
+          <code>federation.yaml</code> knows who the clients are.</p>
+        <a class="card-link" href="https://github.com/APPFL/hivewatch">github.com/APPFL/hivewatch ↗</a>
+      </div>
+      <div class="card">
+        <h3>APPFL</h3>
+        <p>The federated learning framework underneath every experiment in the suite — the
+          aggregators, the client trainers, and the communication layer this project drives
+          over Globus Compute.</p>
+        <a class="card-link" href="https://github.com/APPFL/APPFL">github.com/APPFL/APPFL ↗</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-col">
+      <h4>Project</h4>
+      <ul>
+        <li><a href="https://github.com/mfjoel01/appfl-bio-suite">appfl-bio-suite on GitHub</a></li>
+        <li><a href="./">The suite — about and experiments</a></li>
+        <li><a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/LICENSE">MIT licence</a></li>
+        <li><a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/CITATION.cff">How to cite</a></li>
+      </ul>
+    </div>
+    <div class="foot-col">
+      <h4>Documentation</h4>
+      <ul>
+        <li><a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/docs/coordinator/network-map.md">The network map</a></li>
+        <li><a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/docs/coordinator/architecture.md">Architecture</a></li>
+        <li><a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/docs/README.md">Index — which document, for whom</a></li>
+      </ul>
+    </div>
+    <div class="foot-col">
+      <h4>Built on</h4>
+      <ul>
+        <li><a href="https://github.com/APPFL/APPFL">APPFL — the federated learning framework</a></li>
+        <li><a href="https://github.com/APPFL/hivewatch">HiveWatch — APPFL's monitoring toolkit</a></li>
+        <li><a href="https://www.globus.org/compute">Globus Compute</a></li>
+        <li><a href="https://www.ga4gh.org/">GA4GH standards</a></li>
+      </ul>
+    </div>
+    <p class="colophon">
+      The preview above carries no real partner data. It is generated at deploy time from
+      the fictional federation in <code>federation.yaml.example</code>.
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>

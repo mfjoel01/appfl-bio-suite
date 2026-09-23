@@ -49,8 +49,18 @@ pause rotation. Arrow keys rotate the focused globe, `+` and `-` zoom, `Space` t
 rotation, and `Home` resets the view. Rotation starts paused when your browser requests
 reduced motion. Both views use the same sites and experiment selection.
 The theme button also changes the globe: light mode uses pale oceans, mint land,
-and a bright sky, while dark mode retains the night palette. Both the suite logo
-and the smaller original HiveWatch logo remain in the header.
+and a bright sky, while dark mode retains the night palette.
+
+Appending `?view=globe` to the viewer's URL opens it on the globe instead of the flat
+map, which is what an embedding page such as the project site links to. Any other value
+keeps the default.
+
+The header carries the suite logo and, on the right, a **BUILT ON** credit linking to
+[hivewatch](https://github.com/APPFL/hivewatch) and [APPFL](https://github.com/APPFL/APPFL).
+Upstream's inlined wordmark is dropped from the export: it was most of the viewer's
+bytes, and republishing someone else's mark on every host an export lands on is a claim
+about their trademark terms rather than a credit. A named link is the credit that
+travels.
 
 The **Experiments** tab starts with **All experiments** selected, showing every site in
 the loaded federation. Select **Fine-mapping**, **GWAS**, or any combination of experiments
@@ -138,6 +148,15 @@ python -m http.server -d site/ 8000     # preview it first
 
 A plain `file://` open will not work: the page fetches its data from alongside itself, and
 browsers refuse that for local files. Any static server does.
+
+This repository does exactly that for a fictional federation. `.github/workflows/pages.yml`
+runs `watch export --federation federation.yaml.example` on every push to `main` and
+publishes the result at
+<https://mfjoel01.github.io/appfl-bio-suite/network.html>. The example config is the only
+one it is ever given: `scripts/check_site_preview.py` fails the build if the published
+metadata was assembled from anything else, or carries a contact block or an email
+address. A partner's address published to a public URL is not undone by deleting the
+page afterwards.
 
 ### What ends up in the published file
 

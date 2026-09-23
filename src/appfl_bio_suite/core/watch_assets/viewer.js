@@ -29,17 +29,23 @@
   document.documentElement.dataset.theme = 'dark';
   document.body.classList.add('bio-viewer');
   document.title = 'Federation network · Hive Watch';
-  const hiveLogo = document.querySelector('.logo-img');
   const branding = JSON.parse($('bio-branding-data')?.textContent || '{}');
   document.querySelector('.logo').innerHTML = `<img class="bio-suite-logo" alt="APPFL Bio Suite network logo">
     <div><div class="bio-brand">APPFL <span>Bio Suite</span></div>
     <div class="bio-brand-note">FEDERATION NETWORK</div></div>`;
   document.querySelector('.bio-suite-logo').src = branding.suite_logo || '';
-  if (hiveLogo) {
-    hiveLogo.classList.add('bio-hive-logo'); hiveLogo.alt = 'HiveWatch';
-    const credit = document.createElement('div'); credit.className = 'bio-hive-credit';
-    credit.append(hiveLogo); document.querySelector('.header-right').prepend(credit);
-  }
+  // Credit upstream by name and link rather than by wordmark. watch.py drops the inlined
+  // hivewatch logo from the exported page; a link is the credit that still works when
+  // this file is read in a diff, and it is somewhere to go from every page we publish.
+  document.querySelector('.logo-img')?.remove();
+  const credit = document.createElement('div'); credit.className = 'bio-hive-credit';
+  credit.innerHTML = `<span class="bio-credit-label">BUILT ON</span>
+    <span class="bio-credit-links">
+      <a href="https://github.com/APPFL/APPFL" target="_blank" rel="noopener noreferrer">APPFL</a>
+      <span aria-hidden="true">·</span>
+      <a href="https://github.com/APPFL/hivewatch" target="_blank" rel="noopener noreferrer">HiveWatch</a>
+    </span>`;
+  document.querySelector('.header-right').prepend(credit);
   for (const id of ['hdr-round', 'hdr-acc', 'hdr-loss']) $(id).closest('.stat').hidden = true;
   $('hdr-clients').nextElementSibling.textContent = 'Sites shown';
   document.querySelector('.header-stats').insertAdjacentHTML('beforeend', `
@@ -514,6 +520,9 @@
   window.bioWatch = { memberships, placed, getState: () => ({ view: ui.view, tab: ui.tab,
     selected: ui.selected === null ? null : [...ui.selected], runId: ui.runId,
     visibleSites: visible().map(([id]) => id), experiments: [...ui.experiments] }) };
+  // ?view=globe lets an embedding page land on the globe rather than the flat map, which
+  // is what the suite website links to. Any other value keeps the default, including a typo.
+  if (new URLSearchParams(location.search).get('view') === 'globe') setView('globe');
   renderSidebar();
   if (ui.source) {
     loadRuns();
