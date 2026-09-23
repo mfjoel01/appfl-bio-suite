@@ -6,6 +6,10 @@ Cross-silo **federated learning experiments in computational biology**, built on
 Institutions train on their own data, on their own hardware, and return only results.
 No data movement, no shared credential, no VPN, no inbound network access.
 
+**→ [mfjoel01.github.io/appfl-bio-suite](https://mfjoel01.github.io/appfl-bio-suite/)** —
+the project site, with a live preview of the [federation network
+map](https://mfjoel01.github.io/appfl-bio-suite/network.html).
+
 ```
     YOU (coordinator)                          PARTNER SITES
     ┌──────────────┐

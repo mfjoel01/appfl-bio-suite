@@ -318,6 +318,22 @@ def test_export_is_three_self_contained_files(federation, tmp_path):
     assert "Permission to use, copy, modify, and/or distribute this software" in page
 
 
+def test_the_exported_viewer_credits_upstream_by_link_not_by_wordmark(federation, tmp_path):
+    """Attribution that survives being exported to somebody else's web host.
+
+    The upstream header wordmark is an inlined PNG that is most of the viewer's bytes,
+    and republishing someone's mark on every page an export lands on is a claim about
+    their trademark terms rather than a credit. watch.py drops it; viewer.js puts named
+    links to hivewatch and to APPFL in the header instead.
+    """
+    export_site(federation, tmp_path)
+    page = (tmp_path / "map.html").read_text(encoding="utf-8")
+
+    assert 'class="logo-img"' not in page
+    assert '<a href="https://github.com/APPFL/hivewatch"' in page
+    assert '<a href="https://github.com/APPFL/APPFL"' in page
+
+
 def test_viewer_rejects_changed_upstream_initialization(tmp_path, monkeypatch):
     """An upstream upgrade must not silently run two competing initializers."""
     from appfl_bio_suite.core import watch

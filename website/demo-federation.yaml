@@ -1,0 +1,462 @@
+# =============================================================================
+# demo-federation.yaml -- the federation drawn on the project site's network map
+# =============================================================================
+#
+# EVERY INSTITUTION, PERSON, COORDINATE, ENDPOINT AND SAMPLE COUNT HERE IS INVENTED.
+# There is no such federation. This file exists so that
+# https://mfjoel01.github.io/appfl-bio-suite/network.html has something worth looking
+# at: twenty sites on six continents, three experiments with different and overlapping
+# memberships, and a spread of schedulers -- which is what the viewer is for and what
+# three sites cannot show.
+#
+# WHY THIS IS NOT federation.yaml.example. That file is what a coordinator copies to
+# local/federation.yaml to start their own federation, and it is heavily commented
+# because its job is to be read line by line. Twenty sites would make it worse at that
+# job: nineteen of them would be the first thing a new coordinator deletes. So the
+# teaching example stays at three sites, and the showcase lives here.
+#
+# WHY IT IS NOT local/federation.yaml EITHER. That one names real partners and carries
+# their contact details. scripts/check_site_preview.py fails the site build if the
+# published map was assembled from anything but this file or the example, so the
+# distinction is enforced rather than remembered.
+#
+#     scripts/build_site.sh local/site-preview     # uses this file
+#
+# =============================================================================
+
+schema_version: 1
+
+coordinator:
+  identity: a.researcher@example-university.edu
+  identity_id: 00000000-1111-2222-3333-444444444444
+  organization: Example University Institute for Computational Health
+  contact: a.researcher@example-university.edu
+  location:
+    lat: 41.8781
+    lng: -87.6298
+    city: Chicago
+  endpoint:
+    name: example-coordinator-ep
+    uuid: aaaaaaaa-0000-0000-0000-000000000001
+    scheduler: pbspro
+    queue: debug
+    account: EXAMPLE-ALLOC
+  host_check: "^example-login-\\d+"
+  host_check_enforce: false
+
+
+# -----------------------------------------------------------------------------
+# TWENTY INVENTED INSTITUTIONS
+# -----------------------------------------------------------------------------
+# Spread deliberately: six continents, both hemispheres, and enough longitude coverage
+# that no single face of the globe holds all of them.
+sites:
+  - id: site-north
+    name: Northern Institute of Technology
+    country: Canada
+    location: {lat: 43.6532, lng: -79.3832, city: Toronto}
+    scheduler: slurm
+    partition: compute
+    account: fedlearn
+    conda_module: anaconda3
+    interface: null
+
+  - id: site-south
+    name: Southern Research Council
+    country: Brazil
+    location: {lat: -23.5505, lng: -46.6333, city: Sao Paulo}
+    scheduler: slurm
+    partition: general
+    account: genomics
+    conda_module: miniconda
+    interface: eth0
+
+  - id: site-east
+    name: Eastern Technical University
+    country: Japan
+    location: {lat: 35.6762, lng: 139.6503, city: Tokyo}
+    scheduler: pbspro
+    queue: medium
+    account: bioinfo
+    conda_module: conda
+    interface: null
+
+  - id: site-highland
+    name: Highland Medical Informatics Unit
+    country: United Kingdom
+    location: {lat: 55.9533, lng: -3.1883, city: Edinburgh}
+    scheduler: slurm
+    partition: standard
+    account: medinf
+    conda_module: anaconda3
+    interface: null
+
+  - id: site-delta
+    name: Delta Population Health Institute
+    country: Egypt
+    location: {lat: 30.0444, lng: 31.2357, city: Cairo}
+    scheduler: slurm
+    partition: batch
+    account: pophealth
+    conda_module: miniconda3
+    interface: null
+
+  - id: site-savanna
+    name: Savanna Genomics Consortium
+    country: Kenya
+    location: {lat: -1.2921, lng: 36.8219, city: Nairobi}
+    scheduler: slurm
+    partition: compute
+    account: savgen
+    conda_module: anaconda3
+    interface: ib0
+
+  - id: site-cape
+    name: Cape Biomedical Data Centre
+    country: South Africa
+    location: {lat: -33.9249, lng: 18.4241, city: Cape Town}
+    scheduler: pbspro
+    queue: normal
+    account: capebio
+    conda_module: conda
+    interface: null
+
+  - id: site-monsoon
+    name: Monsoon Institute of Computational Biology
+    country: India
+    location: {lat: 12.9716, lng: 77.5946, city: Bengaluru}
+    scheduler: slurm
+    partition: gpu
+    account: monsoon
+    conda_module: miniconda
+    interface: null
+
+  - id: site-harbour
+    name: Harbour University Clinical AI Laboratory
+    country: Australia
+    location: {lat: -33.8688, lng: 151.2093, city: Sydney}
+    scheduler: slurm
+    partition: general
+    account: harbourai
+    conda_module: anaconda3
+    interface: null
+
+  - id: site-fjord
+    name: Fjord Centre for Statistical Genetics
+    country: Norway
+    location: {lat: 59.9139, lng: 10.7522, city: Oslo}
+    scheduler: slurm
+    partition: normal
+    account: statgen
+    conda_module: miniconda3
+    interface: null
+
+  - id: site-steppe
+    name: Steppe Regional Biobank
+    country: Kazakhstan
+    location: {lat: 43.2220, lng: 76.8512, city: Almaty}
+    scheduler: pbspro
+    queue: workq
+    account: steppebb
+    conda_module: conda
+    interface: null
+
+  - id: site-andes
+    name: Andes Highland Cohort Centre
+    country: Colombia
+    location: {lat: 4.7110, lng: -74.0721, city: Bogota}
+    scheduler: slurm
+    partition: compute
+    account: andes
+    conda_module: anaconda3
+    interface: null
+
+  - id: site-mesa
+    name: Mesa Translational Genomics Laboratory
+    country: United States
+    location: {lat: 33.4484, lng: -112.0740, city: Phoenix}
+    scheduler: slurm
+    partition: htc
+    account: mesatg
+    conda_module: miniconda
+    interface: null
+
+  - id: site-lowlands
+    name: Lowlands Federated Health Node
+    country: Netherlands
+    location: {lat: 52.0907, lng: 5.1214, city: Utrecht}
+    scheduler: slurm
+    partition: thin
+    account: lowlands
+    conda_module: anaconda3
+    interface: null
+
+  - id: site-archipelago
+    name: Archipelago Public Health Institute
+    country: Philippines
+    location: {lat: 14.5995, lng: 120.9842, city: Manila}
+    scheduler: pbspro
+    queue: batch
+    account: archi
+    conda_module: conda
+    interface: null
+
+  - id: site-pampas
+    name: Pampas Institute for Medical Statistics
+    country: Argentina
+    location: {lat: -34.6037, lng: -58.3816, city: Buenos Aires}
+    scheduler: slurm
+    partition: general
+    account: pampas
+    conda_module: miniconda3
+    interface: null
+
+  - id: site-taiga
+    name: Taiga Computational Medicine Centre
+    country: Finland
+    location: {lat: 60.1699, lng: 24.9384, city: Helsinki}
+    scheduler: slurm
+    partition: medium
+    account: taigacm
+    conda_module: anaconda3
+    interface: null
+
+  - id: site-gulf
+    name: Gulf Precision Medicine Institute
+    country: Qatar
+    location: {lat: 25.2854, lng: 51.5310, city: Doha}
+    scheduler: slurm
+    partition: compute
+    account: gulfpm
+    conda_module: miniconda
+    interface: null
+
+  - id: site-atlas
+    name: Atlas Mountain Health Data Unit
+    country: Morocco
+    location: {lat: 33.5731, lng: -7.5898, city: Casablanca}
+    scheduler: pbspro
+    queue: normal
+    account: atlasmh
+    conda_module: conda
+    interface: null
+
+  - id: site-southern-cross
+    name: Southern Cross Bioinformatics Centre
+    country: New Zealand
+    location: {lat: -36.8485, lng: 174.7633, city: Auckland}
+    scheduler: slurm
+    partition: compute
+    account: scbioinf
+    conda_module: anaconda3
+    interface: null
+
+
+# -----------------------------------------------------------------------------
+# WHAT EACH SITE IS DOING
+# -----------------------------------------------------------------------------
+# Memberships overlap on purpose. Filtering the viewer to one experiment should visibly
+# redraw the map rather than dim a few markers, which only reads if the three
+# federations are genuinely different sets.
+experiments:
+
+  # Four sites, because Fed-Heart-Disease has four natural collection centres and each
+  # site trains on a distinct one.
+  flamby-heart-disease:
+    enabled: true
+    service_account: flamby_svc
+    endpoint_name: flamby-ep
+    dataset: HeartDisease
+    num_clients: 4
+    rounds: 5
+    client_weights_mode: equal
+    sites:
+      - site: site-north
+        client_id: Site1
+        endpoint_uuid: bbbbbbbb-0000-0000-0000-000000000001
+        center: 0
+        output_dir: /home/flamby_svc/outputs
+        expected_train_samples: 199
+      - site: site-south
+        client_id: Site2
+        endpoint_uuid: bbbbbbbb-0000-0000-0000-000000000002
+        center: 1
+        output_dir: /scratch/flamby_svc/outputs
+        expected_train_samples: 172
+      - site: site-east
+        client_id: Site3
+        endpoint_uuid: bbbbbbbb-0000-0000-0000-000000000003
+        center: 2
+        output_dir: /work/flamby_svc/outputs
+        expected_train_samples: 30
+      - site: site-highland
+        client_id: Site4
+        endpoint_uuid: bbbbbbbb-0000-0000-0000-000000000004
+        center: 3
+        output_dir: /home/flamby_svc/outputs
+        expected_train_samples: 85
+
+  gwas:
+    enabled: true
+    service_account: gwas_svc
+    endpoint_name: gwas-ep
+    simulation_scenario: three-site-skewed
+    variant_scaling: 1.0
+    hit_p_threshold: 5.0e-8
+    sites:
+      - site: site-north
+        client_id: Site1
+        endpoint_uuid: cccccccc-0000-0000-0000-000000000001
+        data_dir: /home/gwas_svc/data/site1
+        output_dir: /home/gwas_svc/outputs
+        expected_samples: 18032
+      - site: site-south
+        client_id: Site2
+        endpoint_uuid: cccccccc-0000-0000-0000-000000000002
+        data_dir: /scratch/gwas_svc/data/site2
+        output_dir: /scratch/gwas_svc/outputs
+        expected_samples: 9237
+      - site: site-east
+        client_id: Site3
+        endpoint_uuid: cccccccc-0000-0000-0000-000000000003
+        data_dir: /work/gwas_svc/data/site3
+        output_dir: /work/gwas_svc/outputs
+        expected_samples: 25028
+      - site: site-delta
+        client_id: Site4
+        endpoint_uuid: cccccccc-0000-0000-0000-000000000004
+        data_dir: /scratch/gwas_svc/data/site4
+        output_dir: /scratch/gwas_svc/outputs
+        expected_samples: 14711
+      - site: site-savanna
+        client_id: Site5
+        endpoint_uuid: cccccccc-0000-0000-0000-000000000005
+        data_dir: /home/gwas_svc/data/site5
+        output_dir: /home/gwas_svc/outputs
+        expected_samples: 8460
+      - site: site-monsoon
+        client_id: Site6
+        endpoint_uuid: cccccccc-0000-0000-0000-000000000006
+        data_dir: /scratch/gwas_svc/data/site6
+        output_dir: /scratch/gwas_svc/outputs
+        expected_samples: 31204
+      - site: site-fjord
+        client_id: Site7
+        endpoint_uuid: cccccccc-0000-0000-0000-000000000007
+        data_dir: /work/gwas_svc/data/site7
+        output_dir: /work/gwas_svc/outputs
+        expected_samples: 12688
+      - site: site-andes
+        client_id: Site8
+        endpoint_uuid: cccccccc-0000-0000-0000-000000000008
+        data_dir: /home/gwas_svc/data/site8
+        output_dir: /home/gwas_svc/outputs
+        expected_samples: 7315
+      - site: site-mesa
+        client_id: Site9
+        endpoint_uuid: cccccccc-0000-0000-0000-000000000009
+        data_dir: /scratch/gwas_svc/data/site9
+        output_dir: /scratch/gwas_svc/outputs
+        expected_samples: 22940
+      - site: site-lowlands
+        client_id: Site10
+        endpoint_uuid: cccccccc-0000-0000-0000-000000000010
+        data_dir: /work/gwas_svc/data/site10
+        output_dir: /work/gwas_svc/outputs
+        expected_samples: 16523
+
+  fine-mapping:
+    enabled: true
+    service_account: finemap_svc
+    endpoint_name: finemap-ep
+    simulation_scenario: ci-tiny
+    locus_n_shards: 1
+    locus_shard_index: 0
+    locus_limit: null
+    instance_limit: null
+    pops: []
+    uplink_gram_dtype: float64
+    causal_manifest: null
+    credible_set_level: 0.95
+    pval_thresh: 1.0e-5
+    maf: 0.005
+    susiex_binary: null
+    sites:
+      - site: site-east
+        client_id: cohort-a
+        endpoint_uuid: dddddddd-0000-0000-0000-000000000001
+        data_dir: /work/finemap_svc/data/cohort-a
+        output_dir: /work/finemap_svc/outputs
+        expected_samples: 50000
+      - site: site-highland
+        client_id: cohort-b
+        endpoint_uuid: dddddddd-0000-0000-0000-000000000002
+        data_dir: /home/finemap_svc/data/cohort-b
+        output_dir: /home/finemap_svc/outputs
+        expected_samples: 42500
+      - site: site-savanna
+        client_id: cohort-c
+        endpoint_uuid: dddddddd-0000-0000-0000-000000000003
+        data_dir: /home/finemap_svc/data/cohort-c
+        output_dir: /home/finemap_svc/outputs
+        expected_samples: 38100
+      - site: site-cape
+        client_id: cohort-d
+        endpoint_uuid: dddddddd-0000-0000-0000-000000000004
+        data_dir: /scratch/finemap_svc/data/cohort-d
+        output_dir: /scratch/finemap_svc/outputs
+        expected_samples: 29750
+      - site: site-monsoon
+        client_id: cohort-e
+        endpoint_uuid: dddddddd-0000-0000-0000-000000000005
+        data_dir: /scratch/finemap_svc/data/cohort-e
+        output_dir: /scratch/finemap_svc/outputs
+        expected_samples: 61300
+      - site: site-harbour
+        client_id: cohort-f
+        endpoint_uuid: dddddddd-0000-0000-0000-000000000006
+        data_dir: /home/finemap_svc/data/cohort-f
+        output_dir: /home/finemap_svc/outputs
+        expected_samples: 33420
+      - site: site-steppe
+        client_id: cohort-g
+        endpoint_uuid: dddddddd-0000-0000-0000-000000000007
+        data_dir: /work/finemap_svc/data/cohort-g
+        output_dir: /work/finemap_svc/outputs
+        expected_samples: 21870
+      - site: site-archipelago
+        client_id: cohort-h
+        endpoint_uuid: dddddddd-0000-0000-0000-000000000008
+        data_dir: /scratch/finemap_svc/data/cohort-h
+        output_dir: /scratch/finemap_svc/outputs
+        expected_samples: 27640
+      - site: site-pampas
+        client_id: cohort-i
+        endpoint_uuid: dddddddd-0000-0000-0000-000000000009
+        data_dir: /home/finemap_svc/data/cohort-i
+        output_dir: /home/finemap_svc/outputs
+        expected_samples: 19980
+      - site: site-taiga
+        client_id: cohort-j
+        endpoint_uuid: dddddddd-0000-0000-0000-000000000010
+        data_dir: /work/finemap_svc/data/cohort-j
+        output_dir: /work/finemap_svc/outputs
+        expected_samples: 24310
+      - site: site-gulf
+        client_id: cohort-k
+        endpoint_uuid: dddddddd-0000-0000-0000-000000000011
+        data_dir: /scratch/finemap_svc/data/cohort-k
+        output_dir: /scratch/finemap_svc/outputs
+        expected_samples: 17450
+      - site: site-atlas
+        client_id: cohort-l
+        endpoint_uuid: dddddddd-0000-0000-0000-000000000012
+        data_dir: /home/finemap_svc/data/cohort-l
+        output_dir: /home/finemap_svc/outputs
+        expected_samples: 23060
+      - site: site-southern-cross
+        client_id: cohort-m
+        endpoint_uuid: dddddddd-0000-0000-0000-000000000013
+        data_dir: /work/finemap_svc/data/cohort-m
+        output_dir: /work/finemap_svc/outputs
+        expected_samples: 15720
