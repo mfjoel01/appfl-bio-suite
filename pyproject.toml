@@ -74,6 +74,10 @@ gwas = [
     "scipy==1.16.2",
     "scikit-learn==1.7.2",
     "pandas-plink==2.3.2",
+    # Declared, though scikit-learn already pulls it in: the simulation pins BLAS to one
+    # thread around the polygenic-score accumulation, because the reduction order -- and
+    # therefore the published numbers -- otherwise depends on the machine's core count.
+    "threadpoolctl==3.6.0",
 ]
 # NOTE: no matplotlib. The shipped trainer computes and returns summary statistics; it
 # does not plot. Plotting happens on the coordinator, which receives per-variant effect
