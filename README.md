@@ -1,7 +1,9 @@
 # appfl-bio-suite
 
 Cross-silo **federated learning experiments in computational biology**, built on
-[APPFL](https://github.com/APPFL/APPFL) and Globus Compute.
+[APPFL](https://github.com/APPFL/APPFL),
+[hivewatch](https://github.com/APPFL/hivewatch) and
+[Globus Compute](https://www.globus.org/compute).
 
 Institutions train on their own data, on their own hardware, and return only results.
 No data movement, no shared credential, no VPN, no inbound network access.
