@@ -37,7 +37,7 @@
       <a href="./#design">Design</a>
       <a href="./#standards">Standards</a>
       <a href="./#reproducibility">Reproducibility</a>
-      <a href="./#quickstart">Quickstart</a>
+      <a href="./#quickstart">Installation</a>
       <a href="./network.html" aria-current="page">Network map</a>
       <a class="nav-repo" href="https://github.com/mfjoel01/appfl-bio-suite">GitHub ↗</a>
       <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light theme" title="Switch to light theme" aria-pressed="false">
@@ -52,12 +52,12 @@
 
 <section class="hero" style="padding-bottom:34px">
   <div class="wrap">
-    <p class="eyebrow">The federation network map</p>
-    <h1 style="font-size:clamp(32px,5.2vw,48px)">A federation you can <span>look at.</span></h1>
+    <p class="eyebrow">Network map</p>
+    <h1 style="font-size:clamp(32px,5.2vw,48px)">Federation <span>network map</span></h1>
     <p class="lead">
-      Every institution on a world map or a rotating globe: which experiments each runs,
-      what kind of data each holds, how many samples they declared, and whether their
-      endpoint is answering. Coordinator and partners open the same page.
+      Every institution on a flat world map or a rotating globe, with the experiments each
+      one runs, the kind of data it holds, the sample counts it declared, and whether its
+      endpoint is answering. The coordinator and every partner open the same page.
     </p>
     <div class="cta-row">
       <a class="btn btn-primary" href="./map/map.html?metadata_url=network.map.json&amp;view=globe" target="_blank" rel="noopener">Open full screen ↗</a>
@@ -95,24 +95,23 @@
     </div>
     <p class="embed-note">
       Live and interactive, showing a demonstration federation of twenty invented
-      institutions across six continents. Drag the globe, switch to the flat map, filter
-      by experiment, or open a site for its details.
+      institutions across six continents. Drag the globe, switch to the flat map, filter by
+      experiment, or select a site for its details.
     </p>
   </div>
 </section>
 
 <section id="reading-it">
   <div class="wrap">
-    <p class="eyebrow">What you are looking at</p>
-    <h2 class="section-title">Four things on one page</h2>
+    <p class="eyebrow">The viewer</p>
+    <h2 class="section-title">What the viewer shows</h2>
 
     <div class="grid grid-2">
       <div class="card">
         <h3>Globe and flat map</h3>
-        <p>The same federation, two projections. The globe is for the shape of the thing —
-          how far apart these institutions actually are — and the flat map is for reading
-          labels and clicking sites. Arcs run from the coordinator to each participating
-          site.</p>
+        <p>The same federation in two projections. The globe conveys the distances
+          involved; the flat map is easier for reading labels and selecting sites. Arcs run
+          from the coordinator to each participating site.</p>
       </div>
       <div class="card">
         <h3>Experiments</h3>
@@ -122,13 +121,13 @@
       </div>
       <div class="card">
         <h3>Results</h3>
-        <p>Selected figures, tables and reports from completed runs, opened in place beside
-          the map rather than as a directory of files somebody has to be sent.</p>
+        <p>Selected figures, tables and reports from completed runs, opened beside the map
+          rather than distributed as a directory of files.</p>
       </div>
       <div class="card">
         <h3>Runs</h3>
-        <p>A live run streams onto the same map as it happens — per round, per site — and a
-          finished run can be replayed from its recorded events.</p>
+        <p>A live run streams onto the same map as it proceeds, per round and per site. A
+          completed run can be replayed from its recorded events.</p>
       </div>
     </div>
   </div>
@@ -136,17 +135,17 @@
 
 <section id="properties">
   <div class="wrap">
-    <p class="eyebrow">Why it works this way</p>
-    <h2 class="section-title">Three decisions worth knowing about</h2>
+    <p class="eyebrow">Design</p>
+    <h2 class="section-title">Three properties worth noting</h2>
 
     <div class="points">
       <div>
         <h3>The map exists before any run does</h3>
-        <p>It is drawn from <code>federation.yaml</code> alone, so the day the config names a
-          partner, that partner is on the map. That is what makes it a picture of the
-          network rather than a dashboard for one job — partners are recruited and stand up
-          endpoints long before anybody launches anything, and there has to be something to
-          look at in the meantime.</p>
+        <p>It is drawn from <code>federation.yaml</code> alone, so a partner appears on the
+          map the day the configuration names them. This makes it a view of the network
+          rather than a dashboard for a single job: partners are recruited and stand up
+          endpoints well before anything is launched, and the map is populated throughout
+          that period.</p>
       </div>
       <div>
         <h3>Geography is declared, not detected</h3>
@@ -170,12 +169,13 @@
 
 <section id="build-your-own">
   <div class="wrap">
-    <p class="eyebrow">Your own federation</p>
-    <h2 class="section-title">Three static files anyone can host</h2>
+    <p class="eyebrow">Export</p>
+    <h2 class="section-title">Exporting your own</h2>
     <p class="section-lead">
-      The export is a viewer, a metadata file and an index. No server of ours, no Python at
-      the other end — drop it on GitHub Pages, an institutional web host, or any object
-      store, and everyone in your federation has the same page.
+      The export consists of three static files: the viewer, the metadata and an index. It
+      requires no server and no Python at the other end. Placed on GitHub Pages, an
+      institutional web host or any object store, it gives everyone in the federation the
+      same page.
     </p>
 
     <pre><code>pip install <span class="k">'appfl-bio-suite[watch]'</span> -c constraints.txt
@@ -186,37 +186,38 @@ appfl-bio-suite watch export --out site/  <span class="c"># three static files a
 appfl-bio-suite run gwas --watch          <span class="c"># a live run, on the same map</span></code></pre>
 
     <div class="callout" style="margin-top:22px">
-      <strong>Check what you are publishing.</strong> <code>watch export</code> writes the
-      site names, countries, coordinates, sample counts and experiment names that make the
-      map a map. Pass <code>--experiment</code> to publish one experiment's federation, and
-      read <a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/docs/coordinator/network-map.md">docs/coordinator/network-map.md</a>
-      before handing the URL out.
+      <strong>Check what you are publishing.</strong> <code>watch export</code> writes out
+      the site names, countries, coordinates, sample counts and experiment names that
+      constitute the map. Pass <code>--experiment</code> to publish a single experiment's
+      federation, and read
+      <a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/docs/coordinator/network-map.md">docs/coordinator/network-map.md</a>
+      before distributing the URL.
     </div>
 
     <p style="margin-top:22px;color:var(--muted);font-size:14.5px">
-      Appending <code>?view=globe</code> to the viewer URL opens it on the globe, which is
-      what this page's embed does.
+      Appending <code>?view=globe</code> to the viewer URL opens it on the globe, and
+      <code>?theme=light</code> selects the light palette. This page's embed uses both.
     </p>
   </div>
 </section>
 
 <section id="credit">
   <div class="wrap">
-    <p class="eyebrow">Built on</p>
-    <h2 class="section-title">HiveWatch and APPFL</h2>
+    <p class="eyebrow">Upstream</p>
+    <h2 class="section-title">hivewatch and APPFL</h2>
 
     <div class="grid grid-2">
       <div class="card">
         <h3>HiveWatch</h3>
-        <p>APPFL's monitoring toolkit. It supplies the event schema, the map metadata
-          format, the SSE server and the Leaflet viewer. What this suite adds is the
-          federation itself: HiveWatch knows how to draw a client, and
-          <code>federation.yaml</code> knows who the clients are.</p>
+        <p>APPFL's monitoring toolkit, which supplies the event schema, the map metadata
+          format, the SSE server and the Leaflet viewer. This suite adds the federation
+          itself: hivewatch knows how to draw a client, and <code>federation.yaml</code>
+          records who the clients are.</p>
         <a class="card-link" href="https://github.com/APPFL/hivewatch">github.com/APPFL/hivewatch ↗</a>
       </div>
       <div class="card">
         <h3>APPFL</h3>
-        <p>The federated learning framework underneath every experiment in the suite — the
+        <p>The federated learning framework underlying every experiment in the suite: the
           aggregators, the client trainers, and the communication layer this project drives
           over Globus Compute.</p>
         <a class="card-link" href="https://github.com/APPFL/APPFL">github.com/APPFL/APPFL ↗</a>

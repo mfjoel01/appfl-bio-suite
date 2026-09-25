@@ -233,31 +233,6 @@ section:first-of-type { border-top: 0; }
 .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 
-.stat-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin-top: 42px;
-  padding-top: 30px;
-  border-top: 1px solid var(--border-soft);
-}
-.stat-strip div { flex: 1 1 170px; }
-.stat-strip b {
-  display: block;
-  font-size: 27px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: var(--accent);
-  letter-spacing: -.02em;
-}
-.stat-strip span {
-  display: block;
-  margin-top: 5px;
-  font-size: 12px;
-  letter-spacing: .6px;
-  color: var(--muted);
-}
-
 /* --- diagram ------------------------------------------------------------ */
 
 .figure {
