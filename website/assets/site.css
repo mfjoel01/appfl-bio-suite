@@ -216,6 +216,10 @@ section:first-of-type { border-top: 0; }
 .hero .lead { font-size: clamp(17px, 2.2vw, 20px); color: var(--muted); max-width: 62ch; }
 .hero .lead strong { color: var(--text); font-weight: 600; }
 
+.byline { margin-top: 22px; color: var(--muted); font-size: 15px; }
+.byline a { color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.byline a:hover { color: var(--accent); }
+
 .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
 .btn {
   display: inline-flex;

@@ -65,6 +65,11 @@
       access.</strong>
     </p>
 
+    <p class="byline">
+      Matthew Joel · <a href="https://lab.madduri.us/">Madduri Lab</a>, Argonne National
+      Laboratory
+    </p>
+
     <div class="cta-row">
       <a class="btn btn-primary" href="#quickstart">Installation</a>
       <a class="btn" href="https://github.com/mfjoel01/appfl-bio-suite">Source on GitHub ↗</a>
@@ -206,17 +211,21 @@
       </article>
 
       <article class="card">
-        <span class="tag">Single round · Exact</span>
+        <span class="tag">Single round · Exact aggregation</span>
         <h3>Cross-ancestry fine-mapping</h3>
         <p>
           Where a GWAS identifies an associated locus, fine-mapping asks which variant in
           it is causal. Answering that requires the linkage-disequilibrium structure, which
-          does not decompose into per-variant summaries. Credible sets are instead
-          constructed from per-site second moments, under which the federated fit is equal
-          to the pooled fit rather than an approximation of it.
+          does not decompose into per-variant summaries. Credible sets are instead built
+          from per-site second moments. Given three stated harmonization conditions, the
+          federated fit equals the centralized one — same credible sets, same posterior
+          inclusion probabilities, up to floating-point summation order — and that
+          equivalence is checked against a centralized path on a 79-locus benchmark rather
+          than assumed.
         </p>
         <dl>
           <dt>Estimator</dt><dd>SuSiEx</dd>
+          <dt>Checked</dt><dd>79-locus benchmark against the centralized path</dd>
           <dt>Governance</dt><dd>GA4GH DUO, DRS, TRS and TES</dd>
         </dl>
         <a class="card-link" href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/docs/experiments/fine-mapping/ABOUT.md">Design and record of runs →</a>
@@ -350,7 +359,7 @@ appfl-bio-suite ga4gh duo | drs | trs | tes          <span class="c">data use, d
 <section id="reproducibility">
   <div class="wrap">
     <p class="eyebrow">Reproducibility</p>
-    <h2 class="section-title">Checking a run after the fact</h2>
+    <h2 class="section-title">Provenance and reproducibility</h2>
 
     <div class="grid grid-3">
       <div class="card">
@@ -406,6 +415,40 @@ appfl-bio-suite preflight</code></pre>
   </div>
 </section>
 
+<section id="citation">
+  <div class="wrap">
+    <p class="eyebrow">Citation</p>
+    <h2 class="section-title">Authorship and citation</h2>
+    <p class="section-lead">
+      Developed by Matthew Joel in the <a href="https://lab.madduri.us/">Madduri Lab</a> at
+      Argonne National Laboratory. The suite is released under the MIT licence, with
+      third-party terms recorded for APPFL, FLamby and PGS Catalog data.
+    </p>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <h3>Citing the software</h3>
+        <p>Machine-readable metadata is in
+          <a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/CITATION.cff">CITATION.cff</a>,
+          which GitHub renders through <em>Cite this repository</em> and which reference
+          managers read directly. Cite the version you ran: releases are tagged, and
+          partners install from a tag rather than from <code>main</code>, so the version
+          string identifies the exact source.</p>
+      </div>
+      <div class="card">
+        <h3>Citing the study design</h3>
+        <p>The GWAS experiment reproduces the simulation design of <em>Simulation
+          Benchmarking of Differential Privacy and Federated Learning for Secure Genetic
+          Analysis and Polygenic Risk Scoring</em> (Joel et al.). That reference is
+          recorded in <code>CITATION.cff</code>, and
+          <a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/docs/experiments/gwas/DATA.md">docs/experiments/gwas/DATA.md</a>
+          states the documented limits on reproducing its published figures from this
+          repository alone.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section id="map-teaser">
   <div class="wrap">
     <div class="teaser">
@@ -457,7 +500,7 @@ appfl-bio-suite preflight</code></pre>
         <li><a href="https://github.com/mfjoel01/appfl-bio-suite">appfl-bio-suite on GitHub</a></li>
         <li><a href="./network.html">Federation network map</a></li>
         <li><a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/LICENSE">MIT licence</a></li>
-        <li><a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/CITATION.cff">How to cite</a></li>
+        <li><a href="#citation">How to cite</a></li>
       </ul>
     </div>
     <div class="foot-col">
@@ -479,7 +522,9 @@ appfl-bio-suite preflight</code></pre>
       </ul>
     </div>
     <p class="colophon">
-      MIT licensed, with third-party terms recorded for APPFL, FLamby and PGS Catalog data.
+      Matthew Joel · <a href="https://lab.madduri.us/">Madduri Lab</a>, Argonne National
+      Laboratory. MIT licensed, with third-party terms recorded for APPFL, FLamby and PGS
+      Catalog data.
     </p>
   </div>
 </footer>
