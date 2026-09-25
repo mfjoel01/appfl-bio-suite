@@ -46,6 +46,22 @@ usually one of these having moved:
 If a parity test fails after an upgrade, compare the manifest's `packages` block against
 the current environment before assuming the code is wrong.
 
+### And one thing that is not a package
+
+**The machine's core count.** The polygenic-score accumulation in `phenotypes.py` is a
+BLAS matrix-vector product, and given eight or more threads OpenBLAS splits its reduction
+and sums the parts in a different order. The scores move in their low-order bits, every
+phenotype and summary file inherits the difference, and nothing raises. It reproduces on
+a laptop and fails on a 64-core node with the source unchanged, which is exactly what
+happened once: a CI runner grew and the committed golden file stopped matching.
+
+`_compute_pgs` therefore pins that accumulation to a single BLAS thread, via
+`threadpoolctl`, which is why that package is a declared dependency of the `gwas` extra
+rather than an incidental one from scikit-learn.
+`test_pgs_accumulation_does_not_follow_the_machine` fails if the pin is removed. Do not
+"fix" a thread-count parity failure by regenerating the golden file: the golden is the
+single-threaded result, and it is the published one.
+
 ## Removing the compat shim
 
 `src/appfl_bio_suite/core/compat.py` works around `appfl==1.10.0` importing a

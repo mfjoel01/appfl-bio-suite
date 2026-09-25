@@ -139,9 +139,18 @@ def test_fed6_has_exactly_five_bars_and_argonne_colors(tmp_path, monkeypatch):
     from appfl_bio_suite.experiments.fine_mapping.figures import federation as f
 
     captured = []
+    box_sizes = []
+    original_boxplot = f.fs.boxplot
+
+    def boxes(ax, data, **kwargs):
+        box_sizes.extend(map(len, data))
+        return original_boxplot(ax, data, **kwargs)
+
+    monkeypatch.setattr(f.fs, "boxplot", boxes)
     monkeypatch.setattr(f.fs, "save", lambda fig, path, log: captured.append(fig) or path)
     f.fed6_what_federation_buys(arm_rows(), tmp_path / "fed6.png")
     figure = captured[0]
+    assert box_sizes == [3] * 5  # same three captures, including for the stronger full arm
     assert len(figure.axes[0].patches) == len(figure.axes[2].patches) == 5
     assert len(figure.axes[3].get_yticklabels()) == 4
     assert [p.get_facecolor() for p in figure.axes[0].patches] == [
@@ -234,3 +243,14 @@ def test_submit_selection_precedes_evaluation_and_finish_waits_for_plots(tmp_pat
     assert "walltime=04:00:00" in jobs["evaluation"]["command"]
     module.submit(tmp_path, "account", "/python")
     assert len(calls) == 5
+
+
+def test_eda_ignores_withdrawn_causal_mode(tmp_path):
+    from appfl_bio_suite.experiments.fine_mapping.figures.eda import load_package
+
+    truth = tmp_path / "ground_truth"
+    truth.mkdir()
+    pd.DataFrame(
+        {"locus_id": ["keep", "withdrawn"], "causal_mode": ["shared", "divergent"]}
+    ).to_csv(truth / "causal_manifest.tsv", sep="\t", index=False)
+    assert load_package(tmp_path)["manifest"].locus_id.tolist() == ["keep"]

@@ -1,6 +1,6 @@
 **Scientific audit — 14 September 2026**
 
-Implementation follow-up: [corrected protocol and rerun](SCIENTIFIC_RERUN.md). The findings below describe the audited pre-fix revision and remain as historical evidence.
+Implementation follow-up: [corrected protocol and rerun](SCIENTIFIC_RERUN.md), whose [outcome section](SCIENTIFIC_RERUN.md#outcome--17-september-2026) carries the completed run's findings and the disposition of every item below. The findings in this document describe the audited pre-fix revision and remain as historical evidence; the verdict that follows was the verdict on that revision, not on the corrected one.
 
 **Verdict: the moment-pooling mathematics is sound under its stated conditions, but the current experiment does not support an unqualified claim of exact centralized/federated equivalence or calibrated fine-mapping. Scientific sign-off is withheld.** There are reproducible differences in the clean production results, stale deployment bundles, and errors in outcome definitions. This audit changes no production data, estimator, or existing results.
 
@@ -121,3 +121,32 @@ SuSiEx  50d26474ea71dfc9ad75e46355a3d4a188364ed0301ea7831ccefb159ba78acd
 plink   013114acc9db095b78588ee25bae523419db4965b04c111c1c0e2fc2b43409d5
 plink2  28e45a65689bacf2b6675898abc6fc2eb2a5de19ae21a60ccec0dd37e6b21ce2
 ```
+
+---
+
+**Disposition after the corrected rerun — 17 September 2026**
+
+Measured against the completed run in
+[`SCIENTIFIC_RERUN.md`](SCIENTIFIC_RERUN.md#outcome--17-september-2026). "Closed" means
+the defect is gone and something now fails if it returns; it does not extend to the
+scientific questions the finding raised.
+
+| # | Finding | Disposition |
+| --- | --- | --- |
+| 1 | Inputs violate the equality conditions | **Closed.** A pre-inference gate requires identical per-ancestry SNP identifier, position, allele coding and order, and a paired gate compares fingerprints, sample sizes and options across paths. All 11,850 pairs agree; maximum absolute PIP difference 0.0, and the 102,150 credible-set members agree exactly on membership, `cs_pip` and `ovrl_pip`. One residual remains **outside** the claim's scope and is now documented with a bound: the emitted `beta`/`se`/`frq` differ for 4.8% of variants in AFR alone, by at most 2.44 × 10⁻⁴, deterministically per variant, without reaching any PIP or set. |
+| 2 | Stale bundles serve the legacy phenotype defect | **Closed.** Bundles and DRS identifiers were cut fresh from the clean cohort and accepted in `bundles.accepted.json`; the corrected local configuration is published. Remote partner deployment is still outstanding and is tracked as a limitation, not as this defect. |
+| 3 | Reported PIPs are component maxima | **Closed.** Probabilities are `1 - product(1 - alpha)` over retained components, matching the emitted SuSiEx convention; eligibility is tracked, and unconditional recovery is reported separately from eligible-truth summaries. Excluded truths are 1 to 29 causal variants per arm out of 23,850, so the distinction barely binds on this cohort — but it is now measured rather than assumed. |
+| 4 | Neither convergence nor calibration reliably measured | **Closed.** `nonconverged`, `converged_no_cs`, `converged_cs`, `invalid_output` and `execution_failure` are distinct, stdout/stderr and per-instance records are retained, and coverage is computed over harvested per-set membership with its own denominator. All 106,650 fits across the nine runs converged. `pap4_power_coverage` refuses to draw rather than substituting per-instance power, which is how the withdrawn divergent mode's emptiness surfaced. |
+| 5 | Phenotype re-derivation can pass on permuted phenotypes | **Closed.** All 35,550 instances are reconstructed in FID/IID order from genotypes, saved effects and the deterministic noise stream; worst vector error 4.2 × 10⁻⁹ SD. The permutation negative control is a test. |
+| 6 | The matched-N control is not matched | **Closed.** Three draws now analyze exactly 50,000 people in five ancestry columns, against 50,000 in each solo arm, and the estimand is described as composition and participation. The finding's scientific point stands and is now quantified: at matched N the three-site composition is the *worst* arm in the run, and the controlled ANL-versus-matched comparison is 13.3 pp (12.3–14.3). |
+| 7 | Eligibility and model capacity misaligned | **Closed for capacity and ambiguity.** Ten signals are configured against a largest causal union of seven, and ambiguous SNPs are retained with a verified common reference coding. **The divergent architectures are withdrawn**, going further than the finding asked. The mode still carried 30 of 11,850 instances, and the review additionally found it confounded: a union of seven causal variants against two for the shared cell sharing its label, at the same target h2, with no seven-causal shared cell to compare against. More instances could not have fixed that, so `ancestry_divergent_causal` is now `enabled: false` and the simulator warns when a grid would reproduce the confound. Ancestry-private architectures are an open question, not a result. |
+| 8 | Claims broader than the parameters support | **Closed as a labelling matter, open as science.** `rg` is labelled the effect-draw correlation, site-marginal heritability is distinguished from within-ancestry heritability, and per-site/per-ancestry variances are reported. The homogeneous-noise and null-association arms the finding asked for were **not run**, so association-model calibration remains untested and is listed as a limitation. |
+| 9 | Uncertainty and locus-selection provenance | **Closed.** Every published rate and paired difference is a bootstrap over whole loci retaining replicates and sets within each locus, and the 79 loci are documented as a frozen benchmark panel re-scored under harmonized coding. This review found the correction had been applied in code but not in prose — four captions still read "Wilson" — and that a stratum rollup pooled h² inside the `rg` marginal, which reversed the sign of the `rg` effect. Both are fixed, the unused Wilson helpers are deleted, and three regression tests pin the result. |
+
+The five acceptance conditions are met, with two explicit carve-outs: no remote partner
+federation has run, and the association-calibration question is open rather than
+answered. The ancestry-divergent question is open too, and its arm is now withdrawn
+rather than reported. Sign-off on **exactness** and on **simulation validity** is
+supported by the run. Sign-off on **posterior calibration** is supported only where power
+is adequate — the run shows 95% credible sets covering at 80% for a single 50,000-person
+arm at h² = 0.0005.

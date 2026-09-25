@@ -67,6 +67,8 @@ def load_package(root: Path) -> dict:
     out["candidates"] = _tsv("loci/candidate_windows.tsv")
     out["loci"] = _tsv("loci/selected_loci.tsv")
     out["manifest"] = _tsv("ground_truth/causal_manifest.tsv")
+    if out["manifest"] is not None and "causal_mode" in out["manifest"]:
+        out["manifest"] = out["manifest"].loc[out["manifest"].causal_mode.eq("shared")].copy()
 
     comp = {}
     for site in SITE_ORDER:
@@ -378,7 +380,7 @@ def eda4_ld_divergence_maps(pkg: dict, out: Path, n_show: int = 120) -> Path | N
 
     import matplotlib.colors as mcolors
 
-    seq = mcolors.LinearSegmentedColormap.from_list("r2", [fs.SURFACE, *fs.BLUE_RAMP])
+    seq = mcolors.LinearSegmentedColormap.from_list("r2", fs.brand.SEQUENTIAL)
     div = mcolors.LinearSegmentedColormap.from_list(
         "d", [fs.DIVERGING[0], fs.DIVERGING[1], fs.DIVERGING[2]]
     )

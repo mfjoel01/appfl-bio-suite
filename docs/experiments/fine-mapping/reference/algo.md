@@ -1,4 +1,4 @@
-> Current protocol: [September scientific corrections and rerun](../SCIENTIFIC_RERUN.md). Historical numerical results and earlier exactness/calibration claims below require the new validation gates.
+> Current protocol: [September scientific corrections and rerun](../SCIENTIFIC_RERUN.md). Its validation gates have passed and the run is complete; the findings and limitations are in that document's [outcome section](../SCIENTIFIC_RERUN.md#outcome--17-september-2026). Numerical results below that predate the rerun are historical.
 
 # The SuSiEx algorithm and its federated formulation
 

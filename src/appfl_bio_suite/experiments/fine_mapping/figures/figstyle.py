@@ -32,8 +32,6 @@ __all__ = [
     "ordinal_colors",
     "panel_letter",
     "direct_label",
-    "wilson",
-    "binom_summary",
     "save",
     "legend_swatches",
     "boxplot",
@@ -66,7 +64,7 @@ STATUS = {
     "serious": brand.COLORS["anl-red"],
     "critical": brand.COLORS["anl-red"],
 }
-BLUE_RAMP = brand.SEQUENTIAL
+BLUE_RAMP = brand.SEQUENTIAL[3:]  # visible lines/markers on white; pale steps are heatmap-only
 RED_RAMP = [brand.COLORS[f"div-neg-{i}"] for i in range(1, 4)]
 GREEN_RAMP = [brand.COLORS[k] for k in ("anl-green-light", "anl-green", "anl-green-deep")]
 # Compatibility names for callers using two or three ordinal factors.
@@ -201,39 +199,6 @@ def direct_label(
         va=va,
         zorder=6,
     )
-
-
-def wilson(k: int, n: int, z: float = 1.959963985) -> tuple[float, float, float]:
-    """Wilson score interval for a binomial proportion -> ``(point, lo, hi)``.
-
-    Wilson rather than the normal approximation because coverage and power both live
-    near 1.0 here, where the normal interval runs past 100% and stops being readable.
-    """
-    if n == 0:
-        return np.nan, np.nan, np.nan
-    p = k / n
-    d = 1 + z * z / n
-    centre = (p + z * z / (2 * n)) / d
-    half = z * np.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
-    lo = max(0.0, centre - half)
-    hi = min(1.0, centre + half)
-    # The Wilson interval is centred on a SHRUNK estimate, so at p = 1 with small n the
-    # clamped upper bound lands a hair below p itself (p=1, n=10 gives hi=0.99977).
-    # That is correct as an interval and wrong as an error bar -- matplotlib rejects a
-    # negative yerr, which is how it surfaces. An interval must contain its own point
-    # estimate; clamp rather than letting each caller discover this separately.
-    return p, min(lo, p), max(hi, p)
-
-
-def binom_summary(flags) -> tuple[float, float, float, int]:
-    """``(point, lo, hi, n)`` for a boolean-ish series. NaN counts as False."""
-    import pandas as pd
-
-    s = pd.Series(flags)
-    n = int(s.notna().sum() + s.isna().sum())  # every row is an opportunity
-    k = int(s.fillna(False).astype(bool).sum())
-    p, lo, hi = wilson(k, n)
-    return p, lo, hi, n
 
 
 def legend_swatches(

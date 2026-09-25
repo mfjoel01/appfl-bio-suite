@@ -19,7 +19,7 @@ from pathlib import Path
 
 from appfl_bio_suite.core.compat import ensure_appfl_globus_compute_importable
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # Where partners install from.
 #
@@ -29,7 +29,7 @@ __version__ = "0.1.0"
 #
 # A tag, not a branch. `main` moves, and a federation whose sites installed from `main`
 # on different days is running different code with no way to say which. Every site
-# installing `v0.1.0` is running byte-identical source, for the same reason the Globus
+# installing `v0.2.0` is running byte-identical source, for the same reason the Globus
 # Compute stack is pinned in constraints.txt: skew here does not fail at install time,
 # it fails as a deserialization error partway into someone else's run.
 #

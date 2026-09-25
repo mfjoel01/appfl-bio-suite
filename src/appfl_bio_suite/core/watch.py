@@ -49,6 +49,7 @@ import base64
 import json
 import logging
 import queue
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -505,6 +506,12 @@ def _patched_viewer() -> str:
     loading so network snapshots render immediately and live connection events cannot
     clear the selected view. Refuse an unexpected upstream layout rather than publishing
     a page whose event handlers or geography overrides only partly apply.
+
+    The upstream header wordmark is dropped here rather than hidden in CSS. It is an
+    inlined PNG that is most of the viewer's bytes, and it is not ours to redistribute on
+    every page this thing is exported to; viewer.js credits hivewatch and APPFL by name
+    and link instead. Removal is tolerant -- viewer.js does not require the element --
+    so a future hivewatch that ships a different mark does not break the export.
     """
     html = _viewer_html().read_text(encoding="utf-8")
     startup = html.find(_UPSTREAM_STARTUP)
@@ -525,6 +532,7 @@ def _patched_viewer() -> str:
         + "// appfl-bio-suite: viewer.js initializes the federation view.\n"
         + html[script_end:]
     )
+    html = re.sub(r'<img class="logo-img"[^>]*>\s*', "", html, count=1)
     css = (_VIEWER_ASSETS / "viewer.css").read_text(encoding="utf-8")
     html = html.replace("</head>", f'<style id="bio-viewer-style">\n{css}\n</style>\n</head>', 1)
     scripts = ["<!-- appfl-bio-suite: federation viewer and globe -->"]

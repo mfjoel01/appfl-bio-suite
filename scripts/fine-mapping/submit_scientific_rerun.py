@@ -27,7 +27,11 @@ def sha(path):
 
 
 def prepare(root: Path, base_path: Path, python: str) -> None:
-    from appfl_bio_suite.experiments.fine_mapping.arms import ARMS, SITE_ORDER, Arm, build_configs
+    from appfl_bio_suite.experiments.fine_mapping.arms import (
+        ARMS,
+        build_configs,
+        matched_n_arms,
+    )
     from appfl_bio_suite.experiments.fine_mapping.fedfm.utils import load_config
     from appfl_bio_suite.experiments.fine_mapping.rerun import check_cohort
 
@@ -51,9 +55,10 @@ def prepare(root: Path, base_path: Path, python: str) -> None:
     base = root / "pipeline_config.yaml"
     base.write_text(yaml.safe_dump(cfg, sort_keys=False))
     check_cohort(load_config(base))
-    arms = tuple(a for a in ARMS if a.name != "federation") + (
-        Arm("federation_50k_seed2", SITE_ORDER, fraction=1 / 3, seed=20260602),
-        Arm("federation_50k_seed3", SITE_ORDER, fraction=1 / 3, seed=20260603),
+    # Draw 1 is already in ARMS under the bare name; the rest come from the same
+    # helper the figure labels read, so the two cannot disagree about how many there are.
+    arms = (
+        tuple(a for a in ARMS if a.name not in {"federation", "federation_50k"}) + matched_n_arms()
     )
     paths = build_configs(base, root / "arms", arms=arms, replicates=10)
     runs = [("federation", "centralized", base), ("federated", "federated", base)]

@@ -274,6 +274,7 @@ def plots(root: Path) -> None:
     ]:
         directory = root / "reports" / subdirectory
         frame = pd.read_csv(directory / filename, sep="\t")
+        frame = frame.loc[frame.causal_mode.eq("shared")].copy()
         frames[name] = frame
         detail = directory / "detail"
         detail.mkdir(exist_ok=True)
@@ -362,7 +363,7 @@ def plots(root: Path) -> None:
             group: [str(p.relative_to(root)) for p in paths] for group, paths in written.items()
         },
         "n_figures": sum(map(len, written.values())),
-        "scope": "EDA; centralized/federated shared and divergent fits; all participation arms",
+        "scope": "EDA; shared-causal centralized/federated fits; participation arms",
         "omissions": [
             "Genome-wide candidate-window plots are unavailable for a frozen selected-locus panel.",
             "Population/effect and exemplar panels require at least one retained credible set.",

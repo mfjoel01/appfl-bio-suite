@@ -34,6 +34,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from appfl_bio_suite.experiments.fine_mapping import arms as _arms
 from appfl_bio_suite.experiments.fine_mapping.figures import figstyle as fs
 from appfl_bio_suite.experiments.fine_mapping.figures.figstyle import plt
 
@@ -667,11 +668,16 @@ def fed5_where_time_goes(
 # Exactly five headline arms. Search candidates and legacy controls stay in tables.
 ARM_ORDER = ["anl", "covenant", "mbzuai", "federation_smart_50k", "federation"]
 ARM_LABEL = {
-    "anl": "ANL alone",
-    "covenant": "Covenant alone",
-    "mbzuai": "MBZUAI alone",
-    "federation_smart_50k": "N matched, smart composition",
-    "federation": "All sites, full federation",
+    "anl": "ANL\nalone",
+    "covenant": "Covenant\nalone",
+    "mbzuai": "MBZUAI\nalone",
+    "federation_smart_50k": "N matched\nsmart composition",
+    "federation": "All sites\nfull federation",
+    "ld_borrowed": "Covenant statistics, ANL LD",
+    **{
+        _arms.matched_n_arm_name(seed): f"Proportional N matched, draw {i + 1}"
+        for i, seed in enumerate(_arms.MATCHED_N_SEEDS)
+    },
 }
 
 
@@ -749,16 +755,27 @@ def fed6_what_federation_buys(
         fs.panel_letter(ax, letter, title)
         return [r[3] for r in rows]
 
-    ns = _bars(ax_a, "captured", "power   =   P(a causal variant is captured)", "a", "Power")
-    ax_a.set_ylim(0, 1.18)
+    _bars(ax_a, "captured", "power   =   P(a causal variant is captured)", "a", "Power")
+    ax_a.set_ylim(0, 1.06)
+    ax_a.set_yticks(np.linspace(0, 1, 6))
 
-    # (b) resolution
-    data = [d[(d["arm"] == a) & d["captured"]]["best_cs_size"].dropna().values for a in arms]
+    # Compare resolution on identical captures, rather than each arm's own
+    # selectively detected (and differently difficult) subset of instances.
+    keys = ["locus_id", "architecture_id", "replicate"]
+    if "sampling_seed" in d:
+        keys.append("sampling_seed")
+    common = d.groupby(keys)["captured"].all()
+    common_keys = common[common].reset_index()[keys]
+    paired_resolution = d.merge(common_keys, on=keys, validate="many_to_one")
+    data = [
+        paired_resolution.loc[paired_resolution.arm.eq(a), "best_cs_size"].dropna().values
+        for a in arms
+    ]
     fs.boxplot(ax_b, data, positions=x, colors=colors, widths=0.6, points=False)
     ax_b.set_yscale("log")
     ax_b.set_ylim(bottom=0.82)
     ax_b.set_ylabel("credible-set size (variants)\nsmaller = sharper")
-    fs.panel_letter(ax_b, "b", "Resolution")
+    fs.panel_letter(ax_b, "b", "Resolution on common captures")
 
     _bars(ax_c, "pip95", "P(causal variant at PIP > 0.95)", "c", "High-confidence yield")
 
@@ -770,7 +787,9 @@ def fed6_what_federation_buys(
         ax_d.errorbar(values, y, xerr=errors, fmt="o", color=fs.PATH["federated"], capsize=3)
         ax_d.axvline(0, color=fs.INK2, lw=1.2)
         ax_d.set_yticks(y)
-        ax_d.set_yticklabels([ARM_LABEL.get(a, a) for a in differences.arm], fontsize=7)
+        ax_d.set_yticklabels(
+            [ARM_LABEL.get(a, a).replace("\n", " ") for a in differences.arm], fontsize=7
+        )
         ax_d.xaxis.set_major_formatter(lambda v, _: f"{v * 100:+.0f}")
         ax_d.set_xlabel("full federation minus comparison (pp)")
         ax_d.invert_yaxis()
@@ -779,6 +798,7 @@ def fed6_what_federation_buys(
     else:
         fs.no_data(ax_d, "paired federation comparisons unavailable")
 
+    rotated = False
     for ax in (ax_a, ax_b, ax_c):
         ax.set_xticks(x)
         # Six arms of two-line labels do not fit a quarter of the canvas horizontally --
@@ -786,10 +806,10 @@ def fed6_what_federation_buys(
         # four arms keeps the four-arm case upright, which is easier to read.
         ax.set_xticklabels(
             [ARM_LABEL.get(a, a) for a in arms],
-            fontsize=8.5 if len(arms) <= 4 else 8.0,
-            rotation=0 if len(arms) <= 4 else 30,
-            ha="center" if len(arms) <= 4 else "right",
-            rotation_mode=None if len(arms) <= 4 else "anchor",
+            fontsize=8.0 if rotated else 8.5,
+            rotation=30 if rotated else 0,
+            ha="right" if rotated else "center",
+            rotation_mode="anchor" if rotated else None,
         )
         ax.grid(axis="x", visible=False)
         for tick, a in zip(ax.get_xticklabels(), arms, strict=False):
@@ -800,7 +820,7 @@ def fed6_what_federation_buys(
         cohort_text = (
             " Cohorts: "
             + "; ".join(
-                f"{ARM_LABEL[a]} N={cohort[a][0]:,}, {cohort[a][1]} ancestries"
+                f"{ARM_LABEL[a].replace(chr(10), ' ')} N={cohort[a][0]:,}"
                 for a in arms
                 if a in cohort
             )
@@ -808,7 +828,7 @@ def fed6_what_federation_buys(
         )
 
     fig.suptitle(
-        "What federating buys, on the same loci and the same truth",
+        "Fine-mapping performance on held-out loci",
         x=0.005,
         ha="left",
         fontsize=13,
@@ -823,12 +843,17 @@ def fed6_what_federation_buys(
             composition = f" Selected composition: {labels[0]}."
     fs.footnote(
         fig,
-        f"{d.locus_id.nunique():,} evaluation loci; {ns[0]:,} fits per arm "
-        "including sampling repeats. Error bars: 95% locus-clustered bootstrap intervals. "
+        f"{d.locus_id.nunique():,} evaluation loci; "
+        f"{len(d[['locus_id', 'architecture_id', 'replicate']].drop_duplicates()):,} "
+        "distinct simulation instances. Sampling repeats are combined into one bar; "
+        "Solo/full results are reused for pairing. "
+        "Error bars: 95% locus-clustered bootstrap intervals. "
         "Composition selected on separate development regions; the same evaluation "
         "instances are used for every arm. Sample size, composition and site noise "
         "all affect these comparisons; this does not isolate an LD-diversity effect. "
-        "Resolution is conditional on causal capture." + composition + cohort_text,
+        f"Resolution uses the {len(common_keys):,} instance/draw pairs captured by all five arms."
+        + composition
+        + cohort_text,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     return fs.save(fig, out, log)
@@ -866,6 +891,15 @@ def write_figures(
     out_dir = Path(out_dir)
     cen = pd.DataFrame(centralized)
     fed = pd.DataFrame(federated) if federated is not None else None
+    if "causal_mode" in cen:
+        cen = cen.loc[cen.causal_mode.eq("shared")].copy()
+    if cen.empty:
+        active.info("No supported shared-causal results to plot")
+        return []
+    if fed is not None and "causal_mode" in fed:
+        fed = fed.loc[fed.causal_mode.eq("shared")].copy()
+    if by_arm is not None and "causal_mode" in by_arm:
+        by_arm = by_arm.loc[by_arm.causal_mode.eq("shared")].copy()
     composition = load_composition(Path(data_root) if data_root else None)
 
     loci = None

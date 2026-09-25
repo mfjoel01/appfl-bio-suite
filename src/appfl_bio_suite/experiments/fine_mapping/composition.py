@@ -118,6 +118,7 @@ def prepare(source: Path, root: Path, development_reps: int = 2) -> None:
             if path.name != "causal_manifest.tsv":
                 (phase_root / "ground_truth" / path.name).symlink_to(path.resolve())
         local = yaml.safe_load((source / "pipeline_config.yaml").read_text())
+        local["architecture"].setdefault("ancestry_divergent_causal", {})["enabled"] = False
         for key in ("loci_dir", "ground_truth_dir", "reports_dir", "logs_dir"):
             local["paths"][key] = str(phase_root / key.removesuffix("_dir"))
         local["architecture"]["replicates"] = (
@@ -316,7 +317,7 @@ def render_headline(root: Path) -> None:
     from .figures.render import arm_cohort_sizes
 
     source = Path(json.loads((root / "design.json").read_text())["source"])
-    headline = pd.read_csv(root / "fm_results_by_arm.tsv", sep="\t")
+    headline = pd.read_csv(root / "fm_results_by_arm.tsv", sep="\t", low_memory=False)
     cohort = arm_cohort_sizes(source, headline)
     cfg = yaml.safe_load((source / "pipeline_config.yaml").read_text())
     selection = json.loads((root / "selection.json").read_text())
@@ -341,7 +342,7 @@ def render_headline(root: Path) -> None:
     _json(manifest, record)
 
 
-def render(root: Path, include_eda: bool = True) -> None:
+def render(root: Path, include_eda: bool = True, out_dir: Path | None = None) -> None:
     """Regenerate every supported plot from saved inputs without changing the source run."""
     from appfl_bio_suite.core import plot_style
 
@@ -349,7 +350,7 @@ def render(root: Path, include_eda: bool = True) -> None:
     from .figures.render import arm_cohort_sizes
 
     source = Path(json.loads((root / "design.json").read_text())["source"])
-    output = root / "figures"
+    output = out_dir if out_dir is not None else root / "figures"
     output.mkdir(exist_ok=True)
     figstyle.apply_style()
     written = {}
@@ -362,6 +363,7 @@ def render(root: Path, include_eda: bool = True) -> None:
     ):
         reports = source / "reports" / directory
         frame = pd.read_csv(reports / filename, sep="\t")
+        frame = frame.loc[frame.causal_mode.eq("shared")].copy()
         frames[name] = frame
         for mode, subset in frame.groupby("causal_mode"):
             written[f"{name}/{mode}"] = paper_plots.write_figures(
@@ -372,7 +374,7 @@ def render(root: Path, include_eda: bool = True) -> None:
                 strict=True,
             )
     headline = (
-        pd.read_csv(root / "fm_results_by_arm.tsv", sep="\t")
+        pd.read_csv(root / "fm_results_by_arm.tsv", sep="\t", low_memory=False)
         if (root / "evaluation.accepted.json").exists()
         else None
     )
@@ -434,6 +436,8 @@ def render(root: Path, include_eda: bool = True) -> None:
             "font_rendered": plot_style.apply_style(),
             "palette_sha256": hashlib.sha256(plot_style.PALETTE_PATH.read_bytes()).hexdigest(),
             "fed6_ready": headline is not None,
+            "causal_mode": "shared",
+            "n_source_instances": len(central),
             "figures": {k: [str(p.relative_to(root)) for p in v] for k, v in written.items()},
         },
     )

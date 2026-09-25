@@ -510,6 +510,30 @@ def _assign_ancestry_divergent_flags(
             adc.n_private_per_pop,
         )
         return flags
+    # A divergent instance draws n_shared + n_pops * n_private_per_pop variants while
+    # keeping the architecture's target h2, so it is NOT comparable to the shared instance
+    # sharing its architecture label: that one carries ncsl variants and this one carries
+    # the union, making each effect proportionally fainter. Without a shared cell at the
+    # union size, any divergent-vs-shared contrast mixes ancestry-private architecture with
+    # effect size and cannot separate them -- which is why the 2026-09 divergent result was
+    # withdrawn. Say so once, loudly, rather than letting a re-enable repeat it silently.
+    n_pops = len(cfg.superpopulations)
+    have_ncsl = {a.ncsl for a in architectures}
+    unmatched = sorted({
+        ((a.ncsl - adc.n_private_per_pop) + n_pops * adc.n_private_per_pop, a.ncsl)
+        for a in eligible
+        if ((a.ncsl - adc.n_private_per_pop) + n_pops * adc.n_private_per_pop) not in have_ncsl
+    })
+    if unmatched:
+        get_logger().warning(
+            "ancestry_divergent_causal is enabled, but the grid has no shared cell at the "
+            "union size for %s. Those divergent instances carry the union's causal variants "
+            "against ncsl for the shared instances sharing the same label, at the same target "
+            "h2, so the two differ in BOTH ancestry architecture and per-variant effect size "
+            "and cannot be compared. Add the matching ncsl cells before relying on any "
+            "divergent-versus-shared contrast.",
+            ", ".join(f"ncsl={n} (union {u})" for u, n in unmatched),
+        )
     rng = np.random.default_rng(derive_seed(cfg.master_seed, "ancestry_divergent"))
     # Prefer rg<1 architectures (most informative for federation) when picking.
     sorted_arch_ids = sorted(

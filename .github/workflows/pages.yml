@@ -1,0 +1,68 @@
+# The project site at https://mfjoel01.github.io/appfl-bio-suite/
+#
+# The pages in website/ are hand-written and committed. The network map preview under
+# /map/ is NOT: it is exported here, on every build, from federation.yaml.example -- the
+# fictional federation in the repo, never local/federation.yaml, which names real
+# partners and real contacts. That keeps two properties worth having:
+#
+#   * the published preview always matches the viewer sources in this commit, so a change
+#     to watch_assets/ is visible on the site without anyone remembering to re-export; and
+#   * no generated 1 MB HTML file is committed.
+#
+# Pages must be set to deploy from GitHub Actions (Settings -> Pages -> Source), not from
+# a branch, or this workflow builds and nothing is served.
+
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel a deploy half-way; queue behind the one in flight instead.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The same constraints file every site in a federation installs against, so the
+      # exported viewer is the one the pinned hivewatch produces.
+      - name: Install
+        run: pip install -e ".[watch]" -c constraints.txt
+
+      # The same script a maintainer runs to preview the site locally, so a green deploy
+      # and a local preview cannot drift apart. It also runs check_site_preview.py, which
+      # fails the build if the published map was assembled from anything but
+      # federation.yaml.example -- a partner's address on a public URL is not recovered
+      # by editing the page afterwards.
+      - name: Assemble the site
+        run: scripts/build_site.sh _site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

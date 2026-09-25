@@ -174,8 +174,12 @@
 /* Keep the suite identity and the HiveWatch attribution visible at every size. */
 .bio-viewer .bio-suite-logo { display: block; width: 54px; height: 54px; flex: 0 0 54px; object-fit: contain; border-radius: 12px; }
 .bio-viewer .header-right { display: flex; align-items: center; gap: 17px; flex-shrink: 0; }
-.bio-hive-credit { display: flex; align-items: center; padding-right: 16px; border-right: 1px solid var(--border); flex-shrink: 0; }
-.bio-viewer .bio-hive-logo { display: block; width: auto; height: 33px; max-width: 108px; object-fit: contain; flex-shrink: 0; border-radius: 3px; }
+.bio-hive-credit { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding-right: 16px; border-right: 1px solid var(--border); flex-shrink: 0; }
+.bio-credit-label { font-size: 9px; letter-spacing: 1.5px; color: var(--muted); }
+.bio-credit-links { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap; }
+.bio-credit-links > span { color: var(--border); }
+.bio-viewer .bio-credit-links a { color: var(--text); text-decoration: none; }
+.bio-viewer .bio-credit-links a:hover { color: var(--accent); text-decoration: underline; }
 .bio-viewer #theme-btn { font-size: 0; }
 .bio-viewer #theme-btn::before { content: '◐'; font-size: 20px; }
 .bio-partner-stage { display: block; margin-top: 10px; color: var(--stage-color, var(--muted)); font-size: 9px; line-height: 1.6; }
@@ -262,13 +266,13 @@ img.bio-result-image { display: block; width: 100%; max-height: 360px; min-heigh
 @media (max-width: 1200px) {
   .bio-viewer .header-right { gap: 12px; }
   .bio-hive-credit { padding-right: 12px; }
-  .bio-viewer .bio-hive-logo { max-width: 82px; height: 29px; }
   .bio-viewer .header-stats { gap: 24px; margin-right: 0; }
   #bio-results-workspace { padding: 28px; }
 }
 @media (max-width: 1050px) {
   .bio-viewer .bio-suite-logo { width: 46px; height: 46px; flex-basis: 46px; border-radius: 10px; }
-  .bio-viewer .bio-hive-logo { max-width: 70px; height: 27px; }
+  .bio-credit-label { display: none; }
+  .bio-credit-links { font-size: 11px; }
   .bio-viewer .header-stats { gap: 18px; }
   .bio-viewer .header-right { gap: 10px; }
   .bio-viewer .status-pill { padding: 7px 9px; }
@@ -285,7 +289,7 @@ img.bio-result-image { display: block; width: 100%; max-height: 360px; min-heigh
 @media (max-width: 760px) {
   .bio-viewer .bio-suite-logo { width: 40px; height: 40px; flex-basis: 40px; border-radius: 9px; }
   .bio-viewer .logo { gap: 9px; }
-  .bio-viewer .bio-hive-logo { height: 27px; max-width: 67px; }
+  .bio-credit-links { gap: 6px; }
   .bio-hive-credit { padding-right: 9px; }
   .bio-viewer .header-right { gap: 9px; }
   .bio-viewer .header-stats { gap: 14px; }
@@ -327,7 +331,7 @@ img.bio-result-image { display: block; width: 100%; max-height: 360px; min-heigh
   .bio-viewer .logo { gap: 7px; }
   .bio-brand { font-size: 13px; }
   .bio-brand-note { font-size: 6px; letter-spacing: .8px; }
-  .bio-viewer .bio-hive-logo { height: 24px; max-width: 56px; }
+  .bio-credit-links { font-size: 10px; gap: 5px; }
   .bio-hive-credit { padding-right: 7px; }
   .bio-viewer .header-stats .stat-val { font-size: 17px; }
   .bio-viewer .header-stats .stat-label { font-size: 6px; }
