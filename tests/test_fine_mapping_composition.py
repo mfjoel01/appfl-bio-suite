@@ -603,3 +603,42 @@ def test_selection_freezes_solo_fallback_before_validation_exists(prepared, monk
     (prepared / "selection.json").write_text("{}")
     with pytest.raises(ValueError, match="selection changed"):
         r.verify_selection(prepared)
+
+
+def test_validation_cli_can_rederive_in_parallel(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    from test_fine_mapping_federated import _build_package
+
+    from appfl_bio_suite.experiments.fine_mapping.fedfm.phenotype_sim import run_phenotype_sim
+    from appfl_bio_suite.experiments.fine_mapping.fedfm.utils import load_config
+
+    config = _build_package(tmp_path)
+    run_phenotype_sim(load_config(config))
+    output = tmp_path / "parallel-validation"
+    env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src"))
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "appfl_bio_suite.experiments.fine_mapping.fedfm.validation",
+            "--config",
+            str(config),
+            "--out",
+            str(output),
+            "--n-workers",
+            "2",
+            "--skip",
+            "h2,corr,structural,ld",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    summary = json.loads((output / "summary.json").read_text())
+    assert summary["rederivation"]["pass"]
+    assert summary["rederivation"]["instances_bad_status"] == 0
