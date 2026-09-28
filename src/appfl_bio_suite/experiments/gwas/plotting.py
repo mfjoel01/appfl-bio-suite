@@ -23,15 +23,13 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from appfl_bio_suite.core import plot_style as brand  # noqa: E402
-
 __all__ = ["plot_manhattan", "plot_qq", "write_hits_table", "normalize_chr"]
 
 CHROM_MAP = {"X": 23, "Y": 24, "XY": 25, "MT": 26, "M": 26}
 
-_BLUE = brand.COLORS["anl-navy"]
-_CYAN = brand.COLORS["anl-cyan"]
-_RED = brand.COLORS["anl-red"]
+_BLUE = "#1f5a96"
+_ORANGE = "#d76f30"
+_RED = "#9b1c31"
 
 
 def normalize_chr(chrom: pd.Series) -> pd.Series:
@@ -63,9 +61,8 @@ def plot_manhattan(gwas_df: pd.DataFrame, trait: str, threshold: float, out_path
         np.clip(plot_df["P"].to_numpy(dtype=np.float64), np.finfo(np.float64).tiny, 1.0)
     )
 
-    brand.apply_style()
     fig, ax = plt.subplots(figsize=(14, 6))
-    colors = [_BLUE, _CYAN]
+    colors = [_BLUE, _ORANGE]
     for idx, (_, group) in enumerate(plot_df.groupby("CHR", sort=True)):
         ax.scatter(group["X"], group["LOGP"], s=4, color=colors[idx % 2], alpha=0.8, linewidths=0)
     ax.axhline(-np.log10(threshold), color=_RED, linestyle="--", linewidth=1.2)
@@ -76,7 +73,7 @@ def plot_manhattan(gwas_df: pd.DataFrame, trait: str, threshold: float, out_path
     ax.set_title(
         f"{trait} Manhattan Plot – {label}\nSNPs = {n_snps:,}  |  N = {n_samples:,}", fontsize=11
     )
-    ax.grid(axis="y", color=brand.COLORS["anl-gray-300"], linewidth=0.8, alpha=0.8)
+    ax.grid(axis="y", color="#dddddd", linewidth=0.8, alpha=0.8)
     fig.tight_layout()
     fig.savefig(out_path, dpi=300)
     plt.close(fig)
@@ -110,7 +107,6 @@ def plot_qq(p_values, trait: str, max_points: int, out_path):
     observed = -np.log10(p_values)
     upper = max(float(expected.max()), float(observed.max()), 1.0)
 
-    brand.apply_style()
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.scatter(expected, observed, s=8, color=_BLUE, alpha=0.75, linewidths=0)
     ax.plot([0, upper], [0, upper], color=_RED, linestyle="--", linewidth=1.2)
@@ -119,7 +115,7 @@ def plot_qq(p_values, trait: str, max_points: int, out_path):
     ax.set_xlabel("Expected -log10(P)")
     ax.set_ylabel("Observed -log10(P)")
     ax.set_title(f"{trait} QQ Plot")
-    ax.grid(color=brand.COLORS["anl-gray-300"], linewidth=0.8, alpha=0.8)
+    ax.grid(color="#dddddd", linewidth=0.8, alpha=0.8)
     fig.tight_layout()
     fig.savefig(out_path, dpi=300)
     plt.close(fig)

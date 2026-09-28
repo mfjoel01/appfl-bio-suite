@@ -21,8 +21,7 @@
     },
     "qc.py": {
       "upstream_sha256": "4e585985e1463cbbb8c0244b49159a1c7a777c631cfccd00566fadc1c5ac4b3e",
-      "maintained_fork": true,
-      "reason": "Shared Argonne plotting palette and Helvetica configuration"
+      "maintained_fork": false
     },
     "sampling.py": {
       "upstream_sha256": "82b01be0a7fe2c6889236b1b0827df3ae51bf6f8d2860651c1e8931f9c66a6eb",

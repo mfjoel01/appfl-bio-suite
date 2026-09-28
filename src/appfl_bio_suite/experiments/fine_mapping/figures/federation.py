@@ -751,7 +751,7 @@ ARM_LABEL = {
 def arm_colors(arms: list[str]) -> list[str]:
     mapping = {
         **fs.SITE,
-        "federation_smart_50k": fs.brand.COLORS["anl-red"],
+        "federation_smart_50k": fs.BLUE_RAMP[-1],
         "federation": fs.PATH["federated"],
     }
     return [mapping.get(a, fs.MUTED) for a in arms]

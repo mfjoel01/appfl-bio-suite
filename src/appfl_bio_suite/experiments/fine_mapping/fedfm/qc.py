@@ -24,7 +24,6 @@ from typing import Iterable
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from appfl_bio_suite.core import plot_style as brand
 import numpy as np
 import pandas as pd
 
@@ -225,7 +224,6 @@ def _render_ld_decay_plot(decay_result: dict) -> str:
         return ""
     centers = decay_result["bin_centers_kb"]
     means = decay_result["bin_mean_r2"]
-    brand.apply_style()
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.plot(centers, means, marker="o")
     ax.set_xlabel("Distance (kb)")
@@ -240,9 +238,8 @@ def _render_maf_plot(maf_result: dict) -> str:
         return ""
     pops = list(maf_result["per_pop"].keys())
     medians = [maf_result["per_pop"][p]["median_maf"] for p in pops]
-    brand.apply_style()
     fig, ax = plt.subplots(figsize=(5, 3.5))
-    ax.bar(pops, medians, color=[brand.ANCESTRY.get(p, brand.COLORS["anl-gray-500"]) for p in pops])
+    ax.bar(pops, medians)
     ax.set_ylabel("Median MAF")
     ax.set_title("Per-superpopulation median MAF (sampled variants)")
     return _fig_to_b64(fig)

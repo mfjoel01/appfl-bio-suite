@@ -68,44 +68,30 @@ individual search candidates, repeat seeds and borrowed-LD controls stay in the
 supporting tables. A missing selected arm is an error, never a relabeled old arm.
 
 Use `scripts/fine-mapping/submit_composition.py` to prepare and submit the search
-against a completed scientific run. It preserves the source run, partitions genomic
-regions before selecting a cohort, tests the five AFR/EUR allocations with two site
-recruitment policies and three sampling seeds, then freezes the development winner.
-All five displayed arms are evaluated on the same held-out instances. Repeated
-sampling seeds are combined into one bar, with locus-clustered uncertainty; copies
-of the solo baselines are pairing controls, not additional independent observations.
+against a completed source run. The source genotypes are preserved. Twenty fixed
+site/ancestry allocations include all three solo fallbacks; mixed cohorts use three
+sampling seeds. Development and evaluation generate fresh phenotype draws with
+separate seeds. Evaluation starts only after selection is frozen, and reruns every
+baseline on the same new truth as the selected cohort.
 
-The objective is unconditional causal-capture power. Coverage, false discovery rate
-at PIP > 0.95, and high-confidence yield are reported alongside it. A winner is not
-guaranteed to outperform a solo site. These comparisons vary ancestry composition,
-site recruitment and noise as well as sample size; they do not isolate LD diversity.
-
-## Argonne colors and Helvetica
-
-All scientific plotting entry points use `core/plot_style.py`, including EDA,
-paper panels, federation panels, QC report images, and GWAS Manhattan/QQ plots.
-The packaged `core/plot_assets/argonne-palette.css` is the supplied palette;
-light-mode categorical, sequential and diverging tokens are read directly from it.
-
-Install licensed Helvetica fonts on the rendering machine, or set
-`BIOSIM_FONT_PATH=/path/to/Helvetica-font-directory` (a single font file also works).
-Use `BIOSIM_REQUIRE_HELVETICA=1` to reject rendering if Helvetica is unavailable.
-Without the font, previews explicitly warn and use DejaVu Sans. The composition
-run's `plots.json` records the actual font and the palette checksum. Font binaries
-are not distributed with this repository.
+The objective is unconditional causal-capture power, subject to development coverage
+and false-discovery thresholds. A winner is not guaranteed to outperform a solo site.
+Intervals resample connected genomic regions; sampling repeats and repeated baseline
+rows are kept together. The comparison varies recruitment, ancestry and noise as
+well as sample size, so it does not isolate LD diversity.
 
 ```bash
-/your/python scripts/fine-mapping/submit_composition.py \
-  --source /path/to/completed-run --root /path/to/new-composition-run --submit
+python scripts/fine-mapping/submit_composition.py \
+  --source /path/to/completed-run --root /path/to/new-composition-run \
+  --account <PBS-allocation> --submit
 ```
 
-The dependency graph is development → selection → evaluation → finish. A parallel
-plot job recolors the existing supported figures; finish adds the five-arm fed6.
-`development_ranking.tsv`, `selection.json`, `evaluation_summary.tsv` and
-`paired_vs_smart.tsv` document the choice and its held-out performance. Candidate
-configs record exact ancestry and site counts. Covenant-first recruitment may use
-fewer than three sites when their capacity suffices; the full federation always
-uses all sites.
+The dependency chain is development simulation → phenotype checks → candidate
+inference → frozen selection → evaluation simulation → phenotype checks → fresh
+arm inference → report. See
+[the experiment design](../../../../../docs/experiments/fine-mapping/SMART_COMPOSITION.md)
+for candidate quotas, selection thresholds and output files. Historical runs retain
+their original executable snapshots; new runs use this single pipeline.
 
 ## The divergence stratum is confounded — read `pap7`'s docstring
 

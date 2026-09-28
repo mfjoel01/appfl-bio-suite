@@ -65,14 +65,11 @@ beaten. Better power than the best solo site remains an empirical question.
 
 ## Figure review
 
-The September 25 review merges current main's shared-only protocol and caption
-corrections. Ordinal series now use the visible portion of the Argonne blue ramp;
-the pale colors remain available for heatmaps. Fed6 keeps exactly five arms and
-compares credible-set size only on the same instance/draw pairs captured by all
-five arms. Its caption distinguishes unique simulation instances from sampling
-repeats. Legacy figures and the original frozen computation source are preserved
-under the local run's archives. Helvetica remains unavailable on this cluster;
-the rendering manifest explicitly records DejaVu Sans as the preview font.
+The reviewed fed6 keeps exactly five arms and compares credible-set size only on
+instance/draw pairs captured by all five arms. Its caption distinguishes unique
+simulation instances from sampling repeats. Historical figures and executable
+snapshots remain in the local run archives. Broad palette and font changes are
+maintained separately from the composition experiment.
 
 ### Harmonization audit
 
@@ -89,7 +86,7 @@ from saved allele files and the selected instances' causal manifest. Zero counts
 are displayed explicitly, and the caption describes allele coding without
 inferring a phenotype defect. Missing or incompatible inputs fail the audit.
 
-## Refined search with fresh validation draws
+## Current search with fresh validation draws
 
 The second search uses 20 predeclared candidates at exactly N=50,000:
 
@@ -136,7 +133,7 @@ The full-cohort arm uses the common centralized inference driver, as in the firs
 composition benchmark; this run is not another distributed-protocol parity test.
 
 ```bash
-python scripts/fine-mapping/submit_refined_composition.py \
+python scripts/fine-mapping/submit_composition.py \
   --source <corrected-source-run> --root <new-run-directory> \
   --account <PBS-allocation> --submit
 ```
@@ -148,3 +145,8 @@ allocations and package versions. It defaults to three concurrent array jobs.
 The new run writes `development_ranking.tsv`, `selection.json`,
 `evaluation_summary.tsv`, `evaluation_by_architecture.tsv`, paired comparisons,
 the five-arm figure, `evaluation.accepted.json` and a readable `RESULTS.md`.
+
+There is one maintained implementation, `composition.py`, with one launcher and PBS
+script. The earlier ten-candidate pipeline is available in historical run snapshots.
+Consolidation preserves the second search's candidate quotas, seeds, region split,
+replicate counts and selection rule.
