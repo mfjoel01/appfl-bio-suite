@@ -1,9 +1,9 @@
 # The project site at https://mfjoel01.github.io/appfl-bio-suite/
 #
 # The pages in website/ are hand-written and committed. The network map preview under
-# /map/ is NOT: it is exported here, on every build, from federation.yaml.example -- the
-# fictional federation in the repo, never local/federation.yaml, which names real
-# partners and real contacts. That keeps two properties worth having:
+# /map/ is NOT: it is exported here, on every build, from website/federation.yaml and
+# website/partners.json -- the partners reduced to institution, location and stage --
+# never local/federation.yaml, which carries real contacts. That keeps two properties worth having:
 #
 #   * the published preview always matches the viewer sources in this commit, so a change
 #     to watch_assets/ is visible on the site without anyone remembering to re-export; and
@@ -46,9 +46,9 @@ jobs:
 
       # The same script a maintainer runs to preview the site locally, so a green deploy
       # and a local preview cannot drift apart. It also runs check_site_preview.py, which
-      # fails the build if the published map was assembled from anything but
-      # federation.yaml.example -- a partner's address on a public URL is not recovered
-      # by editing the page afterwards.
+      # fails the build if the published map was assembled from anything but the
+      # committed configs, or carries an address -- a partner's address on a public URL
+      # is not recovered by editing the page afterwards.
       - name: Assemble the site
         run: scripts/build_site.sh _site
 

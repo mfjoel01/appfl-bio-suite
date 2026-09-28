@@ -151,13 +151,14 @@ python -m http.server -d site/ 8000     # preview it first
 A plain `file://` open will not work: the page fetches its data from alongside itself, and
 browsers refuse that for local files. Any static server does.
 
-This repository does exactly that for a fictional federation. `scripts/build_site.sh`
-exports `website/demo-federation.yaml` -- twenty invented institutions on six continents
--- and `.github/workflows/pages.yml` runs that script on every push to `main`, publishing
+This repository does exactly that for its own partners. `scripts/build_site.sh`
+exports `website/federation.yaml` with the catalogue `website/partners.json` -- each
+partner reduced to institution, country, a representative location and partnership
+stage -- and `.github/workflows/pages.yml` runs that script on every push to `main`, publishing
 the result at <https://mfjoel01.github.io/appfl-bio-suite/network.html>. Run the same
 script to preview locally.
 
-The fictional configs are the only ones the build is ever given:
+The committed configs are the only ones the build is ever given:
 `scripts/check_site_preview.py` fails it if the published metadata was assembled from
 anything else, or carries a contact block or an email address. A partner's address
 published to a public URL is not undone by deleting the page afterwards.

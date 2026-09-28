@@ -4,10 +4,9 @@
 THE POINT
 ---------
 The project site embeds a live export of the federation viewer. That export is supposed
-to come from one of the two committed, fictional configs -- ``website/demo-federation.yaml``
-for the site, or ``federation.yaml.example``. The file it must never come from is
-``local/federation.yaml``, which names real institutions and carries partner contact
-names and email addresses.
+to come from one of the two committed configs -- ``website/federation.yaml`` for the
+site, or the fictional ``federation.yaml.example``. The file it must never come from is
+``local/federation.yaml``, which carries partner contact names and email addresses.
 
 The two differ by one ``--federation`` argument in .github/workflows/pages.yml, and the
 export succeeds either way. Publishing a partner's email address to a public URL is not
@@ -16,7 +15,7 @@ remembered.
 
 WHAT IS CHECKED
 ---------------
-* the metadata records one of the fictional configs as its source;
+* the metadata records one of the committed configs as its source;
 * no ``contacts`` block survived into it; and
 * nothing anywhere in it looks like an email address.
 
@@ -34,7 +33,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-EXPECTED_SOURCES = ("website/demo-federation.yaml", "federation.yaml.example")
+EXPECTED_SOURCES = ("website/federation.yaml", "federation.yaml.example")
 
 _LOCAL_CHARS = frozenset(string.ascii_letters + string.digits + "._%+-")
 _DOMAIN_CHARS = frozenset(string.ascii_letters + string.digits + ".-")

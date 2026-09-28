@@ -1,0 +1,16 @@
+{
+  "partners": [
+    {"id": "uic", "name": "University of Illinois Chicago", "country": "United States", "projects": ["caidf"], "stage": "X - Stalled", "location": {"lat": 41.87167, "lng": -87.64917, "city": "Chicago"}, "location_basis": "Representative UIC east campus."},
+    {"id": "st-jude", "name": "St. Jude Children's Research Hospital", "country": "United States", "projects": ["cpg"], "stage": "1 - Initial Planning", "location": {"lat": 35.155616, "lng": -90.045599, "city": "Memphis"}, "location_basis": "Representative St. Jude main campus."},
+    {"id": "covenant", "name": "Covenant University", "country": "Nigeria", "projects": ["fedfm"], "stage": "4 - Experiment Ready", "location": {"lat": 6.6718, "lng": 3.1583, "city": "Ota"}, "location_basis": "Representative Covenant University campus."},
+    {"id": "mbzuai", "name": "Mohamed bin Zayed University of Artificial Intelligence", "country": "United Arab Emirates", "projects": ["fedfm"], "stage": "2 - Setup in Progress", "location": {"lat": 24.4297, "lng": 54.6167, "city": "Abu Dhabi"}, "location_basis": "Representative MBZUAI campus, Masdar City."},
+    {"id": "cdac", "name": "Centre for Development of Advanced Computing", "country": "India", "projects": ["flamby-heart-disease"], "stage": "4 - Experiment Ready", "location": {"lat": 18.534874, "lng": 73.808688, "city": "Pune"}, "location_basis": "Representative C-DAC Innovation Park headquarters."},
+    {"id": "uio", "name": "University of Oslo", "country": "Norway", "projects": ["flamby-heart-disease"], "stage": "1 - Initial Planning", "location": {"lat": 59.943589, "lng": 10.717264, "city": "Oslo"}, "location_basis": "Representative University of Oslo campus."},
+    {"id": "aist", "name": "National Institute of Advanced Industrial Science and Technology (AIST)", "country": "Japan", "projects": ["tbd"], "stage": "0 - Not Started", "location": {"lat": 36.060969, "lng": 140.133784, "city": "Tsukuba"}, "location_basis": "Representative AIST Tsukuba Central campus."},
+    {"id": "broad", "name": "Broad Institute", "country": "United States", "projects": ["tbd"], "stage": "1 - Initial Planning", "location": {"lat": 42.362808, "lng": -71.088956, "city": "Cambridge"}, "location_basis": "Representative Broad Institute, 415 Main Street."},
+    {"id": "niar", "name": "National Institutes of Applied Research (NIAR)", "country": "Taiwan", "projects": ["tbd"], "stage": "1 - Initial Planning", "location": {"lat": 25.025, "lng": 121.542222, "city": "Taipei"}, "location_basis": "Representative NIAR Taipei headquarters."},
+    {"id": "utfpr", "name": "Federal University of Technology - Parana (UTFPR)", "country": "Brazil", "projects": ["tbd"], "stage": "0 - Not Started", "location": {"lat": -25.4394, "lng": -49.2687, "city": "Curitiba"}, "location_basis": "Representative UTFPR Curitiba campus."},
+    {"id": "anl-nz", "name": "Argonne National Laboratory (New Zealand site)", "country": "New Zealand", "projects": ["tbd"], "stage": "3 - Debugging", "location": {"lat": -41.2865, "lng": 174.7762, "city": "Wellington"}, "location_basis": "Representative location within New Zealand."}
+  ],
+  "results": []
+}
