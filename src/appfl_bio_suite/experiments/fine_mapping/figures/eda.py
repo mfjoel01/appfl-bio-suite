@@ -67,6 +67,8 @@ def load_package(root: Path) -> dict:
     out["candidates"] = _tsv("loci/candidate_windows.tsv")
     out["loci"] = _tsv("loci/selected_loci.tsv")
     out["manifest"] = _tsv("ground_truth/causal_manifest.tsv")
+    if out["manifest"] is not None and "causal_mode" in out["manifest"]:
+        out["manifest"] = out["manifest"].loc[out["manifest"].causal_mode.eq("shared")].copy()
 
     comp = {}
     for site in SITE_ORDER:

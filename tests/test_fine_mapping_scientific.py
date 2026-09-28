@@ -411,7 +411,8 @@ def test_every_emitted_participation_arm_has_a_reader_facing_label():
 
     expected = {a.name for a in ARMS} | {a.name for a in matched_n_arms()}
     assert expected <= set(ARM_LABEL), expected - set(ARM_LABEL)
-    assert expected <= set(ARM_ORDER), expected - set(ARM_ORDER)
+    assert ARM_ORDER == ["anl", "covenant", "mbzuai", "federation_smart_50k", "federation"]
+    assert not {a.name for a in matched_n_arms()} & set(ARM_ORDER)
     assert len(set(ARM_LABEL.values())) == len(ARM_LABEL), "two arms share a label"
     # Draw 1 keeps the bare name the published outputs are addressed by.
     assert matched_n_arm_name(MATCHED_N_SEEDS[0]) == "federation_50k"

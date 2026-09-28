@@ -59,21 +59,39 @@ people) and varies the **locus** instead. So its x-axis becomes ours:
 the genotypes are synthetic, so no variant carries a functional annotation to bin by.
 Figure 1 and Extended Data Figure 1 are method schematics rather than plots of data.
 
-## `fed6` is the one that says whether federating was worth it
+## Five-arm fed6 comparison
 
-Every other figure holds all three sites participating, which establishes that federating
-is **correct** while never showing that it is **worth it**. `fed6_what_federation_buys`
-runs the same loci with different cohorts taking part — each site alone, all three
-down-sampled to one site's worth of people, all three in full, and the borrowed-LD
-shortcut — so the gap between a solo site and the *n*-matched federation is diversity, the
-gap between *n*-matched and full is sample size, and the borrowed-LD arm says whether the
-O(M²) uplink earns its cost. Feed it with:
+`fed6_what_federation_buys` shows exactly five arms: ANL alone, Covenant alone,
+MBZUAI alone, a selected 50,000-person composition, and the full federation.
+The selected arm is named `federation_smart_50k`; legacy proportional subsamples,
+individual search candidates, repeat seeds and borrowed-LD controls stay in the
+supporting tables. A missing selected arm is an error, never a relabeled old arm.
+
+Use `scripts/fine-mapping/submit_composition.py` to prepare and submit the search
+against a completed source run. The source genotypes are preserved. Twenty fixed
+site/ancestry allocations include all three solo fallbacks; mixed cohorts use three
+sampling seeds. Development and evaluation generate fresh phenotype draws with
+separate seeds. Evaluation starts only after selection is frozen, and reruns every
+baseline on the same new truth as the selected cohort.
+
+The objective is unconditional causal-capture power, subject to development coverage
+and false-discovery thresholds. A winner is not guaranteed to outperform a solo site.
+Intervals resample connected genomic regions; sampling repeats and repeated baseline
+rows are kept together. The comparison varies recruitment, ancestry and noise as
+well as sample size, so it does not isolate LD diversity.
 
 ```bash
-python -m ...figures.render --results <by_arm.tsv> --by-arm <by_arm.tsv> ...
+python scripts/fine-mapping/submit_composition.py \
+  --source /path/to/completed-run --root /path/to/new-composition-run \
+  --account <PBS-allocation> --submit
 ```
 
-built by `experiments/fine_mapping/arms.py`.
+The dependency chain is development simulation → phenotype checks → candidate
+inference → frozen selection → evaluation simulation → phenotype checks → fresh
+arm inference → report. See
+[the experiment design](../../../../../docs/experiments/fine-mapping/SMART_COMPOSITION.md)
+for candidate quotas, selection thresholds and output files. Historical runs retain
+their original executable snapshots; new runs use this single pipeline.
 
 ## The divergence stratum is confounded — read `pap7`'s docstring
 

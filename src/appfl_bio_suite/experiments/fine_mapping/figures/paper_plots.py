@@ -197,7 +197,7 @@ def pap1_recall_grid(df: pd.DataFrame, out: Path) -> Path:
         f"{int((df['h2'] == CENTER_H2).sum()):,} instances at "
         f"$h^2$ = {CENTER_H2:g}. Each panel plots one arm of the star design, "
         "not the whole grid. Bars are 95% locus-clustered bootstrap "
-        "intervals. The two arms share their centre cell, so the rightmost "
+        "intervals. The two arms share their centre cell, so the middle "
         "point of a is the same data as the rightmost point of b for each "
         "$n_{csl}$.",
     )
@@ -377,9 +377,8 @@ def pap2_diversity_panels(
     )
     cs_note = (
         f" Panel c is computed over the {len(cs_detail):,} credible sets of the "
-        "harvested sample rather than the full sweep, because the summary "
-        "results table cannot attribute a causal variant to a particular set; "
-        "its wider intervals are that smaller sample, not worse calibration."
+        "available per-set records, across all heritabilities represented there. "
+        "Coverage intervals resample whole loci."
         if cs_detail is not None and len(cs_detail)
         else ""
     )
@@ -1802,7 +1801,10 @@ def write_figures(
     active = logger or log
     fs.apply_style()
     out_dir = Path(out_dir)
-    df = parse_architecture(pd.DataFrame(results))
+    frame = pd.DataFrame(results)
+    if "causal_mode" in frame:
+        frame = frame.loc[frame.causal_mode.eq("shared")]
+    df = parse_architecture(frame)
     if df.empty:
         active.warning("no results to plot")
         return []

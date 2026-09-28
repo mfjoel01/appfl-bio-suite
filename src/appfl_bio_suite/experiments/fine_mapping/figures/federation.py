@@ -459,119 +459,186 @@ def fed3_uplink_cost(
 # --------------------------------------------------------------------------- #
 # fed4 -- the harmonization tax
 # --------------------------------------------------------------------------- #
+def audit_harmonization(
+    cfg, instances: pd.DataFrame
+) -> tuple[dict[str, int], int, tuple[int, int]]:
+    """Measure reference-allele swaps in the saved inputs and selected causal instances.
+
+    Missing variants, incompatible alleles and incomplete truth are errors, not evidence
+    of zero recoding. The audit describes input coding, not phenotype reconstruction.
+    """
+    from ..fedfm.utils import read_bim
+
+    reference = read_bim(cfg.resolved_path("hapnest_dir") / f"chr{cfg.chromosome}.bim")
+    if reference.snp_id.duplicated().any():
+        raise ValueError("Duplicate reference variants in harmonization audit")
+    reference = reference.set_index("snp_id")
+    counts = {}
+    affected = set()
+    common = None
+    for site in cfg.sites:
+        bim = read_bim(cfg.site_dir(site) / f"{site}_chr{cfg.chromosome}.bim")
+        if bim.empty or bim.snp_id.duplicated().any():
+            raise ValueError(f"{site}: empty or duplicate variants in harmonization audit")
+        bim = bim.set_index("snp_id")
+        variants = set(bim.index)
+        if common is not None and variants != common:
+            raise ValueError(f"{site}: sites do not share the same variant set")
+        common = variants
+        ref = reference.reindex(bim.index)
+        same = (bim.a1 == ref.a1) & (bim.a2 == ref.a2)
+        swapped = (bim.a1 == ref.a2) & (bim.a2 == ref.a1) & ~same
+        if not ((same | swapped) & (bim.bp == ref.bp) & (bim.chrom == ref.chrom)).all():
+            raise ValueError(
+                f"{site}: missing reference variants or incompatible alleles/positions"
+            )
+        counts[site] = int(swapped.sum())
+        affected.update(bim.index[swapped])
+    if not common:
+        raise ValueError("No site variants available for harmonization audit")
+    truth = pd.read_csv(cfg.resolved_path("ground_truth_dir") / "causal_manifest.tsv", sep="\t")
+    selected = instances[KEY_COLS].merge(
+        truth[KEY_COLS + ["causal_snp_ids"]], on=KEY_COLS, how="left", validate="one_to_one"
+    )
+    hits = 0
+    for ids in selected.causal_snp_ids:
+        causal = set(str(ids).split(",")) if pd.notna(ids) else set()
+        if not causal or not causal <= common:
+            raise ValueError("Missing causal variants in harmonization audit")
+        hits += bool(causal & affected)
+    return counts, len(common), (hits, len(selected))
+
+
 def fed4_harmonization(
     flip_counts: dict[str, int],
     n_variants: int,
     out: Path,
     causal_affected: tuple[int, int] | None = None,
 ) -> Path:
-    """How much recoding each site does before its moments can be added to anyone's.
-
-    Theorem 1's first condition wants one ordered, allele-harmonized variant list. The
-    per-site filesets were cut without ``--keep-allele-order``, so PLINK set A1 to each
-    site's own minor allele -- and a site coding a variant the other way round
-    contributes ``2 - x`` where the others contribute ``x``. That sums in silently and
-    negates every off-diagonal the variant touches. There is no error, no warning, and
-    no way to see it downstream, which is why each site recodes against an agreed
-    reference list and the coordinator re-checks rather than trusting the report.
-
-    The tax is not evenly shared, and the reason is the point: the site furthest from
-    the reference in allele frequency recodes the most.
-    """
+    """Show measured recoding requirements, including an explicit all-zero outcome."""
+    if n_variants <= 0 or not flip_counts:
+        raise ValueError("Harmonization requires observed site counts and a positive variant count")
+    if any(v < 0 or v > n_variants for v in flip_counts.values()):
+        raise ValueError("Recoding counts must lie between zero and the variant count")
+    if causal_affected is not None:
+        hit, total = causal_affected
+        if not 0 <= hit <= total:
+            raise ValueError("Affected instances must lie between zero and the instance count")
     fig, (ax1, ax2) = plt.subplots(
         1, 2, figsize=(11.6, 4.5), gridspec_kw={"width_ratios": [1.25, 1]}
     )
     sites = [s for s in SITE_ORDER if s in flip_counts]
+    sites += sorted(set(flip_counts) - set(sites))
     vals = [flip_counts[s] for s in sites]
     fracs = [v / n_variants for v in vals]
-    ax1.bar(
-        range(len(sites)),
-        fracs,
-        0.6,
-        color=[fs.SITE[s] for s in sites],
-        edgecolor=fs.SURFACE,
-        linewidth=1.4,
-    )
-    for i, (v, f) in enumerate(zip(vals, fracs, strict=False)):
+    if any(vals):
+        ax1.bar(
+            range(len(sites)),
+            fracs,
+            0.6,
+            color=[fs.SITE.get(s, fs.STATUS["good"]) for s in sites],
+            edgecolor=fs.SURFACE,
+            linewidth=1.4,
+        )
+        for i, (v, f) in enumerate(zip(vals, fracs, strict=True)):
+            ax1.text(
+                i,
+                f,
+                f"{f * 100:.2f}%\n{v:,} variants",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+                color=fs.INK2,
+            )
+        ax1.set_xticks(range(len(sites)), sites)
+        ax1.set_ylabel("share of variants requiring recoding")
+        ax1.yaxis.set_major_formatter(lambda v, _: f"{v * 100:.0f}%")
+        ax1.set_ylim(0, max(fracs) * 1.42)
+        ax1.grid(axis="x", visible=False)
+    else:
+        ax1.set_axis_off()
         ax1.text(
-            i,
-            f,
-            f"{f * 100:.2f}%\n{v:,} variants",
+            0.5,
+            0.84,
+            "All sites match the reference",
+            transform=ax1.transAxes,
             ha="center",
-            va="bottom",
-            fontsize=9,
+            fontsize=14,
+            fontweight="semibold",
+            color=fs.STATUS["good"],
+        )
+        ax1.text(
+            0.5,
+            0.70,
+            "No variants require allele recoding",
+            transform=ax1.transAxes,
+            ha="center",
+            fontsize=11,
             color=fs.INK2,
         )
-    ax1.set_xticks(range(len(sites)))
-    ax1.set_xticklabels(sites)
-    ax1.set_ylabel("share of the chromosome recoded")
-    ax1.yaxis.set_major_formatter(lambda v, _: f"{v * 100:.0f}%")
-    ax1.set_ylim(0, max(fracs) * 1.42)
-    ax1.grid(axis="x", visible=False)
-    fs.panel_letter(ax1, "a", "Variants recoded per site")
+        for site, y in zip(sites, np.linspace(0.50, 0.14, len(sites)), strict=True):
+            ax1.text(0.12, y, site, transform=ax1.transAxes, fontsize=11)
+            ax1.text(
+                0.88,
+                y,
+                f"0 / {n_variants:,}  (0.00%)",
+                transform=ax1.transAxes,
+                ha="right",
+                fontsize=11,
+                color=fs.STATUS["good"],
+            )
+    fs.panel_letter(ax1, "a", "Allele coding against the reference")
 
-    if causal_affected:
+    if causal_affected is not None and causal_affected[1] > 0:
         hit, total = causal_affected
-        ax2.bar(
-            [0],
-            [1 - hit / total],
-            0.55,
-            bottom=[hit / total],
-            color=fs.STATUS["good"],
-            edgecolor=fs.SURFACE,
-            linewidth=1.4,
-        )
-        ax2.bar(
-            [0],
-            [hit / total],
-            0.55,
-            color=fs.STATUS["critical"],
-            edgecolor=fs.SURFACE,
-            linewidth=1.4,
-        )
-        # Both segments labelled in place. A caption above the panel is what collided
-        # with the title, and direct labels are the better answer anyway.
-        ax2.text(
-            0,
-            hit / total / 2,
-            f"coded inconsistently\n{hit:,} of {total:,}  ({hit / total * 100:.1f}%)",
-            ha="center",
-            va="center",
-            fontsize=9.5,
-            color=fs.SURFACE,
-            fontweight="semibold",
-        )
-        ax2.text(
-            0,
-            hit / total + (1 - hit / total) / 2,
-            "consistent across all sites",
-            ha="center",
-            va="center",
-            fontsize=9.5,
-            color=fs.SURFACE,
-            fontweight="semibold",
-        )
+        bottom = 0.0
+        for count, label, color in (
+            (hit, "require recoding", fs.STATUS["critical"]),
+            (total - hit, "match the reference", fs.STATUS["good"]),
+        ):
+            if not count:
+                continue
+            fraction = count / total
+            ax2.bar(
+                [0],
+                [fraction],
+                0.75,
+                bottom=[bottom],
+                color=color,
+                edgecolor=fs.SURFACE,
+                linewidth=1.4,
+            )
+            ax2.text(
+                0,
+                bottom + fraction / 2,
+                f"{label}\n{count:,} of {total:,} ({fraction * 100:.1f}%)",
+                ha="center",
+                va="center",
+                fontsize=10,
+                color=fs.SURFACE,
+                fontweight="semibold",
+            )
+            bottom += fraction
         ax2.set_xlim(-0.6, 0.6)
-        ax2.set_xticks([0])
-        ax2.set_xticklabels(["causal variants"])
+        ax2.set_xticks([0], [f"{hit:,} of {total:,} instances affected"])
         ax2.set_ylim(0, 1)
         ax2.yaxis.set_major_formatter(lambda v, _: f"{v * 100:.0f}%")
-        ax2.set_ylabel("share")
+        ax2.set_ylabel("share of instances")
         ax2.grid(axis="x", visible=False)
-        ax2.set_xticklabels(["instances whose causal variant(s)\nare affected"])
-        fs.panel_letter(ax2, "b", "Where it reaches the ground truth")
     else:
-        fs.no_data(ax2, "causal-variant impact not supplied")
-
+        fs.no_data(
+            ax2,
+            "causal-variant impact not supplied"
+            if causal_affected is None
+            else "no causal instances to audit",
+        )
+    fs.panel_letter(ax2, "b", "Coding of causal variants")
     fs.footnote(
         fig,
-        f"{n_variants:,} chromosome-1 variants shared by all sites. "
-        "Recoding is done at each site against an agreed reference list, "
-        "before any moment is formed; the coordinator re-checks rather "
-        "than trusting the count. Panel b is the residual defect in the "
-        "realised package -- the phenotype stage was run before the "
-        "reference list existed, so those causal effects carry "
-        "site-dependent signs and attenuate the pooled signal.",
+        f"{n_variants:,} variants shared by all sites. Panel a counts allele swaps required "
+        "to match the reference. Panel b counts instances with at least one causal variant "
+        "requiring recoding at any site. These counts describe input allele coding; "
+        "they do not establish whether phenotype generation was affected.",
     )
     fig.tight_layout()
     return fs.save(fig, out, log)
@@ -665,91 +732,50 @@ def fed5_where_time_goes(
 # --------------------------------------------------------------------------- #
 # fed6 -- what federating actually buys
 # --------------------------------------------------------------------------- #
-# Arms in the order a reader should meet them: each site alone, then the federation
-# matched on sample size, then the whole federation, then the shortcut that avoids it.
-# Three independent draws of ONE design, so they are numbered rather than named after
-# their seeds, and both the order and the labels come from the shared seed list. Leaving
-# the later draws out of this map printed them as raw `federation_50k_seed2` identifiers
-# beside the other arms' prose labels.
-_MATCHED = [_arms.matched_n_arm_name(s) for s in _arms.MATCHED_N_SEEDS]
-ARM_ORDER = ["covenant", "mbzuai", "anl", *_MATCHED, "federation", "ld_borrowed"]
+# Exactly five headline arms. Search candidates and legacy controls stay in tables.
+ARM_ORDER = ["anl", "covenant", "mbzuai", "federation_smart_50k", "federation"]
 ARM_LABEL = {
-    "covenant": "Covenant alone",
-    "mbzuai": "MBZUAI alone",
-    "anl": "ANL alone",
-    **{name: f"All three, n matched {i + 1}" for i, name in enumerate(_MATCHED)},
-    "federation": "All three, full",
-    "ld_borrowed": "Covenant stats + ANL LD",
+    "anl": "ANL\nalone",
+    "covenant": "Covenant\nalone",
+    "mbzuai": "MBZUAI\nalone",
+    "federation_smart_50k": "Smart\nN = 50k",
+    "federation": "Full\nN = 150k",
+    "ld_borrowed": "Covenant statistics, ANL LD",
+    **{
+        _arms.matched_n_arm_name(seed): f"Proportional N matched, draw {i + 1}"
+        for i, seed in enumerate(_arms.MATCHED_N_SEEDS)
+    },
 }
-# Two lines per label is the natural way to write these and it does not survive six
-# arms: rotated, each label's second line juts right into its neighbour's first. One
-# line rotates cleanly at any length, so the labels stay whole rather than abbreviated.
 
 
 def arm_colors(arms: list[str]) -> list[str]:
-    """A site's own colour where the arm IS that site; the federated hue for a
-    federation; a status colour for the shortcut arm, which is a warning and not a
-    series."""
-    out = []
-    for a in arms:
-        if a in fs.SITE:
-            out.append(fs.SITE[a])
-        elif a == "ld_borrowed":
-            out.append(fs.STATUS["critical"])
-        else:
-            out.append(fs.PATH["federated"])
-    return out
+    mapping = {
+        **fs.SITE,
+        "federation_smart_50k": fs.BLUE_RAMP[-1],
+        "federation": fs.PATH["federated"],
+    }
+    return [mapping.get(a, fs.MUTED) for a in arms]
 
 
 def fed6_what_federation_buys(
     by_arm: pd.DataFrame, out: Path, cohort: dict[str, tuple[int, int]] | None = None
 ) -> Path:
-    """The same loci, the same truth, differing only in who took part.
+    """Five paired arms on evaluation loci; selection is performed upstream.
 
-    THIS IS THE ARM THE OTHER FIGURES WERE MISSING. Everything else in this experiment is
-    computed with all three sites participating, which establishes that federating is
-    *correct* without ever showing that it is *worth it*. A reader's first question about
-    a federation is "what would I get on my own?", and until this figure there was no arm
-    that answered it.
-
-    Read the panels left to right as one argument: a site alone reaches some power, the
-    federation reaches more, and panel d says how much of that is simply three times the
-    data rather than three times the diversity -- the ``n matched`` arm is the full
-    federation restricted to one site's worth of people, so the gap between it and a solo
-    site is the cost of splitting a fixed cohort across ancestries, and the gap between
-    it and the full federation is sample size.
-
-    That first gap is deliberately NOT labelled "diversity". SuSiEx fits one effect per
-    ancestry column, so power tracks the size of the largest column rather than the total,
-    and the solo arms win it by being concentrated: Covenant puts 47,500 of its 50,000
-    people into AFR, where the n-matched federation's largest column is 20,339. The
-    controlled comparison is ANL (5 columns, largest 30,000) against the n-matched
-    federation (5 columns, largest 20,339) -- same total analyzed n (50,000), same
-    column count, 13.3 pp apart (95% paired locus-clustered bootstrap 12.3 to 14.3).
-    Calling the bar "diversity" would tell a reader that ancestral
-    diversity costs 30 points of power, which is not what it measures and is a claim this
-    design cannot support.
-
-    Panel b is the other half of that, and it runs the other way. Conditioned on the 4,987
-    instances where BOTH arms returned a set -- necessary, because a weaker arm reports only
-    its easiest finds and would otherwise look sharp by selection -- the n-matched arm's
-    best set is 2.16 variants smaller than ANL's (95% paired locus-clustered bootstrap 1.75
-    to 2.58), at higher purity and higher causal PIP and an essentially equal capture rate.
-    So at fixed n the composition trades discovery for resolution, and panel a alone would
-    tell only the discouraging half. The full federation escapes the trade by not being at
-    fixed n: it leads on power AND on set size.
-
-    The ``ld_borrowed`` arm is a different claim and is coloured as a warning rather than
-    as a series. It is the cheap alternative to federating -- one site's summary
-    statistics against another's LD panel, O(M) instead of O(M^2) -- and it belongs here
-    because "why not just meta-analyse?" is the first objection to this design.
+    Never substitute a proportional matched arm for the selected composition. The
+    caller must provide all five arms; diagnostic candidates cannot become extra bars.
     """
-    available = set(by_arm["arm"])
-    arms = [a for a in ARM_ORDER if a in available] + sorted(available - set(ARM_ORDER))
-    if not arms:
-        fig, ax = plt.subplots(figsize=(7, 4.5))
-        fs.no_data(ax, "results carry no arm column")
-        return fs.save(fig, out, log)
+    fs.apply_style()
+    arms = ARM_ORDER
+    missing = set(arms) - set(by_arm["arm"])
+    if missing:
+        raise ValueError(f"fed6 requires all five headline arms; missing {sorted(missing)}")
+    by_arm = by_arm[by_arm.arm.isin(arms)].copy()
+    if "evaluation_split" in by_arm and not by_arm.evaluation_split.eq("evaluation").all():
+        raise ValueError("fed6 selected-composition comparison must use evaluation loci only")
+    from ..reporting import paired_arm_differences
+
+    differences = paired_arm_differences(by_arm).set_index("arm").loc[arms[:-1]].reset_index()
     colors = arm_colors(arms)
     x = np.arange(len(arms))
 
@@ -796,23 +822,31 @@ def fed6_what_federation_buys(
         fs.panel_letter(ax, letter, title)
         return [r[3] for r in rows]
 
-    ns = _bars(ax_a, "captured", "power   =   P(a causal variant is captured)", "a", "Power")
-    ax_a.set_ylim(0, 1.18)
+    _bars(ax_a, "captured", "power   =   P(a causal variant is captured)", "a", "Power")
+    ax_a.set_ylim(0, 1.06)
+    ax_a.set_yticks(np.linspace(0, 1, 6))
 
-    # (b) resolution
-    data = [d[(d["arm"] == a) & d["captured"]]["best_cs_size"].dropna().values for a in arms]
+    # Compare resolution on identical captures, rather than each arm's own
+    # selectively detected (and differently difficult) subset of instances.
+    keys = ["locus_id", "architecture_id", "replicate"]
+    if "sampling_seed" in d:
+        keys.append("sampling_seed")
+    common = d.groupby(keys)["captured"].all()
+    common_keys = common[common].reset_index()[keys]
+    paired_resolution = d.merge(common_keys, on=keys, validate="many_to_one")
+    data = [
+        paired_resolution.loc[paired_resolution.arm.eq(a), "best_cs_size"].dropna().values
+        for a in arms
+    ]
     fs.boxplot(ax_b, data, positions=x, colors=colors, widths=0.6, points=False)
     ax_b.set_yscale("log")
     ax_b.set_ylim(bottom=0.82)
     ax_b.set_ylabel("credible-set size (variants)\nsmaller = sharper")
-    fs.panel_letter(ax_b, "b", "Resolution")
+    fs.panel_letter(ax_b, "b", "Resolution on common captures")
 
     _bars(ax_c, "pip95", "P(causal variant at PIP > 0.95)", "c", "High-confidence yield")
 
     # Predeclared paired comparisons; no post-hoc selection of the best solo site.
-    from ..reporting import paired_arm_differences
-
-    differences = paired_arm_differences(by_arm)
     if len(differences):
         values = differences.power_difference.to_numpy()
         errors = np.vstack([values - differences.ci_low, differences.ci_high - values])
@@ -820,7 +854,9 @@ def fed6_what_federation_buys(
         ax_d.errorbar(values, y, xerr=errors, fmt="o", color=fs.PATH["federated"], capsize=3)
         ax_d.axvline(0, color=fs.INK2, lw=1.2)
         ax_d.set_yticks(y)
-        ax_d.set_yticklabels([ARM_LABEL.get(a, a) for a in differences.arm], fontsize=7)
+        ax_d.set_yticklabels(
+            [ARM_LABEL.get(a, a).replace("\n", " ") for a in differences.arm], fontsize=7
+        )
         ax_d.xaxis.set_major_formatter(lambda v, _: f"{v * 100:+.0f}")
         ax_d.set_xlabel("full federation minus comparison (pp)")
         ax_d.invert_yaxis()
@@ -829,7 +865,7 @@ def fed6_what_federation_buys(
     else:
         fs.no_data(ax_d, "paired federation comparisons unavailable")
 
-    rotated = len(arms) > 4
+    rotated = False
     for ax in (ax_a, ax_b, ax_c):
         ax.set_xticks(x)
         # Six arms of two-line labels do not fit a quarter of the canvas horizontally --
@@ -846,70 +882,44 @@ def fed6_what_federation_buys(
         for tick, a in zip(ax.get_xticklabels(), arms, strict=False):
             if a == "ld_borrowed":
                 tick.set_color(fs.STATUS["critical"])
-    # Cohort size and column count per bar, but only while the tick labels stand upright.
-    # Two annotation rows below the axis were tuned for four arms at 34 and 46 points; a
-    # label rotated 30 degrees drops roughly half its own length, so "Covenant stats +
-    # ANL LD" reaches about 50 points and lands on top of both rows. Past four arms the
-    # same numbers go in the footnote, which has room for them, rather than being stacked
-    # into a gap that is not there.
-    if cohort and not rotated:
-        fs.count_labels(ax_a, x, [cohort.get(a, (0, 0))[0] for a in arms], pad_pt=34, fmt="n={:,}")
-        ax_a.set_xlabel("participating cohort", labelpad=30)
-        for xi, a in enumerate(arms):
-            k = cohort.get(a, (0, 0))[1]
-            if k:
-                ax_a.annotate(
-                    f"{k} col",
-                    xy=(xi, 0),
-                    xycoords=("data", "axes fraction"),
-                    xytext=(0, -46),
-                    textcoords="offset points",
-                    ha="center",
-                    va="top",
-                    fontsize=7.5,
-                    color=fs.MUTED,
-                    annotation_clip=False,
-                )
-    elif cohort:
-        ax_a.set_xlabel("participating cohort", labelpad=10)
+    cohort_text = ""
+    if cohort:
+        cohort_text = (
+            " Cohorts: "
+            + "; ".join(
+                f"{ARM_LABEL[a].split(chr(10))[0]} N={cohort[a][0]:,}" for a in arms if a in cohort
+            )
+            + "."
+        )
 
     fig.suptitle(
-        "What federating buys, on the same loci and the same truth",
+        "Fine-mapping performance on held-out loci",
         x=0.005,
         ha="left",
         fontsize=13,
         fontweight="semibold",
     )
+    composition = ""
+    if "smart_composition" in by_arm:
+        labels = (
+            by_arm.loc[by_arm.arm.eq("federation_smart_50k"), "smart_composition"].dropna().unique()
+        )
+        if len(labels) == 1:
+            composition = f" Selected composition: {labels[0]}."
     fs.footnote(
         fig,
-        f"{len(d):,} instances across {len(arms)} arm(s)"
-        + (
-            f", {ns[0]:,} each. "
-            if len(set(ns)) == 1
-            else "; "
-            + ", ".join(f"{ARM_LABEL.get(a, a)}={n:,}" for a, n in zip(arms, ns, strict=False))
-            + ". "
-        )
-        + (
-            "Participating cohort: "
-            + "; ".join(
-                f"{ARM_LABEL.get(a, a)} n={cohort[a][0]:,}"
-                + (f", {cohort[a][1]} col" if cohort[a][1] else "")
-                for a in arms
-                if a in cohort
-            )
-            + ". "
-            if cohort and rotated
-            else ""
-        )
-        + "Every arm is the same estimator over the same ground truth, "
-        "differing only in which cohorts took part. Error bars are 95% "
-        "locus-clustered bootstrap intervals. The `n matched` arms are the "
-        "full federation "
-        "restricted to one site's worth of people, stratified within site "
-        "and ancestry, so panel d can separate splitting a fixed cohort from adding to it. "
-        "The borrowed-LD arm is the cheap alternative to federating and is "
-        "drawn as a warning, not a series.",
+        f"{d.locus_id.nunique():,} evaluation loci; "
+        f"{len(d[['locus_id', 'architecture_id', 'replicate']].drop_duplicates()):,} "
+        "distinct simulation instances. Sampling repeats are combined into one bar; "
+        "Solo/full results are reused for pairing. "
+        f"Error bars: 95% {'region' if 'region' in d else 'locus'}-clustered "
+        "bootstrap intervals. "
+        "Composition selected on separate development regions; the same evaluation "
+        "instances are used for every arm. Sample size, composition and site noise "
+        "all affect these comparisons; this does not isolate an LD-diversity effect. "
+        f"Resolution uses the {len(common_keys):,} instance/draw pairs captured by all five arms."
+        + composition
+        + cohort_text,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     return fs.save(fig, out, log)
@@ -947,6 +957,15 @@ def write_figures(
     out_dir = Path(out_dir)
     cen = pd.DataFrame(centralized)
     fed = pd.DataFrame(federated) if federated is not None else None
+    if "causal_mode" in cen:
+        cen = cen.loc[cen.causal_mode.eq("shared")].copy()
+    if cen.empty:
+        active.info("No supported shared-causal results to plot")
+        return []
+    if fed is not None and "causal_mode" in fed:
+        fed = fed.loc[fed.causal_mode.eq("shared")].copy()
+    if by_arm is not None and "causal_mode" in by_arm:
+        by_arm = by_arm.loc[by_arm.causal_mode.eq("shared")].copy()
     composition = load_composition(Path(data_root) if data_root else None)
 
     loci = None

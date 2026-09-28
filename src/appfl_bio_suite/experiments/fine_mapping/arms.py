@@ -60,10 +60,19 @@ class Arm:
     ld_from: str | None = None  # borrow LD from this site instead of using own
     label: str = ""
     seed: int = 20260601
+    ancestry_counts: tuple[tuple[str, int], ...] = ()
+    site_priority: tuple[str, ...] = ()
+    site_counts: tuple[tuple[str, tuple[tuple[str, int], ...]], ...] = ()
 
     @property
     def is_solo(self) -> bool:
-        return len(self.sites) == 1 and self.fraction == 1.0 and self.ld_from is None
+        return (
+            len(self.sites) == 1
+            and self.fraction == 1.0
+            and self.ld_from is None
+            and not self.ancestry_counts
+            and not self.site_counts
+        )
 
 
 # The published set. `federation` is the arm the existing full-scale run already covers,
@@ -105,7 +114,114 @@ def matched_n_arms() -> tuple[Arm, ...]:
 # config construction
 # --------------------------------------------------------------------------- #
 def _load(config_path: Path) -> dict:
-    return yaml.safe_load(Path(config_path).read_text())
+    config_path = Path(config_path).resolve()
+    raw = yaml.safe_load(config_path.read_text())
+    # Match load_config's <repo>/config/<name>.yaml convention before relocating
+    # the config into an arm directory; otherwise relative input paths change meaning.
+    for key, value in raw.get("paths", {}).items():
+        if isinstance(value, str) and not Path(value).is_absolute():
+            raw["paths"][key] = str((config_path.parent.parent / value).resolve())
+    return raw
+
+
+def build_composed_site_dir(
+    base_cfg: dict,
+    out_root: Path,
+    ancestry_counts: dict[str, int],
+    seed: int = 20260601,
+    site_priority: tuple[str, ...] = (),
+    site_counts: dict[str, dict[str, int]] | None = None,
+) -> dict[str, dict[str, int]]:
+    """Sample exact ancestry totals, preserving individual IDs and stored phenotypes.
+
+    With no priority, allocate each ancestry proportionally to site capacity using
+    largest remainders. Otherwise fill sites in the declared order. Selection within
+    each site/ancestry is random and independent of phenotypes and causal truth.
+    Explicit ``site_counts`` instead enforce the supplied cell quotas and use a
+    stable random order per cell, shared across candidates with the same seed.
+    """
+    minimum = int(base_cfg.get("fine_mapping", {}).get("min_gwas_n", 0))
+    if not ancestry_counts or any(
+        not isinstance(n, int) or isinstance(n, bool) or n <= 0 or n < minimum
+        for n in ancestry_counts.values()
+    ):
+        raise ValueError("Every requested ancestry must have a positive, analyzable integer N")
+    sites = sorted(base_cfg["sites"])
+    if site_counts is not None:
+        if site_priority or set(site_counts) - set(sites):
+            raise ValueError("Explicit quotas require known sites and no priority policy")
+        pooled = {}
+        for counts in site_counts.values():
+            for pop, n in counts.items():
+                if not isinstance(n, int) or isinstance(n, bool) or n <= 0:
+                    raise ValueError("Site quotas must be positive integer counts")
+                pooled[pop] = pooled.get(pop, 0) + n
+        if pooled != ancestry_counts:
+            raise ValueError("Site quotas must sum to the requested ancestry totals")
+    if site_priority and (len(site_priority) != len(sites) or set(site_priority) != set(sites)):
+        raise ValueError("site_priority must name every participating site exactly once")
+    processed = Path(base_cfg["paths"]["processed_dir"])
+    manifests = {
+        s: pd.read_csv(
+            processed / s / f"{s}_manifest.tsv", sep="\t", dtype={"FID": str, "IID": str}
+        )
+        for s in sites
+    }
+    identities = pd.concat([m[["FID", "IID"]] for m in manifests.values()])
+    if identities.duplicated().any():
+        raise ValueError("Duplicate individuals in source manifests")
+    allocations = {}
+    for pop, total in sorted(ancestry_counts.items()):
+        capacity = np.array([int(m.superpopulation.eq(pop).sum()) for m in manifests.values()])
+        if total > capacity.sum():
+            raise ValueError(f"{pop}: requested {total}, available {capacity.sum()}")
+        if site_counts is not None:
+            counts = np.array([site_counts.get(s, {}).get(pop, 0) for s in sites])
+            if (counts > capacity).any():
+                raise ValueError(f"{pop}: site quota exceeds available participants")
+        elif site_priority:
+            counts = np.zeros(len(sites), dtype=int)
+            remaining = total
+            for site in site_priority:
+                i = sites.index(site)
+                counts[i] = min(remaining, capacity[i])
+                remaining -= counts[i]
+        else:
+            exact = capacity * total / capacity.sum()
+            counts = np.floor(exact).astype(int)
+            order = np.argsort(-(exact - counts), kind="stable")
+            counts[order[: total - int(counts.sum())]] += 1
+        allocations[pop] = counts
+    rng = np.random.default_rng(seed)
+    compositions = {}
+    for i, site in enumerate(sites):
+        pieces = []
+        for pop, counts in allocations.items():
+            group = manifests[site].loc[manifests[site].superpopulation.eq(pop)]
+            if counts[i]:
+                if site_counts is not None:
+                    from .fedfm.utils import derive_seed
+
+                    # Common random order within each site/ancestry keeps small quota
+                    # changes nested, even when a candidate adds another ancestry.
+                    cell_rng = np.random.default_rng(derive_seed(seed, "composition", site, pop))
+                else:
+                    cell_rng = rng
+                pieces.append(group.iloc[cell_rng.permutation(len(group))[: counts[i]]])
+        if not pieces:
+            continue
+        sub = pd.concat(pieces, ignore_index=True)
+        destination = Path(out_root) / site
+        destination.mkdir(parents=True, exist_ok=True)
+        for source in (processed / site).iterdir():
+            if source.name == f"{site}_manifest.tsv":
+                continue
+            link = destination / source.name
+            if not link.exists():
+                link.symlink_to(source.resolve())
+        sub.to_csv(destination / f"{site}_manifest.tsv", sep="\t", index=False)
+        compositions[site] = {p: int(n) for p, n in sub.superpopulation.value_counts().items()}
+    return compositions
 
 
 def build_downsampled_site_dir(
@@ -184,7 +300,7 @@ def build_configs(
     between any two arm configs is exactly the participation being tested.
     """
     base = _load(base_config)
-    out_dir = Path(out_dir)
+    out_dir = Path(out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     written: dict[str, Path] = {}
 
@@ -203,18 +319,38 @@ def build_configs(
             log.warning("arm %s wants unknown site(s) %s; skipping", arm.name, missing)
             continue
 
-        if arm.fraction != 1.0:
+        if arm.fraction != 1.0 or arm.ancestry_counts or arm.site_counts:
             shadow = out_dir / f"{arm.name}_processed"
-            log.info("arm %s: building shadow cohort at %.0f%%", arm.name, arm.fraction * 100)
-            comps = build_downsampled_site_dir(base, shadow, arm.fraction, seed=arm.seed)
+            scoped = {**base, "sites": {s: base["sites"][s] for s in arm.sites}}
+            totals = {}
+            if arm.ancestry_counts or arm.site_counts:
+                quotas = {s: dict(counts) for s, counts in arm.site_counts}
+                totals = dict(arm.ancestry_counts)
+                if not totals:
+                    for counts in quotas.values():
+                        for pop, n in counts.items():
+                            totals[pop] = totals.get(pop, 0) + n
+                comps = build_composed_site_dir(
+                    scoped, shadow, totals, arm.seed, arm.site_priority, quotas or None
+                )
+            else:
+                comps = build_downsampled_site_dir(scoped, shadow, arm.fraction, seed=arm.seed)
             cfg["arm"] = {
                 "name": arm.name,
                 "sampling_seed": arm.seed,
                 "estimand": "composition_and_participation",
+                "ancestry_counts": totals,
+                "site_priority": list(arm.site_priority),
+                "site_counts": {s: dict(counts) for s, counts in arm.site_counts},
             }
             cfg["paths"]["processed_dir"] = str(shadow)
             cfg["sites"] = {
-                s: {**base["sites"][s], "n": sum(comps[s].values()), "composition": comps[s]}
+                s: {
+                    **base["sites"][s],
+                    "n": sum(comps[s].values()),
+                    "composition": comps[s],
+                    "dominant": max(comps[s], key=comps[s].get),
+                }
                 for s in arm.sites
                 if s in comps
             }
