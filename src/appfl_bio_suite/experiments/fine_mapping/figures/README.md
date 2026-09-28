@@ -146,3 +146,14 @@ fig2_cs_size.png        -> pap5_resolution.png     (panel b)
 fig3_causal_pip.png     -> pap5_resolution.png     (panel a)
 fig4_stratum_power.png  -> pap7_ld_divergence.png  (panel a)
 ```
+
+## Argonne colors and Helvetica
+
+Scientific plotting entry points share `core/plot_style.py`: fine-mapping EDA,
+paper and federation panels, QC images, and GWAS Manhattan/QQ plots. Palette
+values come from the packaged `core/plot_assets/argonne-palette.css`.
+
+Install licensed Helvetica fonts or set `BIOSIM_FONT_PATH` to a font directory
+or file. `BIOSIM_REQUIRE_HELVETICA=1` rejects rendering when it is unavailable.
+Otherwise previews warn and fall back to DejaVu Sans. Font binaries are not
+included in this repository. These changes affect rendering only.

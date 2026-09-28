@@ -1,34 +1,4 @@
-"""The one visual system every fine-mapping figure is drawn in. COORDINATOR-SIDE.
-
-WHY A SHARED MODULE RATHER THAN RCPARAMS PER FILE
---------------------------------------------------
-These figures are read side by side -- a paper-analogue panel next to a federation
-cost curve next to an EDA histogram -- so a colour that means ``AFR`` in one must not
-mean ``covenant`` in the next. Every palette below is assigned to *one* entity and
-imported rather than retyped, which is the only mechanism that actually holds across
-four modules and thirty figures.
-
-THE PALETTES ARE VALIDATED, NOT CHOSEN BY EYE
-----------------------------------------------
-Each set below was run through the data-viz palette validator (lightness band, chroma
-floor, colour-vision-deficiency separation, normal-vision separation, surface contrast).
-The recorded results, on the light surface these figures render on:
-
-    ANCESTRY (6)   adjacent-pair gates PASS  (worst CVD dE 9.1, normal-vision dE 19.6)
-                   ALL-PAIR gates FAIL       (green<->orange dE 3.2 protan)
-    SITE (3)       all-pair gates PASS       (worst CVD dE 15.3, normal-vision dE 20.8)
-    PATH (2)       all-pair gates PASS       (worst CVD dE 24.7, normal-vision dE 33.6)
-    ordinal ramps  monotone lightness, adjacent dL >= 0.06, light end clears 2:1
-
-The ancestry all-pair failure is load-bearing and is why :func:`ancestry_colors` is
-documented for bars and stacks only. Six ancestries in one scatter cannot be told apart
-by colour; the SuSiEx paper hits the same wall and solves it the same way, by faceting
-one ancestry pair per panel (its Figure 4f/4g). Do that, do not add a seventh hue.
-
-Three slots -- aqua, yellow, magenta -- sit below 3:1 against the surface. The relief
-rule applies: anything drawn in them carries a visible direct label or appears in a
-table, never colour alone. :func:`direct_label` is the tool for that.
-"""
+"""Shared Argonne visual system for every fine-mapping figure."""
 
 from __future__ import annotations
 
@@ -74,74 +44,38 @@ __all__ = [
     "spread_labels",
 ]
 
-# --------------------------------------------------------------------------- #
-# Chrome
-# --------------------------------------------------------------------------- #
-SURFACE = "#fcfcfb"
-INK = "#0b0b0b"  # primary ink: titles, medians, values
-INK2 = "#52514e"  # secondary ink: annotations
-MUTED = "#898781"  # axis labels, tick marks
-GRID = "#e1e0d9"  # hairline gridlines
-AXIS = "#c3c2b7"  # baselines and spines
+from appfl_bio_suite.core import plot_style as brand
 
-# --------------------------------------------------------------------------- #
-# Categorical: ancestry. FIXED ORDER, never cycled, never re-sorted by value.
-#
-# The order is the one the config declares and the results table's min_p_* columns
-# follow, so a legend here and a column there name the same thing in the same place.
-# BARS AND STACKS ONLY -- see the module docstring on the all-pairs failure.
-# --------------------------------------------------------------------------- #
-ANCESTRY = {
-    "EUR": "#2a78d6",  # blue
-    "AFR": "#eb6834",  # orange
-    "AMR": "#1baf7a",  # aqua      (contrast 2.74 -- direct-label it)
-    "EAS": "#eda100",  # yellow    (contrast 2.11 -- direct-label it)
-    "CSA": "#e87ba4",  # magenta   (contrast 2.62 -- direct-label it)
-    "MID": "#008300",  # green
-}
-
-# Categorical: site. Deliberately a different family from ancestry, because a stacked
-# bar of sites within an ancestry column puts both dimensions on one chart.
-SITE = {
-    "anl": "#4a3aa7",  # violet
-    "covenant": "#e34948",  # red
-    "mbzuai": "#eda100",  # yellow (direct-label it)
-}
-
-# Categorical: which analysis produced the number. Two slots, maximum contrast.
+SURFACE = brand.COLORS["anl-white"]
+INK = brand.COLORS["anl-ink"]
+INK2 = brand.COLORS["anl-gray-700"]
+MUTED = brand.COLORS["anl-gray-500"]
+GRID = AXIS = brand.COLORS["anl-gray-300"]
+ANCESTRY = brand.ANCESTRY
+SITE = dict(zip(("anl", "covenant", "mbzuai"), brand.CATEGORICAL[:3], strict=True))
 PATH = {
-    "centralized": "#2a78d6",
-    "federated": "#eb6834",
-    "single-ancestry": "#898781",  # the weaker comparator reads as recessive on purpose
+    "centralized": brand.COLORS["anl-blue"],
+    "federated": brand.COLORS["anl-blue-brand"],
+    "single-ancestry": MUTED,
 }
-
-# Reserved. Never reused as "series 4"; always shipped with a label, never colour alone.
 STATUS = {
-    "good": "#0ca30c",
-    "warning": "#fab219",
-    "serious": "#ec835a",
-    "critical": "#d03b3b",
+    "good": brand.COLORS["anl-green-deep"],
+    "warning": brand.COLORS["anl-green"],
+    "serious": brand.COLORS["anl-red"],
+    "critical": brand.COLORS["anl-red"],
 }
-
-# --------------------------------------------------------------------------- #
-# Sequential. One hue, light -> dark, for any ORDERED factor: h2, rg, ncsl, stratum.
-#
-# Blue is the default and carries whichever ordered factor is the colour in a given
-# chart. Orange is the second, used only when two ordered factors are coloured at once.
-# Both are ordinal-validated: the light end clears 2:1 against the surface, so a step
-# never dissolves into the background the way a true sequential ramp's 100 step may.
-# --------------------------------------------------------------------------- #
-BLUE_RAMP = ["#86b6ef", "#3987e5", "#1c5cab", "#0d366b"]
-ORANGE_RAMP = ["#f4a07a", "#eb6834", "#a8410f"]
-VIOLET_RAMP = ["#a79fe8", "#6a5bc9", "#413094"]
-
-# Diverging, for signed quantities only (a PIP difference, a beta difference). Two
-# hues with a NEUTRAL grey midpoint -- never a hue at zero, or zero reads as a value.
-DIVERGING = ("#1c5cab", "#f0efec", "#c0392b")
+BLUE_RAMP = brand.SEQUENTIAL[3:]  # visible lines/markers on white; pale steps are heatmap-only
+RED_RAMP = [brand.COLORS[f"div-neg-{i}"] for i in range(1, 4)]
+GREEN_RAMP = [brand.COLORS[k] for k in ("anl-green-light", "anl-green", "anl-green-deep")]
+# Compatibility names for callers using two or three ordinal factors.
+ORANGE_RAMP = RED_RAMP
+VIOLET_RAMP = GREEN_RAMP
+DIVERGING = brand.DIVERGING
 
 
 def apply_style() -> None:
     """Install the shared rcParams. Idempotent; call once per process."""
+    brand.apply_style()
     plt.rcParams.update(
         {
             "figure.dpi": 120,
@@ -151,7 +85,6 @@ def apply_style() -> None:
             "figure.facecolor": SURFACE,
             "axes.facecolor": SURFACE,
             "font.family": "sans-serif",
-            "font.sans-serif": ["DejaVu Sans"],
             "font.size": 10,
             "axes.titlesize": 11,
             "axes.titleweight": "semibold",
@@ -193,8 +126,8 @@ def ancestry_colors(names) -> list[str]:
 def ordinal_colors(n: int, ramp: list[str] | None = None) -> list[str]:
     """``n`` steps of an ordinal ramp, light -> dark, evenly spread over the ramp.
 
-    For ``n`` at or below the ramp length this returns the ramp's own validated steps
-    rather than interpolating, so the published contrast numbers still hold.
+    For ``n`` at or below the ramp length this returns the ramp's own palette steps
+    rather than interpolating.
     """
     ramp = ramp or BLUE_RAMP
     if n <= 0:
@@ -205,7 +138,7 @@ def ordinal_colors(n: int, ramp: list[str] | None = None) -> list[str]:
         idx = np.linspace(0, len(ramp) - 1, n).round().astype(int)
         return [ramp[i] for i in idx]
     # More steps than the ramp has: interpolate in RGB between its ends. Rare, and the
-    # ordinal contrast guarantee degrades to the ramp's endpoints, which still hold.
+    # endpoints remain the supplied Argonne colors.
     import matplotlib.colors as mcolors
 
     cmap = mcolors.LinearSegmentedColormap.from_list("ramp", ramp)
