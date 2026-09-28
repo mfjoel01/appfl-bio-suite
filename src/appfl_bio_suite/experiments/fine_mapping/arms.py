@@ -62,6 +62,7 @@ class Arm:
     seed: int = 20260601
     ancestry_counts: tuple[tuple[str, int], ...] = ()
     site_priority: tuple[str, ...] = ()
+    site_counts: tuple[tuple[str, tuple[tuple[str, int], ...]], ...] = ()
 
     @property
     def is_solo(self) -> bool:
@@ -70,6 +71,7 @@ class Arm:
             and self.fraction == 1.0
             and self.ld_from is None
             and not self.ancestry_counts
+            and not self.site_counts
         )
 
 
@@ -128,12 +130,15 @@ def build_composed_site_dir(
     ancestry_counts: dict[str, int],
     seed: int = 20260601,
     site_priority: tuple[str, ...] = (),
+    site_counts: dict[str, dict[str, int]] | None = None,
 ) -> dict[str, dict[str, int]]:
     """Sample exact ancestry totals, preserving individual IDs and stored phenotypes.
 
     With no priority, allocate each ancestry proportionally to site capacity using
     largest remainders. Otherwise fill sites in the declared order. Selection within
     each site/ancestry is random and independent of phenotypes and causal truth.
+    Explicit ``site_counts`` instead enforce the supplied cell quotas and use a
+    stable random order per cell, shared across candidates with the same seed.
     """
     minimum = int(base_cfg.get("fine_mapping", {}).get("min_gwas_n", 0))
     if not ancestry_counts or any(
@@ -142,6 +147,17 @@ def build_composed_site_dir(
     ):
         raise ValueError("Every requested ancestry must have a positive, analyzable integer N")
     sites = sorted(base_cfg["sites"])
+    if site_counts is not None:
+        if site_priority or set(site_counts) - set(sites):
+            raise ValueError("Explicit quotas require known sites and no priority policy")
+        pooled = {}
+        for counts in site_counts.values():
+            for pop, n in counts.items():
+                if not isinstance(n, int) or isinstance(n, bool) or n <= 0:
+                    raise ValueError("Site quotas must be positive integer counts")
+                pooled[pop] = pooled.get(pop, 0) + n
+        if pooled != ancestry_counts:
+            raise ValueError("Site quotas must sum to the requested ancestry totals")
     if site_priority and (len(site_priority) != len(sites) or set(site_priority) != set(sites)):
         raise ValueError("site_priority must name every participating site exactly once")
     processed = Path(base_cfg["paths"]["processed_dir"])
@@ -159,7 +175,11 @@ def build_composed_site_dir(
         capacity = np.array([int(m.superpopulation.eq(pop).sum()) for m in manifests.values()])
         if total > capacity.sum():
             raise ValueError(f"{pop}: requested {total}, available {capacity.sum()}")
-        if site_priority:
+        if site_counts is not None:
+            counts = np.array([site_counts.get(s, {}).get(pop, 0) for s in sites])
+            if (counts > capacity).any():
+                raise ValueError(f"{pop}: site quota exceeds available participants")
+        elif site_priority:
             counts = np.zeros(len(sites), dtype=int)
             remaining = total
             for site in site_priority:
@@ -179,7 +199,15 @@ def build_composed_site_dir(
         for pop, counts in allocations.items():
             group = manifests[site].loc[manifests[site].superpopulation.eq(pop)]
             if counts[i]:
-                pieces.append(group.iloc[rng.permutation(len(group))[: counts[i]]])
+                if site_counts is not None:
+                    from .fedfm.utils import derive_seed
+
+                    # Common random order within each site/ancestry keeps small quota
+                    # changes nested, even when a candidate adds another ancestry.
+                    cell_rng = np.random.default_rng(derive_seed(seed, "composition", site, pop))
+                else:
+                    cell_rng = rng
+                pieces.append(group.iloc[cell_rng.permutation(len(group))[: counts[i]]])
         if not pieces:
             continue
         sub = pd.concat(pieces, ignore_index=True)
@@ -291,12 +319,19 @@ def build_configs(
             log.warning("arm %s wants unknown site(s) %s; skipping", arm.name, missing)
             continue
 
-        if arm.fraction != 1.0 or arm.ancestry_counts:
+        if arm.fraction != 1.0 or arm.ancestry_counts or arm.site_counts:
             shadow = out_dir / f"{arm.name}_processed"
             scoped = {**base, "sites": {s: base["sites"][s] for s in arm.sites}}
-            if arm.ancestry_counts:
+            totals = {}
+            if arm.ancestry_counts or arm.site_counts:
+                quotas = {s: dict(counts) for s, counts in arm.site_counts}
+                totals = dict(arm.ancestry_counts)
+                if not totals:
+                    for counts in quotas.values():
+                        for pop, n in counts.items():
+                            totals[pop] = totals.get(pop, 0) + n
                 comps = build_composed_site_dir(
-                    scoped, shadow, dict(arm.ancestry_counts), arm.seed, arm.site_priority
+                    scoped, shadow, totals, arm.seed, arm.site_priority, quotas or None
                 )
             else:
                 comps = build_downsampled_site_dir(scoped, shadow, arm.fraction, seed=arm.seed)
@@ -304,8 +339,9 @@ def build_configs(
                 "name": arm.name,
                 "sampling_seed": arm.seed,
                 "estimand": "composition_and_participation",
-                "ancestry_counts": dict(arm.ancestry_counts),
+                "ancestry_counts": totals,
                 "site_priority": list(arm.site_priority),
+                "site_counts": {s: dict(counts) for s, counts in arm.site_counts},
             }
             cfg["paths"]["processed_dir"] = str(shadow)
             cfg["sites"] = {

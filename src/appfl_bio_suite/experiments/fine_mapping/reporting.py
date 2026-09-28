@@ -15,10 +15,13 @@ KEY = ["locus_id", "architecture_id", "replicate"]
 def clustered_ratio(
     frame: pd.DataFrame, numerator: str, denominator: str, seed: int = 20260914, draws: int = 2000
 ) -> tuple[float, float, float]:
-    """Bootstrap whole loci, preserving all replicates/sets within each draw."""
+    """Bootstrap regions when supplied, otherwise loci, preserving all repeats."""
     if "locus_id" not in frame:
         raise ValueError("Locus identifiers are required for scientific uncertainty intervals")
-    totals = frame.groupby("locus_id")[[numerator, denominator]].sum()
+    cluster = "region" if "region" in frame else "locus_id"
+    if frame[cluster].isna().any():
+        raise ValueError("Missing bootstrap cluster identifiers")
+    totals = frame.groupby(cluster)[[numerator, denominator]].sum()
     n = len(totals)
     den = totals[denominator].sum()
     point = float(totals[numerator].sum() / den) if den else np.nan
@@ -245,6 +248,9 @@ def paired_arm_differences(frame: pd.DataFrame, reference: str = "federation") -
             .reset_index()
         )
         d["one"] = 1
+        if "region" in frame:
+            regions = frame[["locus_id", "region"]].drop_duplicates()
+            d = d.merge(regions, on="locus_id", validate="many_to_one")
         point, lo, hi = clustered_ratio(d, "difference", "one")
         rows.append(
             {
@@ -255,7 +261,11 @@ def paired_arm_differences(frame: pd.DataFrame, reference: str = "federation") -
                 "ci_high": hi,
                 "n_loci": d.locus_id.nunique(),
                 "n_instances": len(d),
-                "uncertainty": "paired_locus_cluster_bootstrap",
+                "uncertainty": (
+                    "paired_region_cluster_bootstrap"
+                    if "region" in frame
+                    else "paired_locus_cluster_bootstrap"
+                ),
             }
         )
     return pd.DataFrame(rows)

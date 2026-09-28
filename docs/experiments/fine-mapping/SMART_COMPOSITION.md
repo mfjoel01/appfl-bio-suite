@@ -88,3 +88,63 @@ unharmonized package. Both rerun and composition plotting now measure the counts
 from saved allele files and the selected instances' causal manifest. Zero counts
 are displayed explicitly, and the caption describes allele coding without
 inferring a phenotype defect. Missing or incompatible inputs fail the audit.
+
+## Refined search with fresh validation draws
+
+The second search uses 20 predeclared candidates at exactly N=50,000:
+
+- All three complete solo cohorts are eligible fallbacks; ties favor a solo cohort.
+- Retain most of Covenant while substituting 500, 1,000 or 2,500 AFR participants
+  for ANL EUR participants, preserving Covenant's CSA participants.
+- Test CSA/EUR/AFR substitutions, additional CSA from ANL or MBZUAI, and 1,000-person
+  AMR or MID additions.
+- Test same-ancestry substitutions from different sites, a three-site candidate,
+  and the previous 45k AFR / 5k EUR winner.
+
+Every mixed candidate specifies exact site-by-ancestry quotas. Sampling uses a
+common random ordering within each site/ancestry cell, so nearby quota changes
+retain the same participants where possible. The three sampling seeds are
+20260928–20260930. Every included ancestry has at least 1,000 participants,
+matching the inference threshold.
+
+Development uses five replicates on the original 25 development loci. All causal
+variants, effect sizes and phenotype noise are freshly generated, with master
+seed 2026092801. The candidate with greatest unconditional power is selected from
+those with aggregate credible-set coverage of at least 93% and PIP > 0.95 FDR of
+at most 5%. These are predeclared development screening thresholds; they do not
+establish calibration in every architecture. Coverage and FDR are retained in the
+ranking table, and the final report includes results by h², rg and causal count.
+If no candidate qualifies, selection stops with an explicit failure.
+
+After selection is frozen, evaluation generates ten fresh replicates on the 54
+evaluation loci with master seed 2026092802. All three solo baselines, the selected
+cohort and the full 150k cohort use these same new draws and the same inference
+implementation. None reuses the earlier run's inference results. Both phases must
+pass complete phenotype reconstruction, structure, h² and effect-correlation
+checks before inference begins. Divergent mode is disabled in every configuration.
+
+The primary comparison remains unconditional causal-capture power. The report
+records whether smart composition exceeds every solo site and remains below the
+full cohort, both by point estimate and by paired 95% intervals. It also records
+whether the selected arm meets the calibration screen. A solo fallback or an
+unsuccessful mixed cohort is reported as such. Intervals resample connected genomic
+regions, keeping overlapping loci and sampling repeats together.
+
+This is fresh simulation validation on a previously inspected genotype/locus
+panel. It does not establish performance on independent loci or real cohorts.
+The full-cohort arm uses the common centralized inference driver, as in the first
+composition benchmark; this run is not another distributed-protocol parity test.
+
+```bash
+python scripts/fine-mapping/submit_refined_composition.py \
+  --source <corrected-source-run> --root <new-run-directory> \
+  --account <PBS-allocation> --submit
+```
+
+The dependency chain is development simulation → phenotype checks → candidate
+inference → frozen selection → evaluation simulation → phenotype checks → fresh
+arm inference → report. The launcher freezes source, tools, configuration,
+allocations and package versions. It defaults to three concurrent array jobs.
+The new run writes `development_ranking.tsv`, `selection.json`,
+`evaluation_summary.tsv`, `evaluation_by_architecture.tsv`, paired comparisons,
+the five-arm figure, `evaluation.accepted.json` and a readable `RESULTS.md`.
