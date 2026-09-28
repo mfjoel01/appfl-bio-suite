@@ -4,8 +4,9 @@
 #     scripts/build_site.sh [OUTDIR]          # default: _site
 #
 # The pages in website/ are hand-written. The network-map preview under OUTDIR/map is
-# exported here, from website/demo-federation.yaml -- twenty invented institutions,
-# never local/federation.yaml, which names real partners and carries their contacts.
+# exported here, from website/federation.yaml and website/partners.json -- the real
+# partners, reduced to institution, location and stage -- never local/federation.yaml,
+# which carries partner contacts and endpoint identifiers.
 # check_site_preview.py enforces that rather than trusting this comment.
 #
 # .github/workflows/pages.yml runs this script, so previewing locally exercises the same
@@ -35,10 +36,13 @@ rm -rf "$out"
 mkdir -p "$out"
 
 cp -R website/. "$out"/
+# The map inputs are published through the export, reduced; not as raw files.
+rm -f "$out"/federation.yaml "$out"/partners.json
 cp src/appfl_bio_suite/core/watch_assets/suite-logo.png "$out"/assets/suite-logo.png
 
 "$cli" watch export \
-  --federation website/demo-federation.yaml \
+  --federation website/federation.yaml \
+  --catalog website/partners.json \
   --out "$out/map" \
   --title "APPFL Bio Suite federation network" >/dev/null
 

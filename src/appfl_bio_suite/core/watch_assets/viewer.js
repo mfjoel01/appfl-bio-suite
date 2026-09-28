@@ -8,7 +8,7 @@
     liveRuns: new Set(), queued: [], error: '', resultGroups: [], resultsRevision: 0, resultsSignature: '',
     source: !!(METADATA_URL || EVENTS_URL) };
   const labels = { 'fine-mapping': 'Fine-mapping', gwas: 'GWAS',
-    'flamby-heart-disease': 'FLamby · Heart disease', caidf: 'CAIDF', cpg: 'CpG', tbd: 'Project TBD' };
+    'flamby-heart-disease': 'FLamby · Heart disease', caidf: 'CAIDF', cpg: 'CpG', fedfm: 'FedFM', tbd: 'Project TBD' };
   const label = name => labels[name] || name;
   const number = value => Number(value || 0).toLocaleString();
   const coordinate = v => v == null || (typeof v === 'string' && v.trim() === '') || typeof v === 'boolean' ? null
