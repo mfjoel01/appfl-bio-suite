@@ -417,16 +417,14 @@ def render(root: Path, include_eda: bool = True, out_dir: Path | None = None) ->
             detail,
         )
     )
-    from .fedfm.utils import read_bim
+    from .fedfm.utils import load_config
 
-    first = next(iter(cfg["sites"]))
-    bim = Path(cfg["paths"]["processed_dir"]) / first / f"{first}_chr{cfg['chromosome']}.bim"
+    counts, n_variants, affected = federation.audit_harmonization(
+        load_config(source / "pipeline_config.yaml"), central
+    )
     written["harmonization"] = [
         federation.fed4_harmonization(
-            dict.fromkeys(cfg["sites"], 0),
-            len(read_bim(bim)),
-            output / "federation/harmonization.png",
-            (0, len(central)),
+            counts, n_variants, output / "federation/harmonization.png", affected
         )
     ]
     _json(

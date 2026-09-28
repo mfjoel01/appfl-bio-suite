@@ -131,10 +131,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--source", type=Path)
-    parser.add_argument("--account", default="GeomicVar")
+    parser.add_argument("--account", help="PBS project allocation (required when submitting)")
     parser.add_argument("--concurrency", type=int, default=3)
     parser.add_argument("--submit", action="store_true")
     args = parser.parse_args()
+    if args.submit and not args.account:
+        parser.error("--account is required when submitting PBS jobs")
     root = args.root.resolve()
     if not (root / "design.json").exists():
         if args.source is None:

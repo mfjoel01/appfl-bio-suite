@@ -459,119 +459,186 @@ def fed3_uplink_cost(
 # --------------------------------------------------------------------------- #
 # fed4 -- the harmonization tax
 # --------------------------------------------------------------------------- #
+def audit_harmonization(
+    cfg, instances: pd.DataFrame
+) -> tuple[dict[str, int], int, tuple[int, int]]:
+    """Measure reference-allele swaps in the saved inputs and selected causal instances.
+
+    Missing variants, incompatible alleles and incomplete truth are errors, not evidence
+    of zero recoding. The audit describes input coding, not phenotype reconstruction.
+    """
+    from ..fedfm.utils import read_bim
+
+    reference = read_bim(cfg.resolved_path("hapnest_dir") / f"chr{cfg.chromosome}.bim")
+    if reference.snp_id.duplicated().any():
+        raise ValueError("Duplicate reference variants in harmonization audit")
+    reference = reference.set_index("snp_id")
+    counts = {}
+    affected = set()
+    common = None
+    for site in cfg.sites:
+        bim = read_bim(cfg.site_dir(site) / f"{site}_chr{cfg.chromosome}.bim")
+        if bim.empty or bim.snp_id.duplicated().any():
+            raise ValueError(f"{site}: empty or duplicate variants in harmonization audit")
+        bim = bim.set_index("snp_id")
+        variants = set(bim.index)
+        if common is not None and variants != common:
+            raise ValueError(f"{site}: sites do not share the same variant set")
+        common = variants
+        ref = reference.reindex(bim.index)
+        same = (bim.a1 == ref.a1) & (bim.a2 == ref.a2)
+        swapped = (bim.a1 == ref.a2) & (bim.a2 == ref.a1) & ~same
+        if not ((same | swapped) & (bim.bp == ref.bp) & (bim.chrom == ref.chrom)).all():
+            raise ValueError(
+                f"{site}: missing reference variants or incompatible alleles/positions"
+            )
+        counts[site] = int(swapped.sum())
+        affected.update(bim.index[swapped])
+    if not common:
+        raise ValueError("No site variants available for harmonization audit")
+    truth = pd.read_csv(cfg.resolved_path("ground_truth_dir") / "causal_manifest.tsv", sep="\t")
+    selected = instances[KEY_COLS].merge(
+        truth[KEY_COLS + ["causal_snp_ids"]], on=KEY_COLS, how="left", validate="one_to_one"
+    )
+    hits = 0
+    for ids in selected.causal_snp_ids:
+        causal = set(str(ids).split(",")) if pd.notna(ids) else set()
+        if not causal or not causal <= common:
+            raise ValueError("Missing causal variants in harmonization audit")
+        hits += bool(causal & affected)
+    return counts, len(common), (hits, len(selected))
+
+
 def fed4_harmonization(
     flip_counts: dict[str, int],
     n_variants: int,
     out: Path,
     causal_affected: tuple[int, int] | None = None,
 ) -> Path:
-    """How much recoding each site does before its moments can be added to anyone's.
-
-    Theorem 1's first condition wants one ordered, allele-harmonized variant list. The
-    per-site filesets were cut without ``--keep-allele-order``, so PLINK set A1 to each
-    site's own minor allele -- and a site coding a variant the other way round
-    contributes ``2 - x`` where the others contribute ``x``. That sums in silently and
-    negates every off-diagonal the variant touches. There is no error, no warning, and
-    no way to see it downstream, which is why each site recodes against an agreed
-    reference list and the coordinator re-checks rather than trusting the report.
-
-    The tax is not evenly shared, and the reason is the point: the site furthest from
-    the reference in allele frequency recodes the most.
-    """
+    """Show measured recoding requirements, including an explicit all-zero outcome."""
+    if n_variants <= 0 or not flip_counts:
+        raise ValueError("Harmonization requires observed site counts and a positive variant count")
+    if any(v < 0 or v > n_variants for v in flip_counts.values()):
+        raise ValueError("Recoding counts must lie between zero and the variant count")
+    if causal_affected is not None:
+        hit, total = causal_affected
+        if not 0 <= hit <= total:
+            raise ValueError("Affected instances must lie between zero and the instance count")
     fig, (ax1, ax2) = plt.subplots(
         1, 2, figsize=(11.6, 4.5), gridspec_kw={"width_ratios": [1.25, 1]}
     )
     sites = [s for s in SITE_ORDER if s in flip_counts]
+    sites += sorted(set(flip_counts) - set(sites))
     vals = [flip_counts[s] for s in sites]
     fracs = [v / n_variants for v in vals]
-    ax1.bar(
-        range(len(sites)),
-        fracs,
-        0.6,
-        color=[fs.SITE[s] for s in sites],
-        edgecolor=fs.SURFACE,
-        linewidth=1.4,
-    )
-    for i, (v, f) in enumerate(zip(vals, fracs, strict=False)):
+    if any(vals):
+        ax1.bar(
+            range(len(sites)),
+            fracs,
+            0.6,
+            color=[fs.SITE.get(s, fs.STATUS["good"]) for s in sites],
+            edgecolor=fs.SURFACE,
+            linewidth=1.4,
+        )
+        for i, (v, f) in enumerate(zip(vals, fracs, strict=True)):
+            ax1.text(
+                i,
+                f,
+                f"{f * 100:.2f}%\n{v:,} variants",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+                color=fs.INK2,
+            )
+        ax1.set_xticks(range(len(sites)), sites)
+        ax1.set_ylabel("share of variants requiring recoding")
+        ax1.yaxis.set_major_formatter(lambda v, _: f"{v * 100:.0f}%")
+        ax1.set_ylim(0, max(fracs) * 1.42)
+        ax1.grid(axis="x", visible=False)
+    else:
+        ax1.set_axis_off()
         ax1.text(
-            i,
-            f,
-            f"{f * 100:.2f}%\n{v:,} variants",
+            0.5,
+            0.84,
+            "All sites match the reference",
+            transform=ax1.transAxes,
             ha="center",
-            va="bottom",
-            fontsize=9,
+            fontsize=14,
+            fontweight="semibold",
+            color=fs.STATUS["good"],
+        )
+        ax1.text(
+            0.5,
+            0.70,
+            "No variants require allele recoding",
+            transform=ax1.transAxes,
+            ha="center",
+            fontsize=11,
             color=fs.INK2,
         )
-    ax1.set_xticks(range(len(sites)))
-    ax1.set_xticklabels(sites)
-    ax1.set_ylabel("share of the chromosome recoded")
-    ax1.yaxis.set_major_formatter(lambda v, _: f"{v * 100:.0f}%")
-    ax1.set_ylim(0, max(fracs) * 1.42)
-    ax1.grid(axis="x", visible=False)
-    fs.panel_letter(ax1, "a", "Variants recoded per site")
+        for site, y in zip(sites, np.linspace(0.50, 0.14, len(sites)), strict=True):
+            ax1.text(0.12, y, site, transform=ax1.transAxes, fontsize=11)
+            ax1.text(
+                0.88,
+                y,
+                f"0 / {n_variants:,}  (0.00%)",
+                transform=ax1.transAxes,
+                ha="right",
+                fontsize=11,
+                color=fs.STATUS["good"],
+            )
+    fs.panel_letter(ax1, "a", "Allele coding against the reference")
 
-    if causal_affected:
+    if causal_affected is not None and causal_affected[1] > 0:
         hit, total = causal_affected
-        ax2.bar(
-            [0],
-            [1 - hit / total],
-            0.55,
-            bottom=[hit / total],
-            color=fs.STATUS["good"],
-            edgecolor=fs.SURFACE,
-            linewidth=1.4,
-        )
-        ax2.bar(
-            [0],
-            [hit / total],
-            0.55,
-            color=fs.STATUS["critical"],
-            edgecolor=fs.SURFACE,
-            linewidth=1.4,
-        )
-        # Both segments labelled in place. A caption above the panel is what collided
-        # with the title, and direct labels are the better answer anyway.
-        ax2.text(
-            0,
-            hit / total / 2,
-            f"coded inconsistently\n{hit:,} of {total:,}  ({hit / total * 100:.1f}%)",
-            ha="center",
-            va="center",
-            fontsize=9.5,
-            color=fs.SURFACE,
-            fontweight="semibold",
-        )
-        ax2.text(
-            0,
-            hit / total + (1 - hit / total) / 2,
-            "consistent across all sites",
-            ha="center",
-            va="center",
-            fontsize=9.5,
-            color=fs.SURFACE,
-            fontweight="semibold",
-        )
+        bottom = 0.0
+        for count, label, color in (
+            (hit, "require recoding", fs.STATUS["critical"]),
+            (total - hit, "match the reference", fs.STATUS["good"]),
+        ):
+            if not count:
+                continue
+            fraction = count / total
+            ax2.bar(
+                [0],
+                [fraction],
+                0.75,
+                bottom=[bottom],
+                color=color,
+                edgecolor=fs.SURFACE,
+                linewidth=1.4,
+            )
+            ax2.text(
+                0,
+                bottom + fraction / 2,
+                f"{label}\n{count:,} of {total:,} ({fraction * 100:.1f}%)",
+                ha="center",
+                va="center",
+                fontsize=10,
+                color=fs.SURFACE,
+                fontweight="semibold",
+            )
+            bottom += fraction
         ax2.set_xlim(-0.6, 0.6)
-        ax2.set_xticks([0])
-        ax2.set_xticklabels(["causal variants"])
+        ax2.set_xticks([0], [f"{hit:,} of {total:,} instances affected"])
         ax2.set_ylim(0, 1)
         ax2.yaxis.set_major_formatter(lambda v, _: f"{v * 100:.0f}%")
-        ax2.set_ylabel("share")
+        ax2.set_ylabel("share of instances")
         ax2.grid(axis="x", visible=False)
-        ax2.set_xticklabels(["instances whose causal variant(s)\nare affected"])
-        fs.panel_letter(ax2, "b", "Where it reaches the ground truth")
     else:
-        fs.no_data(ax2, "causal-variant impact not supplied")
-
+        fs.no_data(
+            ax2,
+            "causal-variant impact not supplied"
+            if causal_affected is None
+            else "no causal instances to audit",
+        )
+    fs.panel_letter(ax2, "b", "Coding of causal variants")
     fs.footnote(
         fig,
-        f"{n_variants:,} chromosome-1 variants shared by all sites. "
-        "Recoding is done at each site against an agreed reference list, "
-        "before any moment is formed; the coordinator re-checks rather "
-        "than trusting the count. Panel b is the residual defect in the "
-        "realised package -- the phenotype stage was run before the "
-        "reference list existed, so those causal effects carry "
-        "site-dependent signs and attenuate the pooled signal.",
+        f"{n_variants:,} variants shared by all sites. Panel a counts allele swaps required "
+        "to match the reference. Panel b counts instances with at least one causal variant "
+        "requiring recoding at any site. These counts describe input allele coding; "
+        "they do not establish whether phenotype generation was affected.",
     )
     fig.tight_layout()
     return fs.save(fig, out, log)
@@ -671,8 +738,8 @@ ARM_LABEL = {
     "anl": "ANL\nalone",
     "covenant": "Covenant\nalone",
     "mbzuai": "MBZUAI\nalone",
-    "federation_smart_50k": "N matched\nsmart composition",
-    "federation": "All sites\nfull federation",
+    "federation_smart_50k": "Smart\nN = 50k",
+    "federation": "Full\nN = 150k",
     "ld_borrowed": "Covenant statistics, ANL LD",
     **{
         _arms.matched_n_arm_name(seed): f"Proportional N matched, draw {i + 1}"
@@ -820,9 +887,7 @@ def fed6_what_federation_buys(
         cohort_text = (
             " Cohorts: "
             + "; ".join(
-                f"{ARM_LABEL[a].replace(chr(10), ' ')} N={cohort[a][0]:,}"
-                for a in arms
-                if a in cohort
+                f"{ARM_LABEL[a].split(chr(10))[0]} N={cohort[a][0]:,}" for a in arms if a in cohort
             )
             + "."
         )

@@ -73,3 +73,18 @@ five arms. Its caption distinguishes unique simulation instances from sampling
 repeats. Legacy figures and the original frozen computation source are preserved
 under the local run's archives. Helvetica remains unavailable on this cluster;
 the rendering manifest explicitly records DejaVu Sans as the preview font.
+
+### Harmonization audit
+
+The September 28 review checked the saved chromosome-1 BIM files against the
+reference: all three sites match at all 533,532 variants. None of the 11,820
+shared-causal source instances has a causal variant requiring recoding. This
+panel describes the full source package, including development and evaluation
+loci; it is not limited to the selected 50k cohort.
+
+The original figure passed assumed zeros to a bar chart, producing an empty left
+panel with a degenerate axis. Its caption also incorrectly described the older,
+unharmonized package. Both rerun and composition plotting now measure the counts
+from saved allele files and the selected instances' causal manifest. Zero counts
+are displayed explicitly, and the caption describes allele coding without
+inferring a phenotype defect. Missing or incompatible inputs fail the audit.
