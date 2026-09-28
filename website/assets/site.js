@@ -65,9 +65,16 @@
   // --- which section am I reading ------------------------------------------
 
   const header = document.querySelector('.site-header');
-  const spied = [...document.querySelectorAll('.site-nav a[href^="#"]')]
-    .map(link => ({ link, section: document.getElementById(link.hash.slice(1)) }))
-    .filter(pair => pair.section);
+  /* A nav entry claims a section either by its own #hash or, where the entry points at
+     another page, by data-spy naming the section that stands in for it here -- which is
+     how "Network map" lights up over the block that links to it. Sorted by document
+     position rather than by nav order, so reordering the nav cannot silently break the
+     sequence the scan below depends on. */
+  const spied = [...document.querySelectorAll('.site-nav a[href^="#"], .site-nav a[data-spy]')]
+    .map(link => ({ link, section: document.getElementById(link.dataset.spy || link.hash.slice(1)) }))
+    .filter(pair => pair.section)
+    .sort((a, b) =>
+      a.section.compareDocumentPosition(b.section) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
 
   if (spied.length) {
     /* Nearest section whose top has passed under the header, rather than whichever
@@ -80,8 +87,11 @@
         if (pair.section.getBoundingClientRect().top <= cutoff) current = pair.link;
       }
       // The last section is usually too short to reach the cutoff before the page runs
-      // out of scroll, so the bottom of the document counts as being in it.
-      const bottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 2;
+      // out of scroll, so the bottom of the document counts as being in it. Requires an
+      // actual scroll: on a document shorter than the viewport every position is "the
+      // bottom", and the last entry would light up while the reader is still at the top.
+      const bottom = window.scrollY > 0
+        && window.innerHeight + window.scrollY >= document.body.scrollHeight - 2;
       if (bottom) current = spied[spied.length - 1].link;
 
       for (const pair of spied) {

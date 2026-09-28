@@ -13,11 +13,12 @@ type: software
 license: MIT
 version: 0.2.0
 
-# TODO before the first public release: add ORCID and affiliation for each author, and
-# add any co-authors from the partner sites who should be credited.
+# TODO: add ORCID for each author, and any co-authors from the partner sites who should
+# be credited.
 authors:
   - family-names: "Joel"
     given-names: "Matthew"
+    affiliation: "Madduri Lab, Argonne National Laboratory"
 
 keywords:
   - federated learning

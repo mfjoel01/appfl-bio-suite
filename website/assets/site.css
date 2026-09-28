@@ -216,6 +216,10 @@ section:first-of-type { border-top: 0; }
 .hero .lead { font-size: clamp(17px, 2.2vw, 20px); color: var(--muted); max-width: 62ch; }
 .hero .lead strong { color: var(--text); font-weight: 600; }
 
+.byline { margin-top: 22px; color: var(--muted); font-size: 15px; }
+.byline a { color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.byline a:hover { color: var(--accent); }
+
 .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
 .btn {
   display: inline-flex;
@@ -232,31 +236,6 @@ section:first-of-type { border-top: 0; }
 .btn:hover { text-decoration: none; border-color: var(--accent-dim); }
 .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
-
-.stat-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin-top: 42px;
-  padding-top: 30px;
-  border-top: 1px solid var(--border-soft);
-}
-.stat-strip div { flex: 1 1 170px; }
-.stat-strip b {
-  display: block;
-  font-size: 27px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: var(--accent);
-  letter-spacing: -.02em;
-}
-.stat-strip span {
-  display: block;
-  margin-top: 5px;
-  font-size: 12px;
-  letter-spacing: .6px;
-  color: var(--muted);
-}
 
 /* --- diagram ------------------------------------------------------------ */
 
