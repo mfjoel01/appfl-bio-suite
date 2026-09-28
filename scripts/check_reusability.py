@@ -94,6 +94,18 @@ SCOPED_EXEMPTIONS = [
         "PBS scripts for a named scheduler necessarily name it; the allocation and every "
         "path in them is a variable",
     ),
+    (
+        "website/federation.yaml",
+        {"partner institution"},
+        "the project site's map shows the suite's real partners by design; it is "
+        "presentation data, never loaded by a run",
+    ),
+    (
+        "website/partners.json",
+        {"partner institution"},
+        "the partner roster behind the project site's map; check_site_preview.py keeps "
+        "contacts and addresses out of what it publishes",
+    ),
 ]
 
 
