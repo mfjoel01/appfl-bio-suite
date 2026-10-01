@@ -1,0 +1,36 @@
+# Frozen after validation-only candidate selection; test not used for selection.
+seed: 2026
+samples: 2400
+cpgs: 4096
+classes: 6
+signal_fraction: 0.05
+class_weights:
+- 30
+- 23
+- 17
+- 13
+- 10
+- 7
+profile_noise: 0.04
+missing_fraction: 0.03
+min_site_class_patients: 1
+panel_size: 4096
+min_class: 20
+alpha: 0.12
+small_fraction: 0.06
+batch_shift: 0
+rounds: 15
+local_epochs: 1
+batch_size: 64
+hidden: 128
+bottleneck: 64
+dropout: 0.3
+learning_rate: 0.001
+weight_decay: 0.0001
+min_coverage: 0.2
+caller_intercept: -0.155
+caller_slope: 1.517
+coverage_counts:
+- 4096
+device: cpu
+threads: 4

@@ -489,3 +489,16 @@ experiments:
         data_dir: /work/finemap_svc/data/mbzuai
         output_dir: /work/finemap_svc/outputs
         expected_samples: 50000
+
+  # ---------------------------------------------------------------------------
+  # Federated methylation -- work in progress, simulated on one machine
+  # ---------------------------------------------------------------------------
+  # `run --driver serial` simulates every site in one process, so there are no partners
+  # to list and nothing to bundle; `partner-bundle` refuses this experiment. The entry
+  # is declared, disabled, so the name is known to every check that reads this file.
+  # See docs/experiments/methylation/ABOUT.md.
+  methylation:
+    enabled: false
+    service_account: methylation_svc
+    endpoint_name: methylation-ep
+    sites: []

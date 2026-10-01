@@ -1,0 +1,13 @@
+# Adult AML FAB M1/M2/M4/M5. Supply the GDC cohort NPZ explicitly.
+seed: 42
+panel_size: 50000
+min_class: 10
+min_site_class_patients: 1
+batch_shift: 0
+rounds: 30
+local_epochs: 1
+hidden: 256
+bottleneck: 128
+coverage_counts: [1000, 5000, 10000, 25000, 50000]
+device: cpu
+threads: 4

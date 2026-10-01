@@ -201,6 +201,8 @@ def generate_bundle(
     out_dir: Path | None = None,
 ) -> Path:
     """Write one partner's bundle and return its directory."""
+    if get_spec(experiment).serial_runner:
+        raise ValueError(f"'{experiment}' is a serial simulation; partner bundles are unavailable")
     entry = federation.experiment_site(experiment, site_key)
     context = render_context(federation, experiment, site_key)
 

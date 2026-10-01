@@ -332,6 +332,25 @@ def run_cmd(
             f"See docs/experiments/{experiment}/ABOUT.md."
         )
 
+    if get_spec(experiment).serial_runner:
+        import importlib
+
+        runner = importlib.import_module(get_spec(experiment).serial_runner)
+        try:
+            result = runner.run(
+                variant=variant,
+                driver=driver,
+                out_dir=out_dir,
+                dry_run=dry_run,
+                watch=watch,
+                data_root=data_root,
+                federation_path=federation_path,
+            )
+        except (ValueError, OSError) as exc:
+            raise click.ClickException(str(exc)) from exc
+        click.echo(str(result))
+        return
+
     from appfl_bio_suite.core.launch import launch
     from appfl_bio_suite.core.loopback import localize_for_loopback, loopback_federation
 
@@ -726,6 +745,10 @@ def partner_bundle_cmd(
     """
     from appfl_bio_suite.core.partner import generate_bundle, unresolved_fields
 
+    if get_spec(experiment).serial_runner:
+        raise click.ClickException(
+            f"'{experiment}' is a serial simulation; partner bundles are unavailable"
+        )
     fed = _load(federation_path)
     destination = generate_bundle(fed, experiment, site, out_dir)
     click.echo(f"\nBundle written to: {destination}")
@@ -1306,10 +1329,14 @@ def experiments_cmd() -> None:
     for name, spec in REGISTRY.items():
         state = "implemented" if spec.implemented else "PLANNED, not implemented"
         sim = "generates its own data" if spec.has_simulation else "partners obtain the data"
+        # A serial experiment has no partner side: what it needs is what the coordinator runs.
+        extras = spec.coordinator_extras if spec.serial_runner else spec.partner_extras
+        if spec.serial_runner:
+            state += ", single-machine simulation"
         click.echo(f"\n{name}")
         click.echo(f"  {spec.title}")
         click.echo(f"  status: {state}   |   data: {sim}")
-        click.echo(f"  install: pip install '{install_spec(','.join(spec.partner_extras))}'")
+        click.echo(f"  install: pip install '{install_spec(','.join(extras))}'")
         for line in _wrap(spec.summary, 74):
             click.echo(f"  {line}")
 

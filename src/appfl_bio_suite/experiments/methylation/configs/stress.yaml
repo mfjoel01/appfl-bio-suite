@@ -1,0 +1,19 @@
+# Synthetic sensitivity case: only 2% of CpGs carry a class-specific signal.
+# Reserve two patients of each class at every site to avoid absent-class confounding.
+seed: 42
+samples: 768
+cpgs: 2048
+classes: 6
+signal_fraction: 0.02
+min_site_class_patients: 2
+# Keep pooled training values identical across paired site-assignment conditions.
+batch_shift: 0.0
+panel_size: 2048
+min_class: 20
+rounds: 15
+local_epochs: 1
+hidden: 128
+bottleneck: 64
+coverage_counts: [32, 128, 512, 1024, 2048]
+device: cpu
+threads: 2
