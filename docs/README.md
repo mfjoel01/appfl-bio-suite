@@ -57,6 +57,9 @@ Each experiment has the same four documents, always:
 - [experiments/fine-mapping/](experiments/fine-mapping/) — federated cross-ancestry
   fine-mapping. Also carries [reference/](experiments/fine-mapping/reference/), the
   derivation and design notes it was ported with.
+- [experiments/methylation/](experiments/methylation/) — **work in
+  progress**: methylation subtype classification, simulated on one machine for now. Its
+  partner document says so, and `partner-bundle` refuses it.
 
 Uniform on purpose: no experiment gets a special extra document, and none is omitted. A
 missing one is a test failure.

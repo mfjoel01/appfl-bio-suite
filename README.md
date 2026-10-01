@@ -24,11 +24,20 @@ map](https://mfjoel01.github.io/appfl-bio-suite/network.html).
 
 ## The experiments
 
+Four experiments, one toolchain. The first three dispatch to partner sites; the fourth is
+in development.
+
 | | What it is | Data |
 | --- | --- | --- |
 | **[FLamby Fed-Heart-Disease](docs/experiments/flamby-heart-disease/ABOUT.md)** | Multi-round FedAvg on a public tabular benchmark with natural hospital splits | Partners download it; ~40 KB, CC BY 4.0 |
 | **[Federated GWAS](docs/experiments/gwas/ABOUT.md)** | Single-round summary-statistic meta-analysis with polygenic-score evaluation | Simulated and distributed by the coordinator |
 | **[Federated fine-mapping](docs/experiments/fine-mapping/ABOUT.md)** | Single-round cross-ancestry credible-set construction from per-site second moments — provably equal to a pooled fit, not an approximation of one. Governed by [GA4GH DUO, DRS, TRS and TES](docs/coordinator/ga4gh.md) | Simulated and distributed by the coordinator |
+| **[Federated methylation](docs/experiments/methylation/ABOUT.md)** · *work in progress* | Multi-round FedAvg for methylation-based subtype classification on sparse, nanopore-like input, against pooled and local-only training. Currently a single-machine simulation | Synthetic, or open TCGA-LAML methylation data from the NCI GDC |
+
+**Federated methylation is a work in progress.** All of its sites are simulated in one
+process today, so there is no partner bundle or endpoint for it yet. Its results so far,
+including one real-data run, are recorded as measured in its
+[record of runs](docs/experiments/methylation/ABOUT.md#record-of-runs).
 
 ## Quickstart
 

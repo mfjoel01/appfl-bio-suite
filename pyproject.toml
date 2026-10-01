@@ -18,6 +18,7 @@ keywords = [
     "fine-mapping",
     "susiex",
     "flamby",
+    "dna-methylation",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -132,6 +133,15 @@ finemapping-sim = [
     "Jinja2>=3.1,<4",
 ]
 
+# COORDINATOR-ONLY, and for now everything the methylation experiment needs. It is a
+# work in progress that simulates every site in one process, so there is no partner
+# extra yet. scikit-learn computes its metrics and the figures' PCA; matplotlib draws
+# the figures. torch and APPFL come from the base dependencies.
+methylation = [
+    "scikit-learn==1.7.2",
+    "matplotlib==3.10.6",
+]
+
 # COORDINATOR-ONLY. The federation network map.
 #
 # hivewatch (https://github.com/APPFL/hivewatch) is APPFL's monitoring toolkit: it supplies
@@ -169,6 +179,7 @@ all = [
     "appfl-bio-suite[finemapping]",
     "appfl-bio-suite[finemapping-sim]",
     "appfl-bio-suite[watch]",
+    "appfl-bio-suite[methylation]",
 ]
 
 [project.scripts]

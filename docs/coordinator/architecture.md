@@ -164,11 +164,15 @@ src/appfl_bio_suite/
 └── experiments/
     ├── flamby_heart_disease/
     ├── gwas/
-    └── fine_mapping/       fine-mapping; also fedfm/ (vendored verbatim upstream)
-                            and site_stage.py, the same computation as a command
+    ├── fine_mapping/       fine-mapping; also fedfm/ (vendored verbatim upstream)
+    │                       and site_stage.py, the same computation as a command
+    └── methylation/        work in progress: every site simulated in one process,
+                            through its own serial runner
 ```
 
 Adding an experiment means writing a registry entry in `core/experiments.py`, creating the
 package it names, and writing four documents. The CLI, preflight, bundle generator and
-test suite pick it up with no further changes. `fine_mapping` exists, unimplemented,
-specifically to keep that claim honest.
+test suite pick it up with no further changes. An experiment with no partner side yet sets
+`serial_runner` in its entry instead: `run` hands that module the whole job, and
+`partner-bundle` refuses the experiment rather than emit a bundle nobody can use.
+The `methylation` experiment works this way while it is in development.

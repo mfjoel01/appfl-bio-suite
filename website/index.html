@@ -6,7 +6,7 @@
 <title>APPFL Bio Suite</title>
 <meta name="description" content="Cross-silo federated learning experiments in computational biology. Institutions train on their own data, on their own hardware, and return only results.">
 <meta property="og:title" content="APPFL Bio Suite">
-<meta property="og:description" content="Cross-silo federated learning experiments in computational biology — federated GWAS, cross-ancestry fine-mapping, and a FLamby benchmark, across separately administered clusters.">
+<meta property="og:description" content="Cross-silo federated learning experiments in computational biology — federated GWAS, cross-ancestry fine-mapping and a FLamby benchmark across separately administered clusters, with federated methylation classification in development.">
 <meta property="og:type" content="website">
 <link rel="icon" href="./assets/suite-logo.png">
 <link rel="stylesheet" href="./assets/site.css">
@@ -55,7 +55,8 @@
     <p class="eyebrow">Cross-silo federated learning in computational biology</p>
     <h1>APPFL <span>Bio Suite</span></h1>
     <p class="lead">
-      Three federated experiments in genomics and clinical prediction, built on
+      Four federated experiments in genomics, epigenomics and clinical prediction, one
+      still in development, built on
       <a href="https://github.com/APPFL/APPFL">APPFL</a>,
       <a href="https://github.com/APPFL/hivewatch">hivewatch</a> and
       <a href="https://www.globus.org/compute">Globus&nbsp;Compute</a>, together with the
@@ -168,14 +169,15 @@
 <section id="experiments">
   <div class="wrap">
     <p class="eyebrow">Experiments</p>
-    <h2 class="section-title">The three experiments</h2>
+    <h2 class="section-title">The four experiments</h2>
     <p class="section-lead">
-      They differ by design. One is multi-round model training on a public benchmark; the
-      other two are single-round statistical federations, where the aggregation step is
-      itself the method under test.
+      They differ by design. Two are multi-round model training: one on a public
+      benchmark, one a methylation classifier still in development. The other two are
+      single-round statistical federations, where the aggregation step is itself the
+      method under test.
     </p>
 
-    <div class="grid grid-3">
+    <div class="grid grid-2">
 
       <article class="card">
         <span class="tag alt2">Multi-round · FedAvg</span>
@@ -229,6 +231,24 @@
           <dt>Governance</dt><dd>GA4GH DUO, DRS, TRS and TES</dd>
         </dl>
         <a class="card-link" href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/docs/experiments/fine-mapping/ABOUT.md">Design and record of runs →</a>
+      </article>
+
+      <article class="card">
+        <span class="tag alt2">Multi-round · Work in progress</span>
+        <h3>Federated methylation</h3>
+        <p>
+          A DNA-methylation subtype classifier for sparse, nanopore-like input, built
+          toward leukemia classification. FedAvg across simulated hospitals is compared
+          with pooled training and with each hospital training alone, at several levels
+          of CpG coverage. For now every site is simulated on one machine; partner
+          execution comes later, once the model holds up on real data.
+        </p>
+        <dl>
+          <dt>Model</dt><dd>Residual MLP over binary methylation calls</dd>
+          <dt>Data</dt><dd>Synthetic, or open TCGA-LAML from the NCI GDC</dd>
+          <dt>Status</dt><dd>Single-machine simulation; no partner bundle yet</dd>
+        </dl>
+        <a class="card-link" href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/docs/experiments/methylation/ABOUT.md">Design and record of runs →</a>
       </article>
 
     </div>

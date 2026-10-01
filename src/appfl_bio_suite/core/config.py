@@ -24,6 +24,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from appfl_bio_suite.core.experiments import experiment_names
 from appfl_bio_suite.core.ga4gh.duo import DataUseRequest
 from appfl_bio_suite.core.ga4gh.trs import ToolPin
 
@@ -50,7 +51,7 @@ SCHEMA_VERSION = 1
 
 # Canonical experiment identifiers. Directory names under docs/experiments/ and
 # docs/partner/experiments/ must match these, which tests assert.
-EXPERIMENT_NAMES = ("flamby-heart-disease", "gwas", "fine-mapping")
+EXPERIMENT_NAMES = tuple(experiment_names())
 
 # Where load_federation() looks, in order. The real config lives in local/ because it
 # carries live endpoint UUIDs; see local/README.md.
