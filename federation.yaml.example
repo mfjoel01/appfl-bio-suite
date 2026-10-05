@@ -44,13 +44,12 @@ coordinator:
   organization: Example University Institute for Computational Health
   contact: a.researcher@example-university.edu
 
-  # Where you are, for the network map (`appfl-bio-suite watch`). Drawn as the hub every
-  # partner marker connects back to. Optional -- omitting it costs the map its centre and
-  # nothing else. Nothing about a run reads this.
-  location:
-    lat: 41.8781
-    lng: -87.6298
-    city: Chicago
+  # Your own institution, by its id under `sites:` below. You are a site like any other
+  # -- a name, a country, a location -- so you are declared as one, not given a second
+  # location here. The network map (`appfl-bio-suite watch`) rings that site's marker as
+  # the coordinator and joins every partner marker back to it. Optional -- omitting it
+  # costs the map its centre and nothing else. Nothing about a run reads this.
+  site: example-university
 
   # Your own compute endpoint, if you also participate as a training site.
   #
@@ -146,7 +145,8 @@ ga4gh:
 # -----------------------------------------------------------------------------
 # WHO ELSE IS IN THE FEDERATION
 # -----------------------------------------------------------------------------
-# One entry per participating institution. This is institution-level metadata only --
+# One entry per institution, the coordinator's own included (`coordinator.site` names it;
+# listing it here does not make it train). This is institution-level metadata only --
 # which experiments they run, and with which endpoint, is declared under `experiments`
 # below. That split exists because one institution can host both experiments, with
 # separate endpoints and separate service accounts, and their name and scheduler should
@@ -154,6 +154,17 @@ ga4gh:
 #
 # Add or remove entries freely. Nothing in the suite assumes a site count.
 sites:
+  - id: example-university
+    name: Example University
+    country: United States
+    location:
+      lat: 41.8781
+      lng: -87.6298
+      city: Chicago
+    scheduler: pbspro
+    queue: debug
+    account: EXAMPLE-ALLOC
+
   - id: site-north
     name: Northern Institute of Technology
     country: Canada

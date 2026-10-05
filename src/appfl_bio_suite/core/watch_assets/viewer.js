@@ -4,11 +4,11 @@
   const $ = id => document.getElementById(id);
   const esc = escapeHtml;
   const ui = { selected: null, experiments: [], view: 'flat', tab: 'experiments',
-    server: null, globe: null, runId: null, loading: false, loadToken: 0, focus: null,
+    server: null, coordinator: null, globe: null, runId: null, loading: false, loadToken: 0, focus: null,
     liveRuns: new Set(), queued: [], error: '', resultGroups: [], resultsRevision: 0, resultsSignature: '',
     source: !!(METADATA_URL || EVENTS_URL) };
   const labels = { 'fine-mapping': 'Fine-mapping', gwas: 'GWAS',
-    'flamby-heart-disease': 'FLamby · Heart disease', caidf: 'CAIDF', cpg: 'CpG', fedfm: 'FedFM', tbd: 'Project TBD' };
+    'flamby-heart-disease': 'FLamby · Heart disease', caidf: 'CAIDF', cpg: 'CpG', tbd: 'Project TBD' };
   const label = name => labels[name] || name;
   const number = value => Number(value || 0).toLocaleString();
   const coordinate = v => v == null || (typeof v === 'string' && v.trim() === '') || typeof v === 'boolean' ? null
@@ -20,8 +20,14 @@
     return [...new Set((Array.isArray(value) ? value : String(value).split(','))
       .map(x => String(x).trim()).filter(Boolean))];
   }
-  const matches = c => ui.selected === null || memberships(c).some(e => ui.selected.has(e));
-  const visible = () => Object.entries(state.clients).filter(([, c]) => matches(c));
+  // The coordinator is one of the sites. Server metadata names which; that site's marker,
+  // card and pane carry the coordinator's mark instead of a second point being drawn.
+  const isCoordinator = id => ui.coordinator !== null && ui.coordinator === id;
+  const coordinatorLabel = '<span class="bio-coordinator-label">Coordinator</span>';
+  // The coordinator's site is in every experiment's view: every other site's line ends there.
+  const inExperiment = (id, c, name) => isCoordinator(id) || memberships(c).includes(name);
+  const matches = (id, c) => ui.selected === null || [...ui.selected].some(e => inExperiment(id, c, e));
+  const visible = () => Object.entries(state.clients).filter(([id, c]) => matches(id, c));
   const color = c => ({ '0': '#8d9eaa', '1': '#669fe0', '2': '#d89e42', '4': '#15b9a6', X: '#db717e' }
     [String(c.partnership_stage || '').slice(0, 1)] || { idle: '#f5bd66', dropped: '#f08085', failed: '#f08085' }[c.status] || '#50d9c7');
   const statusLabel = c => c.partnership_stage || (ui.runId === 'network' ? `Member · ${c.status || 'active'}` : c.status || 'active');
@@ -174,14 +180,14 @@
       const name = input.dataset.experiment;
       input.checked = name === '*' ? ui.selected === null : !!ui.selected?.has(name);
       input.closest('label').classList.toggle('selected', input.checked);
-      input.closest('label').querySelector('.bio-filter-count').textContent = Object.values(state.clients)
-        .filter(c => name === '*' || memberships(c).includes(name)).length;
+      input.closest('label').querySelector('.bio-filter-count').textContent = Object.entries(state.clients)
+        .filter(([id, c]) => name === '*' || inExperiment(id, c, name)).length;
     }
   }
 
   function cardHtml(id, c) {
     return `<button class="bio-site-card${ui.focus === id ? ' selected' : ''}" data-site="${esc(id)}">
-      <span class="bio-card-top"><span class="bio-site-name">${esc(c.institution || id)}</span>
+      ${isCoordinator(id) ? coordinatorLabel : ''}<span class="bio-card-top"><span class="bio-site-name">${esc(c.institution || id)}</span>
         <span class="bio-dot" style="background:${color(c)}" title="${esc(statusLabel(c))}"></span></span>
       <span class="bio-site-location">${esc([c.city, c.country].filter(Boolean).join(', ') || 'Location not declared')}</span>
       <span class="bio-tags">${memberships(c).map(e => `<span>${esc(label(e))}</span>`).join('')}</span>
@@ -192,7 +198,7 @@
   function detailsHtml(id, c) {
     const experimentRows = memberships(c).map(e => `<div class="bio-detail-row"><span>${esc(label(e))}</span>
       <strong>${esc(c[e] || 'Participating')}</strong></div>`).join('');
-    return `<div class="popup-title">${esc(c.institution || id)}</div>
+    return `${isCoordinator(id) ? coordinatorLabel : ''}<div class="popup-title">${esc(c.institution || id)}</div>
       <p class="bio-detail-location">${esc([c.city, c.country].filter(Boolean).join(', ') || 'Location not declared')}</p>
       ${experimentRows}<div class="bio-detail-row"><span>Samples across experiments</span><strong>${c.num_samples == null ? 'Not declared' : number(c.num_samples)}</strong></div>
       <div class="bio-detail-row"><span>${c.partnership_stage ? 'Project readiness' : 'Status'}</span><strong>${esc(statusLabel(c))}</strong></div>
@@ -206,7 +212,7 @@
   function closeDetail() { ui.focus = null; $('bio-site-detail').hidden = true; map.closePopup(); }
   focusClient = id => {
     const c = state.clients[id];
-    if (!c || !matches(c)) return;
+    if (!c || !matches(id, c)) return;
     ui.focus = id;
     if (placed(c)) {
       if (ui.view === 'globe') ui.globe.focus(Number(c.lat), Number(c.lng));
@@ -225,15 +231,18 @@
 
   // Keep complete HiveWatch state for playback; filtering changes only visible layers.
   function syncLayers() {
+    const toggle = (layer, enabled) => {
+      if (!layer) return;
+      if (enabled && !map.hasLayer(layer)) layer.addTo(map);
+      else if (!enabled && map.hasLayer(layer)) layer.remove();
+    };
+    const flat = ui.view === 'flat' && ui.tab !== 'results';
+    // The coordinator's own point, for a run its site has no marker in.
+    toggle(serverMarker, flat && !markers[ui.coordinator]);
     for (const [id, c] of Object.entries(state.clients)) {
-      const show = matches(c) && placed(c) && ui.view === 'flat' && ui.tab !== 'results';
-      const toggle = (layer, enabled) => {
-        if (!layer) return;
-        if (enabled && !map.hasLayer(layer)) layer.addTo(map);
-        else if (!enabled && map.hasLayer(layer)) layer.remove();
-      };
+      const show = matches(id, c) && placed(c) && flat;
       toggle(markers[id], show);
-      toggle(lines[id], show && !!ui.server);
+      toggle(lines[id], show && !!ui.server && !isCoordinator(id));
       toggle(packets[id]?.uplink, show && !!ui.server && ui.runId !== 'network');
       toggle(packets[id]?.downlink, show && !!ui.server && ui.runId !== 'network');
     }
@@ -276,20 +285,41 @@
   toFiniteNumber = coordinate;
   inferServerFromClient = () => {};
   resolveServerLocation = async () => false;
+  const tipOptions = { direction: 'top', offset: [0, -12], className: 'bio-hover-tip' };
+  function siteIcon(id, c) {
+    const size = isCoordinator(id) ? 36 : 20;
+    return L.divIcon({ className: `bio-leaflet-marker${isCoordinator(id) ? ' bio-coordinator' : ''}`,
+      html: `<span style="--site-color:${c ? color(c) : '#8d9eaa'}"></span>`,
+      iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+  }
+  const hoverHtml = (id, c) => `${isCoordinator(id) ? coordinatorLabel : ''}<strong>${esc(c.institution || id)}</strong>
+    <div>${esc(c.partnership_stage || c.status || 'Site')} · Select to inspect</div>`;
+  // Marker, popup and hover all depend on which site is the coordinator, which a run can
+  // announce before or after its sites. Every marker is redressed whenever either changes.
+  function dressMarker(id) {
+    const c = state.clients[id];
+    if (!c || !markers[id]) return;
+    markers[id].setIcon(siteIcon(id, c)).setZIndexOffset(isCoordinator(id) ? 1000 : 0)
+      .setPopupContent(detailsHtml(id, c)).setTooltipContent(hoverHtml(id, c));
+  }
   applyServerMetadata = server => {
     ui.server = server && placed(server) ? { ...server, lat: Number(server.lat), lng: Number(server.lng) } : null;
+    ui.coordinator = server?.site || null;
     if (serverMarker) { serverMarker.remove(); serverMarker = null; }
     serverResolvedFromMetadata = !!ui.server;
     if (ui.server) {
       SERVER_LL = [ui.server.lat, ui.server.lng];
-      serverMarker = L.marker(SERVER_LL, { icon: L.divIcon({ className: 'bio-leaflet-hub',
-        html: '<span></span>', iconSize: [20, 20], iconAnchor: [-6, 26] }), zIndexOffset: 1000 })
-        .bindPopup(`<div class="popup-title">Coordinator</div><p>${esc(server.org || 'Coordinator')}</p>
-        <p>${esc(server.city || '')}</p>`).addTo(map);
+      // Shown only while the coordinator's site has no marker of its own (syncLayers).
+      const where = esc([ui.server.city, ui.server.country].filter(Boolean).join(', '));
+      const name = esc(ui.server.institution || ui.server.org || 'Coordinator');
+      serverMarker = L.marker(SERVER_LL, { icon: siteIcon(ui.coordinator, null), zIndexOffset: 1000 })
+        .bindPopup(`${coordinatorLabel}<div class="popup-title">${name}</div><p class="bio-detail-location">${where}</p>`)
+        .bindTooltip(`${coordinatorLabel}<strong>${name}</strong><div>${where}</div>`, tipOptions);
       for (const [id, line] of Object.entries(lines)) {
         const c = state.clients[id]; if (c && placed(c)) line.setLatLngs([[c.lat, c.lng], SERVER_LL]);
       }
     }
+    for (const id of Object.keys(markers)) dressMarker(id);
     syncLayers();
     return !!ui.server;
   };
@@ -319,10 +349,9 @@
     if (!placed(c)) return;
     const col = color(c);
     const ll = [c.lat, c.lng];
-    const icon = L.divIcon({ className: 'bio-leaflet-marker',
-      html: `<span style="--site-color:${col}"></span>`, iconSize: [20, 20], iconAnchor: [10, 10] });
-    if (markers[id]) markers[id].setLatLng(ll).setIcon(icon).setPopupContent(detailsHtml(id, c));
-    else markers[id] = L.marker(ll, { icon }).bindPopup(detailsHtml(id, c)).addTo(map);
+    if (markers[id]) markers[id].setLatLng(ll);
+    else markers[id] = L.marker(ll, { icon: siteIcon(id, c) }).bindPopup('').bindTooltip('', tipOptions).addTo(map);
+    dressMarker(id);
     const style = { color: col, weight: 1.4, opacity: 0.5, dashArray: '4 8' };
     if (lines[id]) lines[id].setLatLngs([ll, SERVER_LL]).setStyle(style);
     else lines[id] = L.polyline([ll, SERVER_LL], style).addTo(map);

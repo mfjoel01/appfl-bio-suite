@@ -12,10 +12,11 @@
 # a site to belong to one enabled experiment to draw it; nothing is ever run from this
 # file.
 #
-# WHY TWO FILES. This one holds the sites that participate in an experiment the suite
-# actually runs (the viewer needs at least one to draw anything). Every other partner --
-# projects outside the suite, or partnerships still being set up -- is presentation data
-# and lives in website/partners.json, which also carries each partner's stage.
+# WHY TWO FILES. This one holds the coordinator's own site and the sites that participate
+# in an experiment the suite actually runs (the viewer needs at least one to draw
+# anything). Every other partner -- projects outside the suite, or partnerships still
+# being set up -- is presentation data and lives in website/partners.json, which also
+# carries each partner's stage and, for Argonne, which experiments it is on.
 #
 #     scripts/build_site.sh local/site-preview
 #
@@ -32,10 +33,7 @@ coordinator:
   identity_id: 00000000-1111-2222-3333-444444444444
   organization: Argonne National Laboratory
   contact: coordinator@example.org
-  location:
-    lat: 41.7183
-    lng: -87.9788
-    city: Lemont
+  site: anl
   endpoint:
     name: coordinator-ep
     uuid: aaaaaaaa-0000-0000-0000-000000000001
@@ -46,6 +44,14 @@ coordinator:
   host_check_enforce: false
 
 sites:
+  - id: anl
+    name: Argonne National Laboratory
+    country: United States
+    location: {lat: 41.7183, lng: -87.9788, city: Lemont}
+    scheduler: pbspro
+    queue: debug
+    account: EXAMPLE-ALLOC
+
   - id: cdac
     name: Centre for Development of Advanced Computing
     country: India

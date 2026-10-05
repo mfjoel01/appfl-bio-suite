@@ -112,11 +112,62 @@ def test_experiment_filter_narrows_to_one(federation):
     assert north["num_samples"] == 18032
 
 
-def test_the_coordinator_is_the_hub(federation):
-    events = build_network_events(federation)
+def _server(federation, **kwargs) -> dict:
+    events = build_network_events(federation, **kwargs)
     (server,) = [e for e in events if e["event_type"] == "server_metadata"]
-    assert server["server"]["lat"] == 41.8781
-    assert server["server"]["org"] == federation.coordinator.organization
+    return server["server"]
+
+
+def test_the_coordinator_is_a_site(federation):
+    """Named, not placed: the server block is read from the coordinator's own site.
+
+    The viewer marks the marker whose id is `site`, and every line ends at the server's
+    coordinates -- which are that marker's own, so the lines meet at it.
+    """
+    server = _server(federation)
+    assert server["site"] == "example-university"
+    assert server["institution"] == "Example University"
+    assert (server["lat"], server["lng"]) == (41.8781, -87.6298)
+    assert server["country"] == "United States"
+    assert server["org"] == federation.coordinator.organization
+
+
+def test_the_coordinators_site_is_drawn_even_when_it_trains_in_nothing(federation):
+    """It is where every line ends, so it is in every view, filtered or not."""
+    for kwargs in ({}, {"experiment": "gwas"}):
+        coordinator = _clients(federation, **kwargs)["example-university"]
+        assert coordinator["experiments"] == ""
+        # Declared nothing, which is not the same as declaring zero samples.
+        assert coordinator["num_samples"] is None
+
+
+def test_a_coordinator_without_a_site_draws_no_centre(federation):
+    federation.coordinator.site = None
+    server = _server(federation)
+    assert server["site"] is None and server["lat"] is None
+    assert "example-university" not in _clients(federation)
+
+
+def test_the_coordinator_must_name_a_declared_site(tmp_path):
+    text = EXAMPLE.read_text(encoding="utf-8").replace(
+        "  site: example-university\n", "  site: nowhere\n"
+    )
+    path = tmp_path / "federation.yaml"
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(FederationError, match="coordinator.site 'nowhere' is not in"):
+        load_federation(path)
+
+
+def test_a_coordinator_location_names_the_site_that_replaces_it(tmp_path):
+    """The old `coordinator.location` almost always duplicated a site. Say which."""
+    text = EXAMPLE.read_text(encoding="utf-8").replace(
+        "  site: example-university\n",
+        "  location:\n    lat: 41.8781\n    lng: -87.6298\n    city: Chicago\n",
+    )
+    path = tmp_path / "federation.yaml"
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(FederationError, match="Replace it with `site: example-university`"):
+        load_federation(path)
 
 
 def test_probed_status_reaches_the_marker(federation):
@@ -227,6 +278,12 @@ def test_a_site_without_coordinates_is_reported_not_guessed(federation):
     assert east["institution"] == "Eastern Technical University"
 
 
+def test_an_unplaced_coordinator_site_is_reported(federation):
+    """Drawn whether or not it trains, so reported whether or not it trains."""
+    federation.site("example-university").location = None
+    assert [s.id for s in unplaced_sites(federation, "gwas")] == ["example-university"]
+
+
 def test_a_fully_placed_federation_reports_nothing(federation):
     assert unplaced_sites(federation) == []
     assert unplaced_report(federation) == ""
@@ -268,7 +325,8 @@ def test_the_network_view_is_a_hivewatch_run_in_both_its_formats(federation, tmp
     metadata = json.loads(mapjson.read_text(encoding="utf-8"))
     assert metadata["schema_version"] == 1
     assert len(metadata["rounds"]) == 1
-    assert len(metadata["rounds"][0]["clients"]) == 3
+    # Three partners, and the coordinator's own site.
+    assert len(metadata["rounds"][0]["clients"]) == 4
 
 
 def test_rebuilding_replaces_rather_than_accumulates(federation, tmp_path):

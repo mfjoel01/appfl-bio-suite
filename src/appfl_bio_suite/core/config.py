@@ -225,9 +225,12 @@ class Coordinator(_Strict):
     identity_id: str | None = None
     organization: str | None = None
     contact: str | None = None
-    # Where the driver runs. Drawn as the hub of the network map; every partner marker
-    # is joined back to it. Optional -- omitting it costs the map its centre, nothing else.
-    location: Location | None = None
+    # The coordinator's own institution, by its id under `sites:`. The coordinator is
+    # always a site -- it has a name, a country and a location like any other -- so it is
+    # declared as one rather than given a second, parallel location of its own. The
+    # network map marks that site as the coordinator and joins every other marker back
+    # to it. Optional -- omitting it costs the map its centre, nothing else.
+    site: str | None = None
     endpoint: CoordinatorEndpoint | None = None
     host_check: str | None = None
     host_check_enforce: bool = False
@@ -670,6 +673,42 @@ class Federation(_Strict):
             )
         return value
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coordinator_location_is_a_site(cls, data: Any) -> Any:
+        """Name the replacement for `coordinator.location`, rather than "extra input".
+
+        Checked here and not on Coordinator because the useful message needs `sites`: a
+        coordinator location almost always duplicates one of them, and naming that site's
+        id turns the error into a one-line edit.
+        """
+        if not isinstance(data, dict):
+            return data
+        coordinator = data.get("coordinator")
+        if not isinstance(coordinator, dict) or "location" not in coordinator:
+            return data
+        location = coordinator["location"] or {}
+        same_place = [
+            site.get("id")
+            for site in data.get("sites") or []
+            if isinstance(site, dict)
+            and isinstance(site.get("location"), dict)
+            and isinstance(location, dict)
+            and site["location"].get("lat") == location.get("lat")
+            and site["location"].get("lng") == location.get("lng")
+        ]
+        fix = (
+            f"Replace it with `site: {same_place[0]}` -- that site is already at the same "
+            "coordinates."
+            if len(same_place) == 1
+            else "Declare your institution under `sites:` with that `location`, and name "
+            "it with `coordinator.site: <site id>`."
+        )
+        raise ValueError(
+            "coordinator.location has been replaced by coordinator.site: the coordinator "
+            f"is drawn as its own institution's site, not as a separate point. {fix}"
+        )
+
     @model_validator(mode="after")
     def _cross_reference(self) -> Federation:
         by_id = {s.id: s for s in self.sites}
@@ -680,6 +719,13 @@ class Federation(_Strict):
             declared = [s.id for s in self.sites]
             dupes = sorted({sid for sid in declared if declared.count(sid) > 1})
             raise ValueError(f"duplicate site id(s): {dupes}")
+
+        if self.coordinator.site is not None and self.coordinator.site not in by_id:
+            raise ValueError(
+                f"coordinator.site '{self.coordinator.site}' is not in the top-level "
+                f"`sites` list (have: {', '.join(sorted(by_id)) or 'none'}). The "
+                "coordinator's institution is declared there like any other site."
+            )
 
         for exp_name, experiment in self.experiments.items():
             if exp_name not in EXPERIMENT_NAMES:
@@ -699,6 +745,11 @@ class Federation(_Strict):
         return self
 
     # -- lookups ------------------------------------------------------------
+
+    @property
+    def coordinator_site(self) -> Site | None:
+        """The site the coordinator belongs to, when `coordinator.site` names one."""
+        return self.site(self.coordinator.site) if self.coordinator.site else None
 
     def experiment(self, name: str) -> Experiment:
         """Get one experiment, with a message that lists the alternatives."""
