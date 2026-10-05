@@ -158,16 +158,30 @@ def test_the_coordinator_must_name_a_declared_site(tmp_path):
         load_federation(path)
 
 
-def test_a_coordinator_location_names_the_site_that_replaces_it(tmp_path):
-    """The old `coordinator.location` almost always duplicated a site. Say which."""
+def _with_coordinator_location(tmp_path, lat, lng):
+    """The example as a config written before `coordinator.site` existed."""
     text = EXAMPLE.read_text(encoding="utf-8").replace(
         "  site: example-university\n",
-        "  location:\n    lat: 41.8781\n    lng: -87.6298\n    city: Chicago\n",
+        f"  location:\n    lat: {lat}\n    lng: {lng}\n    city: Chicago\n",
     )
     path = tmp_path / "federation.yaml"
     path.write_text(text, encoding="utf-8")
-    with pytest.raises(FederationError, match="Replace it with `site: example-university`"):
-        load_federation(path)
+    return path
+
+
+@pytest.mark.parametrize("lng", [-87.6298, -87.6327])  # the site's pin, and one ~250 m off
+def test_an_older_coordinator_location_loads_as_the_site_there(tmp_path, lng):
+    """An existing config keeps loading unchanged; its location names its own site."""
+    federation = load_federation(_with_coordinator_location(tmp_path, 41.8781, lng))
+    assert federation.coordinator.site == "example-university"
+    assert _server(federation)["site"] == "example-university"
+
+
+def test_an_older_coordinator_location_at_no_site_is_dropped_with_a_warning(tmp_path):
+    """A map field never fails a load: the map just has no coordinator."""
+    with pytest.warns(UserWarning, match="no site is at those coordinates"):
+        federation = load_federation(_with_coordinator_location(tmp_path, 51.5, -0.12))
+    assert federation.coordinator.site is None
 
 
 def test_probed_status_reaches_the_marker(federation):

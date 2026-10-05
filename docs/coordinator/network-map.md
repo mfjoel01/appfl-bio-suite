@@ -221,8 +221,8 @@ That site's marker is drawn with a gold diamond around it and a gold **Coordinat
 label on its card, its details pane and its hover tooltip. Every other marker connects
 back to it, and it stays on the map under every experiment filter. Listing your site
 under `sites:` does not make it train; it trains only where an experiment lists it.
-The old `coordinator.location` key is refused, and the error names the site that
-replaces it.
+A config written before `coordinator.site` existed still loads unchanged. Its
+`coordinator.location` is read as naming the site within about 1 km of it.
 
 hivewatch's own examples resolve each client's location by calling `ipinfo.io` from the
 client. That is a good default for a laptop demo and wrong here in three separate ways: a
