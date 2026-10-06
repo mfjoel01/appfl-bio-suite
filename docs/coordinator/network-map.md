@@ -108,6 +108,9 @@ Each partner has a stable `id`, `name`, `country`, `projects` array and `stage`.
 Optional fields are `contacts`, `notes`, `location`, `location_basis`, and `source_url`.
 Use the existing federation site id to enrich that site without duplicating it;
 the federation's sample counts, coordinates and endpoint status stay authoritative.
+Use the suite's experiment names (`gwas`, `fine-mapping`, `flamby-heart-disease`,
+`methylation`) in `projects`. A different spelling of the same experiment shows up
+as a second filter.
 New partners have no declared sample count or compute endpoint. A planning stage
 does not imply that an experiment is running. Use `location: null` for an unresolved
 location, or document a representative institutional marker with its source.
@@ -205,8 +208,21 @@ sites:
       city: Toronto
 ```
 
-The coordinator gets one too, under `coordinator:`. It becomes the hub every partner
-marker connects back to.
+The coordinator is a site too. Declare your institution under `sites:` like any other,
+with its `location`, and name it with `coordinator.site`:
+
+```yaml
+coordinator:
+  identity: a.researcher@example-university.edu
+  site: example-university
+```
+
+That site's marker is drawn with a gold diamond around it and a gold **Coordinator**
+label on its card, its details pane and its hover tooltip. Every other marker connects
+back to it, and it stays on the map under every experiment filter. Listing your site
+under `sites:` does not make it train; it trains only where an experiment lists it.
+A config written before `coordinator.site` existed still loads unchanged. Its
+`coordinator.location` is read as naming the site within about 1 km of it.
 
 hivewatch's own examples resolve each client's location by calling `ipinfo.io` from the
 client. That is a good default for a laptop demo and wrong here in three separate ways: a

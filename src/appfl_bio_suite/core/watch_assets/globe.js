@@ -8,6 +8,7 @@
     active: '#56dfd3', connected: '#56dfd3', completed: '#76dca0',
     done: '#76dca0', error: '#ff8e91', failed: '#ff8e91', dropped: '#ff8e91', offline: '#8294a4',
   };
+  const GOLD = { dark: '#f5c77e', light: '#a8690f' };
   const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
   const coordinate = value => (typeof value === 'number' ||
     (typeof value === 'string' && value.trim() !== '')) && Number.isFinite(Number(value));
@@ -72,9 +73,16 @@
     setData(clients, server) {
       this.clients = (Array.isArray(clients) ? clients : []).filter(hasLocation);
       this.server = hasLocation(server) ? server : null;
+      // The coordinator is one of the sites and is drawn as that site's marker, ringed.
+      // Only when its site is not among the clients (a run it does not train in) is it
+      // drawn on its own, at the server's location.
+      this.coordinatorId = (server && server.site) || null;
+      // Drawn last, so its diamond is never covered by a neighbouring marker.
+      this.clients.sort((a, b) => this._isCoordinator(a) - this._isCoordinator(b));
+      this.alone = this.clients.some(client => this._isCoordinator(client)) ? null : this.server;
       this.routes = {
         type: 'MultiLineString',
-        coordinates: this.server ? this.clients.map(client => [
+        coordinates: this.server ? this.clients.filter(client => !this._isCoordinator(client)).map(client => [
           [Number(this.server.lng), Number(this.server.lat)],
           [Number(client.lng), Number(client.lat)],
         ]) : [],
@@ -92,9 +100,15 @@
       this.tooltip.style.color = light ? '#163f4d' : '#edf8fb';
       this.tooltip.style.borderColor = light ? '#b8d6dc' : 'rgba(118,215,217,.28)';
       this.tooltip.style.boxShadow = light ? '0 12px 40px #244e601c' : '0 12px 40px #0006';
-      const description = this.tooltip.querySelector('div');
+      const description = this.tooltip.querySelector('.bio-globe-tip-detail');
       if (description) description.style.color = light ? '#496b78' : '#a8c0d0';
+      const badge = this.tooltip.querySelector('.bio-globe-tip-badge');
+      if (badge) badge.style.color = GOLD[this.theme];
       this.draw();
+    }
+
+    _isCoordinator(item) {
+      return this.coordinatorId !== null && item.client_id === this.coordinatorId;
     }
 
     setVisible(visible) {
@@ -266,13 +280,27 @@
     _showTooltip(target, point) {
       this.tooltip.hidden = !target;
       if (!target) return;
+      const item = target.item;
+      const parts = [];
+      if (target.server || this._isCoordinator(item)) {
+        const badge = document.createElement('div');
+        badge.className = 'bio-globe-tip-badge';
+        badge.textContent = 'Coordinator';
+        Object.assign(badge.style, {
+          color: GOLD[this.theme], fontSize: '9px', fontWeight: '600', letterSpacing: '1.6px',
+          textTransform: 'uppercase', marginBottom: '3px',
+        });
+        parts.push(badge);
+      }
       const title = document.createElement('strong');
-      title.textContent = target.item.institution || target.item.client_id || 'Coordinator';
+      title.textContent = item.institution || item.client_id || item.org || 'Coordinator';
       const description = document.createElement('div');
+      description.className = 'bio-globe-tip-detail';
       description.style.color = this.theme === 'light' ? '#496b78' : '#a8c0d0';
-      description.textContent = target.server ? 'Coordinator' :
-        `${target.item.partnership_stage || target.item.status || 'Site'} · Select to inspect`;
-      this.tooltip.replaceChildren(title, description);
+      description.textContent = target.server ? [item.city, item.country].filter(Boolean).join(', ') :
+        `${item.partnership_stage || item.status || 'Site'} · Select to inspect`;
+      parts.push(title, description);
+      this.tooltip.replaceChildren(...parts);
       const left = clamp(point[0] + 17, 8, Math.max(8, this.width - this.tooltip.offsetWidth - 12));
       const top = clamp(point[1] - 16, 8, Math.max(8, this.height - this.tooltip.offsetHeight - 12));
       this.tooltip.style.left = `${left}px`;
@@ -372,57 +400,47 @@
         const location = [Number(item.lng), Number(item.lat)];
         return d3.geoDistance(center, location) < Math.PI / 2 - .008 ? this.projection(location) : null;
       };
-      const coordinator = this.server && visiblePoint(this.server);
-      const points = this.clients.map(item => ({item, point: visiblePoint(item)})).filter(entry => entry.point);
-      for (const entry of points) {
-        const [x, y] = entry.point;
-        this._drawMarker(x, y, entry.item, false);
+      for (const item of this.clients) {
+        const point = visiblePoint(item);
+        if (point) this._drawMarker(point[0], point[1], item, false);
       }
-      if (coordinator) {
-        const [x, y] = coordinator;
-        // Separate a co-located coordinator from its institution's selectable marker.
-        const overlaps = points.some(entry => Math.hypot(entry.point[0] - x, entry.point[1] - y) < 17);
-        if (overlaps) {
-          ctx.beginPath();
-          ctx.moveTo(x + 3, y - 3);
-          ctx.lineTo(x + 15, y - 15);
-          ctx.strokeStyle = 'rgba(246,199,120,.6)';
-          ctx.lineWidth = 1;
-          ctx.stroke();
-        }
-        this._drawMarker(x + (overlaps ? 19 : 0), y - (overlaps ? 19 : 0), this.server, true);
-      }
+      const alone = this.alone && visiblePoint(this.alone);
+      if (alone) this._drawMarker(alone[0], alone[1], this.alone, true);
     }
 
     _drawMarker(x, y, item, server) {
       const ctx = this.context;
       const stage = String(item.partnership_stage || '').slice(0, 1);
       const stageColors = { '0': '#8d9eaa', '1': '#669fe0', '2': '#d89e42', '4': '#15b9a6', X: '#db717e' };
-      const color = server ? (this.theme === 'light' ? '#bd7a17' : '#f5c77e')
+      const color = server ? '#8d9eaa'
         : stageColors[stage] || (this.theme === 'light' && item.status === 'active' ? '#088981' : COLORS[item.status] || '#66ddd7');
+      const coordinator = server || this._isCoordinator(item);
+      const ring = coordinator ? GOLD[this.theme] : color;
       const hovered = this.hovered && this.hovered.server === server &&
         (server || this.hovered.item.client_id === item.client_id);
       ctx.save();
-      ctx.shadowColor = color;
+      ctx.shadowColor = ring;
       ctx.shadowBlur = hovered ? 20 : 12;
       ctx.beginPath();
-      ctx.arc(x, y, server ? 9 : hovered ? 10 : 8, 0, TAU);
-      ctx.fillStyle = server ? 'rgba(245,199,126,.12)' : 'rgba(84,221,217,.12)';
+      if (coordinator) {
+        // The coordinator's mark: a gold diamond around the site's own point.
+        const r = hovered ? 14 : 12;
+        ctx.moveTo(x, y - r);
+        ctx.lineTo(x + r, y);
+        ctx.lineTo(x, y + r);
+        ctx.lineTo(x - r, y);
+        ctx.closePath();
+      } else ctx.arc(x, y, hovered ? 10 : 8, 0, TAU);
+      ctx.fillStyle = coordinator ? 'rgba(245,199,126,.14)' : 'rgba(84,221,217,.12)';
       ctx.fill();
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = color;
-      ctx.globalAlpha = hovered ? .85 : .4;
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = ring;
+      ctx.globalAlpha = coordinator ? 1 : hovered ? .85 : .4;
+      ctx.lineWidth = coordinator ? 1.6 : 1;
       ctx.stroke();
       ctx.globalAlpha = 1;
       ctx.beginPath();
-      if (server) {
-        ctx.moveTo(x, y - 5);
-        ctx.lineTo(x + 5, y);
-        ctx.lineTo(x, y + 5);
-        ctx.lineTo(x - 5, y);
-        ctx.closePath();
-      } else ctx.arc(x, y, hovered ? 4.5 : 3.4, 0, TAU);
+      ctx.arc(x, y, hovered ? 4.5 : 3.4, 0, TAU);
       ctx.fillStyle = color;
       ctx.fill();
       ctx.strokeStyle = '#e5ffff';

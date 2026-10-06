@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const labels = { 'fine-mapping': 'Fine-mapping', gwas: 'GWAS',
-    'flamby-heart-disease': 'FLamby · Heart disease', caidf: 'CAIDF', cpg: 'CpG', fedfm: 'FedFM', tbd: 'Project TBD' };
+    'flamby-heart-disease': 'FLamby · Heart disease', caidf: 'CAIDF', cpg: 'CpG', tbd: 'Project TBD' };
   const title = id => labels[id] || id;
   const make = (tag, className, text) => {
     const element = document.createElement(tag);

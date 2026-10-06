@@ -1,8 +1,8 @@
 /* Federation-first shell; upstream run controls remain available under Runs. */
 .bio-viewer [hidden] { display: none !important; }
 .bio-viewer { --accent: #50d9c7; --green: #50d9c7; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; height: 100dvh; }
-[data-theme="dark"] .bio-viewer { --bg: #081219; --surface: #101d26; --border: #25343e; --text: #e1edf0; --muted: #93a8b3; --tile-filter: invert(1) hue-rotate(180deg) brightness(.72) saturate(.5); }
-[data-theme="light"] .bio-viewer { --bg: #edf3f3; --surface: #fff; --border: #d6e3e3; --text: #143038; --muted: #536c75; --accent: #087f75; --green: #087f75; }
+[data-theme="dark"] .bio-viewer { --coordinator: #f5c77e; --bg: #081219; --surface: #101d26; --border: #25343e; --text: #e1edf0; --muted: #93a8b3; --tile-filter: invert(1) hue-rotate(180deg) brightness(.72) saturate(.5); }
+[data-theme="light"] .bio-viewer { --coordinator: #a8690f; --bg: #edf3f3; --surface: #fff; --border: #d6e3e3; --text: #143038; --muted: #536c75; --accent: #087f75; --green: #087f75; }
 .bio-viewer button { font: inherit; }
 .bio-viewer button, .bio-viewer input, .bio-viewer summary { -webkit-tap-highlight-color: transparent; }
 .bio-viewer button:focus-visible, .bio-viewer input:focus-visible, .bio-viewer summary:focus-visible, .bio-viewer canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
@@ -50,7 +50,11 @@
 .bio-card-bottom { display: flex; justify-content: space-between; font-size: 9px; color: var(--muted); border-top: 1px solid var(--border); margin-top: 13px; padding-top: 10px; }
 .bio-card-bottom span:last-child { color: var(--accent); }
 .bio-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #50d9c7; flex-shrink: 0; box-shadow: 0 0 0 3px #50d9c711; }
-.bio-dot.bio-hub { background: #f5bd66; box-shadow: 0 0 0 3px #f5bd6611; }
+/* The coordinator's mark: a gold diamond around a site's own point, and a gold label. */
+.bio-dot.bio-hub { position: relative; margin: 0 3px; box-shadow: none; }
+.bio-dot.bio-hub::before { content: ''; position: absolute; inset: -4px; border: 1.5px solid var(--coordinator); transform: rotate(45deg); }
+.bio-coordinator-label { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; color: var(--coordinator); font-size: 9px; font-weight: 600; letter-spacing: 1.6px; line-height: 1.4; text-transform: uppercase; }
+.bio-coordinator-label::before { content: ''; width: 5px; height: 5px; border: 1.5px solid currentColor; transform: rotate(45deg); }
 .bio-viewer .map-area { min-width: 0; overflow: hidden; background: #08131d; }
 .bio-viewer #map { background: #122834; }
 .bio-map-toolbar { position: absolute; z-index: 500; top: 28px; left: 30px; right: 30px; display: flex; align-items: center; justify-content: space-between; gap: 14px; pointer-events: none; }
@@ -71,7 +75,12 @@
 .bio-viewer .leaflet-control-attribution { font-size: 9px; background: var(--bg); color: var(--muted); padding: 3px 10px; }
 .bio-viewer .leaflet-control-attribution a { color: var(--muted); }
 .bio-leaflet-marker span { display: block; width: 13px; height: 13px; margin: 3px; background: var(--site-color); border: 2px solid #eafff8; border-radius: 50%; box-shadow: 0 0 0 5px #50d9c725, 0 0 18px #50d9c766; }
-.bio-leaflet-hub span { display: block; width: 11px; height: 11px; margin: 4px; transform: rotate(45deg); background: #f5bd66; border: 1px solid #fff3d7; box-shadow: 0 0 0 4px #f5bd661a, 0 0 16px #f5bd6644; }
+.bio-leaflet-marker.bio-coordinator span { position: relative; margin: 9.5px; box-shadow: 0 0 12px #50d9c755; }
+.bio-leaflet-marker.bio-coordinator::before { content: ''; position: absolute; inset: 6px; border: 2px solid var(--coordinator); border-radius: 2px; transform: rotate(45deg); background: color-mix(in srgb, var(--coordinator) 14%, transparent); box-shadow: 0 0 14px color-mix(in srgb, var(--coordinator) 45%, transparent); }
+.bio-viewer .bio-hover-tip { font-family: inherit; font-size: 11px; line-height: 1.5; padding: 8px 11px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px #0004; }
+.bio-viewer .bio-hover-tip::before { display: none; }
+.bio-hover-tip .bio-coordinator-label { margin-bottom: 3px; }
+.bio-hover-tip div { color: var(--muted); }
 .bio-viewer .leaflet-popup-content-wrapper { font-family: inherit !important; min-width: 235px; }
 .bio-viewer .popup-title { font-family: inherit; font-size: 15px; line-height: 1.5; }
 .bio-detail-location { font-size: 11px; color: var(--muted); margin: 6px 0 16px; }
