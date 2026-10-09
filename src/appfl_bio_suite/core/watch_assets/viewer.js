@@ -79,7 +79,6 @@
     <button id="bio-results-tab" role="tab" aria-selected="false" aria-controls="bio-results-panel" tabindex="-1">Results</button>
     <button id="bio-runs-tab" role="tab" aria-selected="false" aria-controls="bio-runs-panel" tabindex="-1">Runs <span>↗</span></button></div>
     <section id="bio-experiments-panel" role="tabpanel" aria-labelledby="bio-experiments-tab">
-      <div class="bio-panel-intro"><h1>Explore the network</h1><p>See where each experiment happens.</p></div>
       <fieldset id="bio-filters"><legend class="bio-sr-only">Filter sites by experiment</legend></fieldset>
       <div class="bio-sites-heading"><span>PARTICIPATING SITES</span><span id="bio-site-count">0</span></div>
       <p id="bio-filter-note" role="status"></p>
