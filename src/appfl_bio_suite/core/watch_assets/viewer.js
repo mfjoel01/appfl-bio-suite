@@ -79,17 +79,18 @@
     <button id="bio-results-tab" role="tab" aria-selected="false" aria-controls="bio-results-panel" tabindex="-1">Results</button>
     <button id="bio-runs-tab" role="tab" aria-selected="false" aria-controls="bio-runs-panel" tabindex="-1">Runs <span>↗</span></button></div>
     <section id="bio-experiments-panel" role="tabpanel" aria-labelledby="bio-experiments-tab">
-      <div class="bio-panel-intro"><h1>Explore the network</h1><p>See where each experiment happens.</p></div>
       <fieldset id="bio-filters"><legend class="bio-sr-only">Filter sites by experiment</legend></fieldset>
-      <div class="bio-sites-heading"><span>PARTICIPATING SITES</span><span id="bio-site-count">0</span></div>
-      <p id="bio-filter-note" role="status"></p>
+      <div id="bio-sites-pane">
+        <div class="bio-sites-heading"><span>PARTICIPATING SITES</span><span id="bio-site-count">0</span></div>
+        <p id="bio-filter-note" role="status"></p>
+      </div>
     </section>
     <section id="bio-results-panel" role="tabpanel" aria-labelledby="bio-results-tab" hidden></section>
     <section id="bio-runs-panel" role="tabpanel" aria-labelledby="bio-runs-tab" hidden>
       <div class="bio-panel-intro"><h1>Runs & playback</h1><p>Inspect live activity or replay a saved run.</p></div>
       <button id="bio-network-return" class="bio-text-button">← Return to federation network</button>
     </section>`);
-  $('bio-experiments-panel').append(clientList);
+  $('bio-sites-pane').append(clientList);
   $('bio-runs-panel').append(runs, roundSummary, logPanel);
 
   const area = document.querySelector('.map-area');

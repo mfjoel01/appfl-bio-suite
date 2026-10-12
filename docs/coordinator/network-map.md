@@ -55,7 +55,8 @@ Two query parameters let an embedding page open the viewer already matching itse
 rather than flashing the default and then being corrected: `?view=globe` starts on the
 globe instead of the flat map, and `?theme=light` starts in the light palette. Neither is
 remembered -- the viewer's own controls own the state from there on -- and any other
-value keeps the default. The project site's embed uses both.
+value keeps the default. The project site's embed and its full-screen links use both, so
+the viewer opens in the site's current theme.
 
 The header carries the suite logo and, on the right, a **BUILT ON** credit linking to
 [hivewatch](https://github.com/APPFL/hivewatch) and [APPFL](https://github.com/APPFL/APPFL).

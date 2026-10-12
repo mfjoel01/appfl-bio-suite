@@ -60,7 +60,7 @@
       endpoint is answering. The coordinator and every partner open the same page.
     </p>
     <div class="cta-row">
-      <a class="btn btn-primary" href="./map/map.html?metadata_url=network.map.json&amp;view=globe" target="_blank" rel="noopener">Open full screen ↗</a>
+      <a class="btn btn-primary" href="./map/map.html?metadata_url=network.map.json&amp;view=globe" target="_blank" rel="noopener" data-viewer-link>Open full screen ↗</a>
       <a class="btn" href="./">← Back to the suite</a>
     </div>
   </div>
@@ -73,7 +73,7 @@
         <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
         <span>Federation network · live preview</span>
         <span class="spacer"></span>
-        <a href="./map/map.html?metadata_url=network.map.json&amp;view=globe" target="_blank" rel="noopener">Open full screen ↗</a>
+        <a href="./map/map.html?metadata_url=network.map.json&amp;view=globe" target="_blank" rel="noopener" data-viewer-link>Open full screen ↗</a>
       </div>
       <iframe id="map-frame"
         title="Federation network map — interactive preview"
@@ -196,7 +196,8 @@ appfl-bio-suite run gwas --watch          <span class="c"># a live run, on the s
 
     <p style="margin-top:22px;color:var(--muted);font-size:14.5px">
       Appending <code>?view=globe</code> to the viewer URL opens it on the globe, and
-      <code>?theme=light</code> selects the light palette. This page's embed uses both.
+      <code>?theme=light</code> selects the light palette. This page's embed and its full-screen
+      links use both, so the viewer opens in this page's theme.
     </p>
   </div>
 </section>

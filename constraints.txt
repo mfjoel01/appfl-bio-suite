@@ -99,6 +99,13 @@ numpy==1.26.4
 pandas==2.2.2
 scipy==1.16.2
 scikit-learn==1.7.2
+# pyarrow is nobody's direct dependency: pandas-plink requires dask[dataframe], which
+# requires it. scikit-learn imports it whenever it is installed and tolerates only its
+# absence, not a failed import. pyarrow 26.0.0 (2026-10-09) refuses to import under
+# numpy 1.x but declares no numpy requirement, so pip paired it with the numpy pin above
+# and every scikit-learn import failed: "pyarrow requires NumPy 2.0 or newer". 25.0.1 is
+# the newest release that still supports numpy 1.x. Bump it together with numpy.
+pyarrow==25.0.1
 
 # Pure-Python, and the simulation imports it directly: phenotypes.py pins BLAS to a
 # single thread around the polygenic-score accumulation so the reduction order does not
