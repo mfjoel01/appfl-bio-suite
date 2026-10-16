@@ -67,10 +67,11 @@ const events = [
  assert.equal(await page.locator('#bio-runs-panel').isVisible(),false);
  for(const id of ['hdr-round','hdr-acc','hdr-loss']) assert.equal(await page.locator('#'+id).isVisible(),false);
  assert.equal(await checkbox('*').isChecked(),true);
- for (const logo of ['.bio-suite-logo','.bio-hive-logo']) {
-   assert.equal(await page.locator(logo).isVisible(),true);
-   assert.equal(await page.locator(logo).evaluate(img=>img.complete && img.naturalWidth>0),true);
- }
+ assert.equal(await page.locator('.bio-suite-logo').isVisible(),true);
+ assert.equal(await page.locator('.bio-suite-logo').evaluate(img=>img.complete && img.naturalWidth>0),true);
+ // Upstream is credited by link, not by its wordmark.
+ assert.deepEqual(await page.locator('.bio-hive-credit a').evaluateAll(links=>links.map(a=>a.href)),
+   ['https://github.com/APPFL/APPFL','https://github.com/APPFL/hivewatch']);
  assert.deepEqual(await page.evaluate(()=>Object.keys(markers).filter(id=>map.hasLayer(markers[id]))),['north','south','east','zero']);
  await checkbox('fine-mapping').check(); await assertVisible(['north','south']);
  assert.deepEqual(await page.evaluate(()=>Object.keys(lines).filter(id=>map.hasLayer(lines[id]))),['north','south']);
@@ -166,7 +167,7 @@ const events = [
  await page.setViewportSize({width:390,height:844});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  assert.equal(await page.locator('#bio-globe').isVisible(),true);
- for(const logo of ['.bio-suite-logo','.bio-hive-logo']) {
+ for(const logo of ['.bio-suite-logo','.bio-hive-credit']) {
    const bounds=await page.locator(logo).boundingBox();assert.ok(bounds && bounds.x>=0 && bounds.x+bounds.width<=390);
  }
  await page.locator('#bio-results-tab').click();
