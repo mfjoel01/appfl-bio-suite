@@ -47,7 +47,9 @@ The viewer opens in the familiar **Flat map** view. Switch to **Globe** for a ro
 drag to turn it, zoom to look closer, and select a site to inspect its details. You can
 pause rotation. Arrow keys rotate the focused globe, `+` and `-` zoom, `Space` toggles
 rotation, and `Home` resets the view. Rotation starts paused when your browser requests
-reduced motion. Both views use the same sites and experiment selection.
+reduced motion. Both views use the same sites and experiment selection, and switching
+between them keeps your place: the other view opens on the same part of the world, at about
+the same zoom.
 The theme button also changes the globe: light mode uses pale oceans, mint land,
 and a bright sky, while dark mode retains the night palette.
 

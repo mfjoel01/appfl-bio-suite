@@ -81,7 +81,7 @@
     <section id="bio-experiments-panel" role="tabpanel" aria-labelledby="bio-experiments-tab">
       <fieldset id="bio-filters"><legend class="bio-sr-only">Filter sites by experiment</legend></fieldset>
       <div id="bio-sites-pane">
-        <div class="bio-sites-heading"><span>PARTICIPATING SITES</span><span id="bio-site-count">0</span></div>
+        <div class="bio-sites-heading"><span>Participating Sites</span><span id="bio-site-count">0</span></div>
         <p id="bio-filter-note" role="status"></p>
       </div>
     </section>
@@ -117,6 +117,31 @@
       <span>Drag to rotate · Scroll to zoom</span></div>`);
   $('debug').hidden = true;
 
+  // A switch carries the view across, so the other projection opens on the same part of the
+  // world. Scale is matched at the centre: the globe's radius is its pixels per radian there,
+  // and Web Mercator at zoom z draws 256·2^z / 2π pixels per radian, stretched by sec(lat).
+  const centreLat = lat => Math.max(-85, Math.min(85, lat));
+  const secant = lat => 1 / Math.cos(centreLat(lat) * Math.PI / 180);
+  const mercatorRadius = (zoom, lat) => 256 * 2 ** zoom / (2 * Math.PI) * secant(lat);
+  const mercatorZoom = (radius, lat) => Math.log2(radius * 2 * Math.PI / (256 * secant(lat)));
+  function mapView() {
+    if (!$('map').offsetWidth) return null;
+    const { lat, lng } = map.wrapLatLng(map.getCenter());
+    return { lat: centreLat(lat), lng, radius: mercatorRadius(map.getZoom(), lat) };
+  }
+  // Leaflet measures its container to place a view, and a hidden map measures 0×0: a fit made
+  // behind the globe or the results lands zoomed far in on the wrong place. The map's view is
+  // therefore only set while it is shown, and what was asked for meanwhile is applied as it
+  // reappears -- the globe's view when switching from it, otherwise a fit that had to wait.
+  let fitPending = false;
+  function settleMap(view = null) {
+    if (!$('map').offsetWidth) return;
+    map.invalidateSize();
+    if (view) {
+      fitPending = false;
+      map.setView([centreLat(view.lat), view.lng], mercatorZoom(view.radius, view.lat), { animate: false });
+    } else if (fitPending) fitNetwork();
+  }
   function setTab(tab) {
     ui.tab = tab;
     document.body.classList.toggle('bio-show-runs', tab === 'runs');
@@ -133,7 +158,7 @@
     document.querySelector('.playback-bar').hidden = tab !== 'runs';
     $('debug').hidden = tab !== 'runs' || ui.source;
     syncLayers();
-    requestAnimationFrame(() => map.invalidateSize());
+    settleMap();
   }
   const tabs = ['experiments', 'results', 'runs'];
   for (const tab of tabs) {
@@ -263,10 +288,10 @@
     $('sb-participants').textContent = total;
     $('sb-acc').textContent = fmtAcc(state.globalAcc);
     $('sb-loss').textContent = fmtLoss(state.globalLoss);
+    // Only what the list cannot show by itself; the stylesheet hides the note when empty.
     const unplaced = entries.filter(([, c]) => !placed(c)).length;
-    $('bio-filter-note').textContent = ui.selected === null ? 'All sites and partner institutions'
-      : ui.selected.size ? 'Sites in any selected experiment' : 'Select an experiment to show its sites.';
-    if (unplaced) $('bio-filter-note').textContent += ` · ${unplaced} unplaced`;
+    $('bio-filter-note').textContent = unplaced
+      ? `${unplaced} ${unplaced === 1 ? 'site' : 'sites'} not on the map` : '';
     const focused = document.activeElement?.dataset.site;
     clientList.innerHTML = entries.map(([id, c]) => cardHtml(id, c)).join('')
       || `<div class="bio-empty"><span>◎</span><h3>${ui.loading ? 'Loading the network…' : 'No sites to show'}</h3>
@@ -386,8 +411,11 @@
     spinning = value; $('bio-spin').textContent = value ? 'Pause rotation' : 'Resume rotation';
     $('bio-spin').setAttribute('aria-pressed', String(value));
   }
-  function setView(view) {
+  // carry: a switch the reader made, which keeps their place. ?view=globe opens the globe on
+  // its own default view, not on the flat map's unfitted one.
+  function setView(view, carry = false) {
     closeDetail();
+    const carried = carry && view !== ui.view ? (view === 'globe' ? mapView() : ui.globe?.getView()) : null;
     if (view === 'globe' && !ui.globe) {
       try {
         ui.globe = new BioGlobe($('bio-globe-container'), { onSelect: focusClient, onSpinChange: spinChanged });
@@ -405,11 +433,12 @@
     $('bio-globe').setAttribute('aria-pressed', String(view === 'globe'));
     area.classList.toggle('bio-globe-view', view === 'globe');
     ui.globe?.setVisible(view === 'globe' && ui.tab !== 'results');
-    if (view === 'flat') requestAnimationFrame(() => map.invalidateSize());
+    if (view === 'globe' && carried) ui.globe.setView(carried);
+    if (view === 'flat') settleMap(carried);
     renderSidebar();
   }
-  $('bio-flat').onclick = () => setView('flat');
-  $('bio-globe').onclick = () => setView('globe');
+  $('bio-flat').onclick = () => setView('flat', true);
+  $('bio-globe').onclick = () => setView('globe', true);
   $('bio-spin').onclick = () => { spinChanged(!spinning); ui.globe?.setSpinning(spinning); };
   $('bio-zoom-in').onclick = () => ui.globe?.zoom(0.15);
   $('bio-zoom-out').onclick = () => ui.globe?.zoom(-0.15);
@@ -423,6 +452,8 @@
     return response.json();
   }
   function fitNetwork() {
+    fitPending = !$('map').offsetWidth;
+    if (fitPending) return;
     const points = visible().map(([, c]) => c).filter(placed).map(c => [Number(c.lat), Number(c.lng)]);
     if (ui.server) points.push([ui.server.lat, ui.server.lng]);
     if (points.length) map.fitBounds(points, { paddingTopLeft: [55, 110], paddingBottomRight: [55, 75], maxZoom: 4 });
