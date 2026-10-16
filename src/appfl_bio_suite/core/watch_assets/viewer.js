@@ -81,7 +81,7 @@
     <section id="bio-experiments-panel" role="tabpanel" aria-labelledby="bio-experiments-tab">
       <fieldset id="bio-filters"><legend class="bio-sr-only">Filter sites by experiment</legend></fieldset>
       <div id="bio-sites-pane">
-        <div class="bio-sites-heading"><span>PARTICIPATING SITES</span><span id="bio-site-count">0</span></div>
+        <div class="bio-sites-heading"><span>Participating Sites</span><span id="bio-site-count">0</span></div>
         <p id="bio-filter-note" role="status"></p>
       </div>
     </section>
@@ -263,10 +263,10 @@
     $('sb-participants').textContent = total;
     $('sb-acc').textContent = fmtAcc(state.globalAcc);
     $('sb-loss').textContent = fmtLoss(state.globalLoss);
+    // Only what the list cannot show by itself; the stylesheet hides the note when empty.
     const unplaced = entries.filter(([, c]) => !placed(c)).length;
-    $('bio-filter-note').textContent = ui.selected === null ? 'All sites and partner institutions'
-      : ui.selected.size ? 'Sites in any selected experiment' : 'Select an experiment to show its sites.';
-    if (unplaced) $('bio-filter-note').textContent += ` · ${unplaced} unplaced`;
+    $('bio-filter-note').textContent = unplaced
+      ? `${unplaced} ${unplaced === 1 ? 'site' : 'sites'} not on the map` : '';
     const focused = document.activeElement?.dataset.site;
     clientList.innerHTML = entries.map(([id, c]) => cardHtml(id, c)).join('')
       || `<div class="bio-empty"><span>◎</span><h3>${ui.loading ? 'Loading the network…' : 'No sites to show'}</h3>

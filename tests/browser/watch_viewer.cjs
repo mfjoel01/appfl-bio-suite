@@ -67,6 +67,12 @@ const events = [
  assert.equal(await page.locator('#bio-runs-panel').isVisible(),false);
  for(const id of ['hdr-round','hdr-acc','hdr-loss']) assert.equal(await page.locator('#'+id).isVisible(),false);
  assert.equal(await checkbox('*').isChecked(),true);
+ assert.equal(await page.locator('.bio-sites-heading span').first().innerText(),'Participating Sites');
+ assert.equal(await page.locator('#bio-filter-note').innerText(),'1 site not on the map');
+ // The experiment filters and the site list beneath them scroll with the same scrollbar.
+ const scrollbars=await page.evaluate(()=>['bio-filters','client-list'].map(id=>{
+   const style=getComputedStyle(document.getElementById(id));return `${style.scrollbarColor} ${style.scrollbarWidth}`}));
+ assert.equal(scrollbars[0],scrollbars[1]);assert.notEqual(scrollbars[0],'auto auto');
  assert.equal(await page.locator('.bio-suite-logo').isVisible(),true);
  assert.equal(await page.locator('.bio-suite-logo').evaluate(img=>img.complete && img.naturalWidth>0),true);
  // Upstream is credited by link, not by its wordmark.
@@ -74,6 +80,7 @@ const events = [
    ['https://github.com/APPFL/APPFL','https://github.com/APPFL/hivewatch']);
  assert.deepEqual(await page.evaluate(()=>Object.keys(markers).filter(id=>map.hasLayer(markers[id]))),['north','south','east','zero']);
  await checkbox('fine-mapping').check(); await assertVisible(['north','south']);
+ assert.equal(await page.locator('#bio-filter-note').isVisible(),false);
  assert.deepEqual(await page.evaluate(()=>Object.keys(lines).filter(id=>map.hasLayer(lines[id]))),['north','south']);
  await checkbox('gwas').check(); await assertVisible(['north','south','east','zero']);
  await checkbox('fine-mapping').uncheck(); await assertVisible(['north','east','zero']);
@@ -216,6 +223,6 @@ const events = [
  });
  await page.waitForTimeout(100);assert.equal(await page.evaluate(()=>window.injected),undefined);
  assert.deepEqual(errors,[]);
- console.log('PASS: default flat/all, OR/none filters, markers/arcs/counts, globe interactions, null/zero coordinates, mobile, reduced motion, JSONL replay, late live selection, SSE isolation, escaped metadata');
+ console.log('PASS: default flat/all, OR/none filters, markers/arcs/counts, sidebar, globe interactions, null/zero coordinates, mobile, reduced motion, JSONL replay, late live selection, SSE isolation, escaped metadata');
  await browser.close();
 })().catch(error=>{console.error(error);process.exit(1)});
