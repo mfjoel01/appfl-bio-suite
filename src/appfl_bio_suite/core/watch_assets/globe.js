@@ -144,6 +144,29 @@
       this.draw();
     }
 
+    // What the globe is looking at, for the flat map to take over: the point at the centre,
+    // and the radius, which is also the globe's scale there in pixels per radian.
+    getView() {
+      // Dragging and spinning accumulate longitude without bound; fold it back to ±180.
+      const lng = ((-this.rotation[0] + 180) % 360 + 360) % 360 - 180;
+      return {lat: -this.rotation[1], lng, radius: this._radius()};
+    }
+
+    // The reverse: turn to a point and zoom to a radius, without changing whether it spins.
+    // Needs a measured globe, so it is called once the globe is visible.
+    setView({lat, lng, radius}) {
+      if (!hasLocation({lat, lng}) || !this.width || !this.height) return;
+      this.rotation = [-Number(lng), clamp(-Number(lat), -85, 85), 0];
+      if (Number.isFinite(radius)) this.zoomFactor = clamp(radius / this._radius(1), .68, 2.6);
+      this.hovered = null;
+      this.tooltip.hidden = true;
+      this.draw();
+    }
+
+    _radius(zoomFactor = this.zoomFactor) {
+      return Math.min(this.width, this.height) * .405 * zoomFactor;
+    }
+
     reset() {
       this.rotation = [62, -28, 0];
       this.zoomFactor = 1;
@@ -313,7 +336,7 @@
       const light = this.theme === 'light';
       const w = this.width, h = this.height;
       const cx = w / 2, cy = h / 2;
-      const radius = Math.min(w, h) * .405 * this.zoomFactor;
+      const radius = this._radius();
       this.radius = radius;
       this.projection.translate([cx, cy]).scale(radius).rotate(this.rotation);
       ctx.clearRect(0, 0, w, h);

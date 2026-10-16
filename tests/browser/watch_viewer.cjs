@@ -85,8 +85,13 @@ const events = [
  await checkbox('gwas').check(); await assertVisible(['north','south','east','zero']);
  await checkbox('fine-mapping').uncheck(); await assertVisible(['north','east','zero']);
  await page.evaluate(()=>{const original=BioGlobe.prototype.setData;BioGlobe.prototype.setData=function(...args){window.testGlobe=this;return original.apply(this,args)}});
+ // Switching views keeps the place: the globe opens where the flat map was looking.
+ const looking=await page.evaluate(()=>{map.setView([20,-40],3,{animate:false});return map.wrapLatLng(map.getCenter())});
  await page.locator('#bio-globe').click();
  await page.waitForFunction(()=>window.testGlobe?.visible);
+ // Longitude has a little slack: the globe is already spinning.
+ const opened=await page.evaluate(()=>testGlobe.getView());
+ assert.ok(Math.abs(opened.lat-looking.lat)<.01 && Math.abs(opened.lng-looking.lng)<2,JSON.stringify([looking,opened]));
  assert.deepEqual(await page.evaluate(()=>testGlobe.clients.map(c=>c.client_id)),['north','east','zero']);
  assert.equal(await page.locator('#map').isVisible(),false);
  await checkbox('gwas').uncheck();await assertVisible([]);
@@ -105,6 +110,10 @@ const events = [
  assert.notEqual(await page.evaluate(()=>testGlobe.rotation[0]),rotation);
  await page.locator('#bio-flat').click();
  assert.equal(await page.evaluate(()=>testGlobe.frame),null);
+ // ...and the flat map opens where the globe was looking when it was left, to within the
+ // pixel Leaflet snaps its centre to.
+ const [left,shown]=await page.evaluate(()=>[testGlobe.getView(),map.wrapLatLng(map.getCenter())]);
+ assert.ok(Math.abs(left.lat-shown.lat)<.25 && Math.abs(left.lng-shown.lng)<.25,JSON.stringify([left,shown]));
  await page.locator('[data-site="zero"]').click();
  assert.equal(await page.evaluate(()=>markers.zero.isPopupOpen()),true);
  await page.locator('[data-site="unplaced"]').click();
@@ -116,10 +125,11 @@ const events = [
  await page.mouse.move(box.x+box.width*.5,box.y+box.height*.5);
  await page.mouse.down();await page.mouse.move(box.x+box.width*.6,box.y+box.height*.55);await page.mouse.up();
  assert.equal(await page.evaluate(()=>testGlobe.spinning),false);
- const zoom=await page.evaluate(()=>testGlobe.zoomFactor);
- await page.locator('#bio-zoom-in').click();assert.ok(await page.evaluate(()=>testGlobe.zoomFactor)>zoom);
  await canvas.focus();await page.keyboard.press('ArrowRight');await page.keyboard.press('Home');
  assert.deepEqual(await page.evaluate(()=>testGlobe.rotation),[62,-28,0]);
+ // From the reset zoom: the globe opened at the flat map's, which may be its closest.
+ assert.equal(await page.evaluate(()=>testGlobe.zoomFactor),1);
+ await page.locator('#bio-zoom-in').click();assert.ok(await page.evaluate(()=>testGlobe.zoomFactor)>1);
  // Theme changes redraw a paused globe, including the ocean and surrounding sky.
  const brightness=()=>page.evaluate(()=>{
    const data=testGlobe.context.getImageData(0,0,testGlobe.canvas.width,testGlobe.canvas.height).data;
@@ -185,6 +195,15 @@ const events = [
  assert.equal(await page.locator('#runs-list').isVisible(),true);
  if(process.env.WATCH_SCREENSHOT_DIR){fs.mkdirSync(process.env.WATCH_SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:process.env.WATCH_SCREENSHOT_DIR+'/mobile.png'})}
  await page.setViewportSize({width:1440,height:1000});
+ // Opened on the globe, as the project site opens it, the flat map is not fitted while hidden
+ // (a 0x0 fit lands zoomed far in on the wrong place) and takes over the globe's view. Reduced
+ // motion is still emulated, so the globe holds its default view: centred on 28N, 62W.
+ await page.goto(viewerUrl+'?metadata_url=network.map.json&view=globe');
+ await assertVisible(sites.map(s=>s.client_id));
+ await page.locator('#bio-flat').click();
+ const centre=await page.evaluate(()=>map.wrapLatLng(map.getCenter()));
+ assert.ok(Math.abs(centre.lat-28)<.25 && Math.abs(centre.lng+62)<.25,JSON.stringify(centre));
+ assert.ok(await page.evaluate(()=>map.getZoom())<=3);
  // JSONL fallback renders immediately, retains round_end clients and replays all frames.
  await page.goto(viewerUrl+'?events_url=fixture-events.json');
  await assertVisible(['north','south']);
@@ -223,6 +242,6 @@ const events = [
  });
  await page.waitForTimeout(100);assert.equal(await page.evaluate(()=>window.injected),undefined);
  assert.deepEqual(errors,[]);
- console.log('PASS: default flat/all, OR/none filters, markers/arcs/counts, sidebar, globe interactions, null/zero coordinates, mobile, reduced motion, JSONL replay, late live selection, SSE isolation, escaped metadata');
+ console.log('PASS: default flat/all, OR/none filters, markers/arcs/counts, sidebar, view switching, globe interactions, null/zero coordinates, mobile, reduced motion, JSONL replay, late live selection, SSE isolation, escaped metadata');
  await browser.close();
 })().catch(error=>{console.error(error);process.exit(1)});
