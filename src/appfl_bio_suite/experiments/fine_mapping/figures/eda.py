@@ -381,9 +381,7 @@ def eda4_ld_divergence_maps(pkg: dict, out: Path, n_show: int = 120) -> Path | N
     import matplotlib.colors as mcolors
 
     seq = mcolors.LinearSegmentedColormap.from_list("r2", fs.brand.SEQUENTIAL)
-    div = mcolors.LinearSegmentedColormap.from_list(
-        "d", [fs.DIVERGING[0], fs.DIVERGING[1], fs.DIVERGING[2]]
-    )
+    div = fs.diverging_cmap("d")
 
     # Load every panel BEFORE drawing any, so the difference panels can share one
     # symmetric colour limit. Rescaling each row to its own maximum -- the obvious way

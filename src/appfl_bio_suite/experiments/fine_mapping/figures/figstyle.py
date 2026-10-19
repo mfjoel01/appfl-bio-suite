@@ -201,6 +201,18 @@ def direct_label(
     )
 
 
+def diverging_cmap(name: str = "diverging"):
+    """The whole diverging ramp as a colormap, neutral at its centre.
+
+    Built from every stop, never a slice: DIVERGING was once (negative, mid, positive),
+    and eda4 kept indexing [0], [1], [2] after it became seven stops, which drew its
+    difference maps from three reds -- zero, sites in agreement, came out saturated.
+    """
+    import matplotlib.colors as mcolors
+
+    return mcolors.LinearSegmentedColormap.from_list(name, list(DIVERGING))
+
+
 def reference_label(ax, y: float, text: str, fontsize: float = 8.5) -> None:
     """Name a horizontal reference line in the right margin, outside the plot area.
 
