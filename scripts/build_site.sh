@@ -9,6 +9,10 @@
 # which carries partner contacts and endpoint identifiers.
 # check_site_preview.py enforces that rather than trusting this comment.
 #
+# The viewer's Results tab shows the files website/partners.json selects. The
+# fine-mapping ones in website/results/ are built from local runs, which CI does not
+# have, so they are committed; scripts/fine-mapping/site_results.py rebuilds them.
+#
 # .github/workflows/pages.yml runs this script, so previewing locally exercises the same
 # assembly that deploys:
 #
@@ -36,8 +40,9 @@ rm -rf "$out"
 mkdir -p "$out"
 
 cp -R website/. "$out"/
-# The map inputs are published through the export, reduced; not as raw files.
-rm -f "$out"/federation.yaml "$out"/partners.json
+# The map inputs are published through the export, reduced; not as raw files. That
+# includes results/: the export embeds the files partners.json selects into the map.
+rm -rf "$out"/federation.yaml "$out"/partners.json "$out"/results
 cp src/appfl_bio_suite/core/watch_assets/suite-logo.png "$out"/assets/suite-logo.png
 
 "$cli" watch export \
@@ -52,4 +57,4 @@ touch "$out/.nojekyll"
 
 "$python" scripts/check_site_preview.py "$out/map/network.map.json"
 
-echo "site: $root/$out"
+echo "site: $(cd "$out" && pwd)"

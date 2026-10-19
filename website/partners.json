@@ -12,5 +12,188 @@
     {"id": "utfpr", "name": "Federal University of Technology - Parana (UTFPR)", "country": "Brazil", "projects": ["tbd"], "stage": "0 - Not Started", "location": {"lat": -25.4394, "lng": -49.2687, "city": "Curitiba"}, "location_basis": "Representative UTFPR Curitiba campus."},
     {"id": "anl-nz", "name": "Argonne National Laboratory (New Zealand site)", "country": "New Zealand", "projects": ["tbd"], "stage": "3 - Debugging", "location": {"lat": -41.2865, "lng": 174.7762, "city": "Wellington"}, "location_basis": "Representative location within New Zealand."}
   ],
-  "results": []
+  "results": [
+    {
+      "experiment": "fine-mapping",
+      "title": "The federation against each site alone",
+      "description": "Held-out evaluation, 28 September 2026. Every cohort was fine-mapped on the same 8,100 fresh simulation instances over 54 loci, by the same inference driver; intervals are 95% locus bootstraps. The smart composition is the best 50,000-person cohort the composition search found. The search selected Covenant's own cohort, so its rows equal Covenant's.",
+      "artifacts": [
+        {
+          "path": "results/fine-mapping/fed6_what_federation_buys.webp",
+          "title": "Fine-mapping performance on held-out loci",
+          "description": "Power, resolution, high-confidence yield and paired power differences for the full 150,000-person federation, each 50,000-person site alone, and the smart composition.",
+          "wide": true
+        },
+        {
+          "path": "results/fine-mapping/heldout_evaluation.tsv",
+          "title": "Held-out metrics by cohort",
+          "description": "Each estimate with its 95% interval. Power: the share of instances whose credible sets capture a causal variant. Yield: the share whose causal variant reaches PIP > 0.95. Coverage: the share of credible sets that hold a causal variant. False discoveries: the share of variants at PIP > 0.95 that are not causal. Causal set size: the mean number of variants in the smallest credible set holding a causal variant."
+        },
+        {
+          "path": "results/fine-mapping/paired_power_gain.tsv",
+          "title": "Power gained by federating",
+          "description": "Full federation minus each cohort on identical instances, in percentage points (pp), with 95% paired intervals."
+        },
+        {
+          "path": "results/fine-mapping/composition_search.tsv",
+          "title": "Composition search: 20 candidate cohorts",
+          "description": "Fixed 50,000-person site and ancestry allocations, ranked by power on separate development draws; the metrics are defined as in the held-out table. All 20 passed the calibration screen (coverage at least 93%, false discoveries at most 5%). The winner was frozen before the held-out draws were simulated."
+        }
+      ]
+    },
+    {
+      "experiment": "fine-mapping",
+      "title": "Parity: federated equals pooled",
+      "description": "Benchmark run, 14 September 2026. 11,850 instances over 79 loci, fine-mapped once from the sites' summed second moments and once on the pooled data. Every result is identical.",
+      "artifacts": [
+        {
+          "path": "results/fine-mapping/fed1_parity.webp",
+          "title": "Federated against centralized, statistic by statistic",
+          "description": "PIP of the causal variant, the locus's maximum PIP, credible-set size and the number of credible sets returned. The lower row is the difference: zero for every instance."
+        },
+        {
+          "path": "results/fine-mapping/pap11_locuszoom_L0000.webp",
+          "title": "One locus, six ancestries, one posterior",
+          "description": "Per-ancestry association tracks and the joint SuSiEx posterior at locus L0000, with one causal variant at the weakest heritability (h² = 0.0005). The joint fit places PIP 1.00 on the simulated causal variant."
+        },
+        {
+          "path": "results/fine-mapping/parity_benchmark.tsv",
+          "title": "Parity record",
+          "description": "The run's parity gate, comparing every PIP, credible-set member and fit status."
+        }
+      ]
+    },
+    {
+      "experiment": "fine-mapping",
+      "title": "Accuracy across the simulation design",
+      "description": "The benchmark's 11,820 shared-causal instances, fine-mapped across the full federation: 150,000 individuals in six ancestry columns. The figure forms follow the SuSiEx paper (Yuan et al., Nature Genetics 2024). The run's 30 ancestry-divergent instances were withdrawn and are not shown.",
+      "artifacts": [
+        {
+          "path": "results/fine-mapping/pap1_recall_grid.webp",
+          "title": "Recall along the two design arms",
+          "description": "Power against per-locus heritability and against cross-ancestry genetic correlation, by the number of causal variants."
+        },
+        {
+          "path": "results/fine-mapping/pap5_resolution.webp",
+          "title": "Where fine-mapping puts its confidence",
+          "description": "PIP of the true causal variant, credible-set size and purity, by heritability."
+        },
+        {
+          "path": "results/fine-mapping/pap6_high_confidence.webp",
+          "title": "Confidently fine-mapped variants",
+          "description": "Causal variants identified at PIP above 0.5 and 0.95, as counts and as a rate."
+        },
+        {
+          "path": "results/fine-mapping/pap4_power_coverage.webp",
+          "title": "Yield against calibration, per design cell",
+          "description": "Each point is one design cell and LD-divergence stratum. Coverage stays near the nominal 95% across the range of yield."
+        },
+        {
+          "path": "results/fine-mapping/pap2_diversity_panels.webp",
+          "title": "Fine-mapping against cross-site LD divergence",
+          "description": "Power, high-confidence yield, calibration and resolution by LD-divergence stratum and genetic correlation."
+        },
+        {
+          "path": "results/fine-mapping/pap7_ld_divergence.webp",
+          "title": "LD divergence or LD strength?",
+          "description": "The divergence score tracks LD strength (r = +0.945 over 79 loci), so the falling resolution in panels a–c is an LD-strength effect, not an LD-diversity result."
+        },
+        {
+          "path": "results/fine-mapping/pap10_population_probability.webp",
+          "title": "Per-population causal probability",
+          "description": "SuSiEx's population-specific causal probability, by ancestry column. The share called causal follows each column's sample size."
+        },
+        {
+          "path": "results/fine-mapping/pap3_convergence.webp",
+          "title": "Fit outcomes",
+          "description": "Every fit converged without error. Empty results, where no credible set is returned, concentrate at the lowest heritability."
+        },
+        {
+          "path": "results/fine-mapping/pap12_effect_concordance.webp",
+          "title": "Effect sizes across ancestries",
+          "description": "Per-allele effect estimates of fine-mapped variants, EUR against each other ancestry. The scatter widens as the ancestry column shrinks.",
+          "wide": true
+        },
+        {
+          "path": "results/fine-mapping/power_by_architecture.tsv",
+          "title": "Full-federation power by architecture",
+          "description": "The share of instances whose credible sets capture a causal variant, for each of the 15 architectures."
+        },
+        {
+          "path": "results/fine-mapping/weakest_signal_coverage.tsv",
+          "title": "Calibration at the weakest signal",
+          "description": "The share of 95% credible sets holding a causal variant at h² = 0.0005, for the full federation and for each site fine-mapped alone."
+        }
+      ]
+    },
+    {
+      "experiment": "fine-mapping",
+      "title": "Exploratory data analysis",
+      "description": "The simulated package before any fine-mapping: 150,000 synthetic HAPNEST genomes split into three disjoint 50,000-person site cohorts, and the phenotypes simulated on them.",
+      "artifacts": [
+        {
+          "path": "results/fine-mapping/eda1_site_composition.webp",
+          "title": "Site cohorts by ancestry",
+          "description": "Three sites, each dominated by a different ancestry. Every individual appears at exactly one site."
+        },
+        {
+          "path": "results/fine-mapping/fed2_ancestry_columns.webp",
+          "title": "Ancestry columns, alone and together",
+          "description": "A column needs at least 1,000 individuals to enter the fit. Pooled, the federation has all six; no site alone has more than five."
+        },
+        {
+          "path": "results/fine-mapping/eda8_design_grid.webp",
+          "title": "Simulation design",
+          "description": "Fifteen architectures in two arms, heritability and genetic correlation, sharing their centre cell. Each cell holds 790 instances."
+        },
+        {
+          "path": "results/fine-mapping/eda4_ld_divergence_maps.webp",
+          "title": "Linkage disequilibrium seen from three sites",
+          "description": "The same window at a high- and a low-divergence locus, with the difference between two sites."
+        },
+        {
+          "path": "results/fine-mapping/eda5_causal_maf.webp",
+          "title": "Causal-variant allele frequencies",
+          "description": "Frequency spectra of the causal variants at each site, and the share below each frequency floor."
+        },
+        {
+          "path": "results/fine-mapping/eda6_h2_calibration.webp",
+          "title": "Realised against target heritability",
+          "description": "Per-locus heritability achieved at each site against the target."
+        },
+        {
+          "path": "results/fine-mapping/eda7_rg_recovery.webp",
+          "title": "Recovered cross-ancestry effect correlation",
+          "description": "The correlation of the drawn causal effects across ancestries against the target genetic correlation."
+        },
+        {
+          "path": "results/fine-mapping/fed4_harmonization.webp",
+          "title": "Allele coding against the reference",
+          "description": "From the evaluation package: all three sites code all 533,532 shared variants against the reference allele, so no variant needs recoding."
+        }
+      ]
+    },
+    {
+      "experiment": "fine-mapping",
+      "title": "What federating costs",
+      "description": "What each site sends for one locus, and where the compute goes.",
+      "artifacts": [
+        {
+          "path": "results/fine-mapping/fed3_uplink_cost.webp",
+          "title": "Uplink per locus",
+          "description": "Each site sends one X′X block per ancestry it holds, once: about 0.5 GiB per locus across the federation, in a single round."
+        },
+        {
+          "path": "results/fine-mapping/fed5_where_time_goes.webp",
+          "title": "Compute per instance",
+          "description": "Wall-clock per instance on each path. The federated figure is the coordinator's share only; each site's X′X is computed on its own hardware."
+        },
+        {
+          "path": "results/fine-mapping/pap8_scalability.webp",
+          "title": "Runtime and what drives it",
+          "description": "Runtime grows with the square of the locus window, not with the number of causal variants."
+        }
+      ]
+    }
+  ]
 }

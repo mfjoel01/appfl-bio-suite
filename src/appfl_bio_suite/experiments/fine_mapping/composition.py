@@ -525,8 +525,43 @@ def assemble_headline(root: Path, results: pd.DataFrame) -> pd.DataFrame:
     return headline.merge(split[["locus_id", "region"]], on="locus_id", validate="many_to_one")
 
 
-def finish(root: Path) -> None:
+def evaluation_cohorts(root: Path) -> dict[str, tuple[int, int]]:
+    """``{arm: (individuals, ancestry columns)}`` for the five headline arms."""
+    cfg = load_config(phase_config(root, "evaluation"))
+    selection = read_json(root / "selection.json")
+    cohort = {s: (spec.n, len(spec.composition)) for s, spec in cfg.sites.items()}
+    cohort["federation"] = (sum(s.n for s in cfg.sites.values()), len(cfg.superpopulations))
+    cohort[SMART_ARM] = (
+        sum(selection["ancestry_counts"].values()),
+        len(selection["ancestry_counts"]),
+    )
+    return cohort
+
+
+def evaluation_figures(root: Path, headline: pd.DataFrame, figures: Path) -> list[Path]:
+    """Draw the evaluation's fed6 and harmonization figures under ``figures``.
+
+    ``finish`` draws them into the run; the project site redraws them elsewhere from
+    the run's saved ``fm_results_by_arm.tsv``. Both go through here so they cannot drift.
+    """
     from .figures import federation, figstyle
+
+    cfg = load_config(phase_config(root, "evaluation"))
+    figstyle.apply_style()
+    fed6 = federation.fed6_what_federation_buys(
+        headline,
+        figures / "federation/shared/fed6_what_federation_buys.png",
+        evaluation_cohorts(root),
+    )
+    truth = pd.read_csv(cfg.resolved_path("ground_truth_dir") / "causal_manifest.tsv", sep="\t")
+    counts, n_variants, affected = federation.audit_harmonization(cfg, truth)
+    harmonization = federation.fed4_harmonization(
+        counts, n_variants, figures / "federation/harmonization.png", affected
+    )
+    return [fed6, harmonization]
+
+
+def finish(root: Path) -> None:
     from .figures.paper_plots import parse_architecture
 
     verify_selection(root)
@@ -570,22 +605,7 @@ def finish(root: Path) -> None:
     )
     # Publication records completion independently of whether the desired order holds.
     _json(root / "evaluation.accepted.json", decision)
-    cfg = load_config(phase_config(root, "evaluation"))
-    cohort = {s: (spec.n, len(spec.composition)) for s, spec in cfg.sites.items()}
-    cohort["federation"] = (sum(s.n for s in cfg.sites.values()), len(cfg.superpopulations))
-    cohort[SMART_ARM] = (
-        sum(selection["ancestry_counts"].values()),
-        len(selection["ancestry_counts"]),
-    )
-    figstyle.apply_style()
-    federation.fed6_what_federation_buys(
-        headline, root / "figures/federation/shared/fed6_what_federation_buys.png", cohort
-    )
-    truth = pd.read_csv(cfg.resolved_path("ground_truth_dir") / "causal_manifest.tsv", sep="\t")
-    counts, n_variants, affected = federation.audit_harmonization(cfg, truth)
-    federation.fed4_harmonization(
-        counts, n_variants, root / "figures/federation/harmonization.png", affected
-    )
+    evaluation_figures(root, headline, root / "figures")
     _json(
         root / "plots.json",
         dict(
