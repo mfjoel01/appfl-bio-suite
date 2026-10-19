@@ -15,7 +15,7 @@ const asset=(mime,content)=>`data:${mime};base64,${Buffer.from(content).toString
 const results=[{experiment:'fine-mapping',title:'Reference study',description:'Documented study results.',artifacts:[
  {kind:'table',title:'Scores',filename:'scores.tsv',columns:['Variant','Score'],rows:[['v10','10'],['v2','2']],total_rows:205,
   download:asset('text/tab-separated-values','Variant\tScore\nv10\t10\nv2\t2\n')},
- {kind:'image',title:'Power figure',filename:'power.png',download:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='},
+ {kind:'image',title:'Power figure',filename:'power.png',wide:true,download:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='},
  {kind:'report',title:'QC report',filename:'qc.html',download:asset('text/html','<h1>Study QC</h1><script>parent.injected=true</script>')}
 ]}];
 const network = {run_id:'network',algorithm:'federation network',finished_at:'2026-01-01',
@@ -149,6 +149,10 @@ const events = [
  assert.equal(await page.evaluate(()=>testGlobe.visible),false);
  assert.equal(await page.locator('#bio-result-experiment').inputValue(),'fine-mapping');
  assert.equal(await page.locator('.bio-result-card').count(),3);
+ // A wide figure takes the whole row, as a table does, instead of one grid column.
+ const [tableWidth,figureWidth]=await page.locator('.bio-result-card').evaluateAll(cards=>
+   cards.slice(0,2).map(card=>card.getBoundingClientRect().width));
+ assert.equal(figureWidth,tableWidth);
  await page.getByRole('button',{name:'Score ↕',exact:true}).click();
  assert.equal(await page.locator('.bio-table-scroll tbody tr').first().innerText(),'v2\t2');
  await page.getByRole('searchbox',{name:'Search Scores'}).fill('v10');

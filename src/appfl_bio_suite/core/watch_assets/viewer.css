@@ -241,7 +241,7 @@
 .bio-group-description:empty { display: none; }
 .bio-result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 1fr)); gap: 18px; margin-top: 18px; }
 .bio-result-card { min-width: 0; overflow: hidden; padding: 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 5px 18px #0000000a; }
-.bio-result-table, .bio-result-report { grid-column: 1 / -1; }
+.bio-result-table, .bio-result-report, .bio-result-wide { grid-column: 1 / -1; }
 .bio-artifact-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .bio-artifact-header h3 { min-width: 0; font-size: 13px; line-height: 1.6; font-weight: 600; overflow-wrap: anywhere; }
 .bio-download { display: inline-flex; flex-shrink: 0; align-items: center; color: var(--accent); font-size: 10px; line-height: 1.8; text-decoration: none; border-bottom: 1px solid transparent; }
@@ -250,6 +250,7 @@
 .bio-figure-button { display: block; width: 100%; margin-top: 18px; padding: 8px; border: 1px solid var(--border); border-radius: 7px; background: #fff; overflow: hidden; cursor: zoom-in !important; }
 .bio-figure-button:hover { border-color: var(--accent); }
 img.bio-result-image { display: block; width: 100%; max-height: 360px; min-height: 150px; object-fit: contain; }
+.bio-result-wide img.bio-result-image { max-height: 560px; }
 .bio-table-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0 12px; }
 .bio-table-controls input { width: min(100%, 290px); min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); color: var(--text); font-size: 11px; }
 .bio-table-controls input::placeholder { color: var(--muted); opacity: 1; }
@@ -259,7 +260,7 @@ img.bio-result-image { display: block; width: 100%; max-height: 360px; min-heigh
 .bio-table-scroll th { position: sticky; top: 0; z-index: 1; background: var(--bg); color: var(--text); font-weight: 600; border-bottom: 1px solid var(--border); }
 .bio-table-scroll th button { display: block; width: 100%; text-align: left; border: 0; padding: 12px 14px; color: inherit; background: transparent; white-space: nowrap; font-size: 10px; }
 .bio-table-scroll th[aria-sort="ascending"], .bio-table-scroll th[aria-sort="descending"] { color: var(--accent); }
-.bio-table-scroll td { padding: 11px 14px; max-width: 360px; overflow-wrap: anywhere; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.5; }
+.bio-table-scroll td { padding: 11px 14px; max-width: 360px; overflow-wrap: break-word; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.5; }
 .bio-table-scroll tbody tr:nth-child(even) { background: color-mix(in srgb, var(--bg) 48%, transparent); }
 .bio-table-scroll tbody tr:hover { background: color-mix(in srgb, var(--accent) 7%, transparent); }
 .bio-table-scroll tbody tr:last-child td { border-bottom: 0; }

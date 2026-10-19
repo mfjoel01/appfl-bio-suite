@@ -120,7 +120,9 @@ location, or document a representative institutional marker with its source.
 
 Each results group names an `experiment`, `title`, optional `description`, and an
 `artifacts` array of `{ "title": "...", "path": "..." }` objects. Artifact descriptions
-are optional. Supported files are PNG, JPEG, WebP, CSV, TSV and HTML, up to 16 MiB each.
+are optional. Figures sit two or three to a row; `"wide": true` gives one the full
+width, which tables and reports always have. Supported files are PNG, JPEG, WebP, CSV,
+TSV and HTML, up to 16 MiB each.
 Tables preview the first 200 rows; search and sorting apply to that preview, while
 downloads contain the complete file. HTML report scripts are disabled in the viewer.
 For interactive report content, publish a static figure or table alongside the report.

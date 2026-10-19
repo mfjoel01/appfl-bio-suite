@@ -83,6 +83,7 @@
     }
     artifact(artifact) {
       const card = make('article', `bio-result-card bio-result-${artifact.kind}`);
+      if (artifact.wide === true) card.classList.add('bio-result-wide');
       const header = make('div', 'bio-artifact-header');
       header.append(make('h3', '', artifact.title));
       if (safeAsset(artifact.download)) {

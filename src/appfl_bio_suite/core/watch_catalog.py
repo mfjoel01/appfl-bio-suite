@@ -120,6 +120,11 @@ def _artifact(raw: dict, directory: Path) -> dict:
         result.update(kind="table", columns=columns, rows=rows[:PREVIEW_ROWS], total_rows=len(rows))
     else:
         result["kind"] = "report" if suffix == ".html" else "image"
+    wide = raw.get("wide", False)
+    if not isinstance(wide, bool):
+        raise ValueError(f"catalogue artifact wide must be true or false: {path.name}")
+    if wide:
+        result["wide"] = True
     return result
 
 
