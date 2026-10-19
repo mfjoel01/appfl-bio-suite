@@ -175,3 +175,12 @@ Install licensed Helvetica fonts or set `BIOSIM_FONT_PATH` to a font directory
 or file. `BIOSIM_REQUIRE_HELVETICA=1` rejects rendering when it is unavailable.
 Otherwise previews warn and fall back to DejaVu Sans. Font binaries are not
 included in this repository. These changes affect rendering only.
+
+## On the project site
+
+The site's network viewer shows a selection of these figures under **Results**, with
+tables of the headline numbers. `scripts/fine-mapping/site_results.py` redraws them from
+the parity run and the composition-evaluation run with the current code, and writes
+web-sized copies to `website/results/fine-mapping/`. `website/partners.json` selects and
+captions them. Rerun the script after a plotting change and commit its output; the
+runs live under `local/`, which CI cannot see.
