@@ -201,6 +201,29 @@ def direct_label(
     )
 
 
+def reference_label(ax, y: float, text: str, fontsize: float = 8.5) -> None:
+    """Name a horizontal reference line in the right margin, outside the plot area.
+
+    Inside the axes, a threshold's label lands on whatever is drawn at that level, and
+    a coverage or probability threshold is exactly where the data piles up: nominal 95%
+    sat on the bars of pap2c and the points of pap4. The margin is the one place a
+    label cannot collide with a mark, and ``tight_layout`` reserves room for it there.
+    Keep ``text`` to a word or two per line; it sets the margin's width.
+    """
+    ax.annotate(
+        text,
+        xy=(1, y),
+        xycoords=ax.get_yaxis_transform(),
+        xytext=(5, 0),
+        textcoords="offset points",
+        ha="left",
+        va="center",
+        fontsize=fontsize,
+        color=INK2,
+        linespacing=1.15,
+    )
+
+
 def legend_swatches(
     ax, mapping: dict[str, str], title: str | None = None, marker: str = "patch", **kw
 ):

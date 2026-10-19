@@ -708,10 +708,13 @@ def eda7_rg_recovery(pkg: dict, out: Path, max_files: int = 4000) -> Path | None
     pooled = {rg: np.vstack(v) for rg, v in stacked.items()}
 
     fig = plt.figure(figsize=(12.4, 4.6))
-    gs = fig.add_gridspec(1, 3, width_ratios=[1.2, 1, 1], wspace=0.34)
+    # No wspace here: a gridspec with its own spacing is one tight_layout refuses to
+    # touch (it warns and returns), which left the axis label on top of the footnote.
+    gs = fig.add_gridspec(1, 3, width_ratios=[1.2, 1, 1])
     ax1 = fig.add_subplot(gs[0, 0])
     rgs = sorted(pooled)
     colors = fs.ordinal_colors(len(rgs))
+    ticks = []
     for i, (rg, c) in enumerate(zip(rgs, colors, strict=False), start=1):
         b = pooled[rg]
         corr = np.corrcoef(b.T)
@@ -730,24 +733,15 @@ def eda7_rg_recovery(pkg: dict, out: Path, max_files: int = 4000) -> Path | None
             zorder=4,
         )
         ax1.plot([i - 0.34, i + 0.34], [rg, rg], color=fs.INK, lw=1.5, ls="--", zorder=6)
-        # Below the tick labels, not on top of them: get_xaxis_transform puts y=0 at
-        # the axes floor, which is where the tick text already is.
-        ax1.text(
-            i,
-            -0.105,
-            f"{len(b):,} $\\beta$\n{len(off)} pairs",
-            transform=ax1.transAxes if False else ax1.get_xaxis_transform(),
-            ha="center",
-            va="top",
-            fontsize=8,
-            color=fs.MUTED,
-        )
+        # The counts ride in the tick label, so the axis label is laid out below them
+        # rather than at a hand-tuned labelpad that the counts outgrew.
+        ticks.append(f"{rg:g}\n{len(b):,} $\\beta$\n{len(off)} pairs")
         fs.direct_label(ax1, i + 0.34, float(off.mean()), f"{off.mean():.3f}", c, dx=6)
     ax1.set_xticks(range(1, len(rgs) + 1))
-    ax1.set_xticklabels([f"{r:g}" for r in rgs])
+    ax1.set_xticklabels(ticks)
     ax1.set_xlim(0.4, len(rgs) + 0.75)
     ax1.set_ylim(0.0, 1.06)
-    ax1.set_xlabel("target cross-ancestry $r_g$", labelpad=26)
+    ax1.set_xlabel("target cross-ancestry $r_g$")
     ax1.set_ylabel("realised $\\beta$ correlation, per ancestry pair")
     ax1.text(
         0.02,
@@ -803,7 +797,7 @@ def eda7_rg_recovery(pkg: dict, out: Path, max_files: int = 4000) -> Path | None
         "every target $r_g$, so their scatter is the design's spread across "
         "$r_g$ and not an estimation error.",
     )
-    fig.tight_layout()
+    fig.tight_layout(w_pad=2.5)
     return fs.save(fig, out, log)
 
 
