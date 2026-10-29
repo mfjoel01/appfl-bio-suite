@@ -1,6 +1,6 @@
 # Part 2 — Fed-Heart-Disease: getting your data
 
-Assumes [Part 1](../endpoint-setup.md) is done and your endpoint is running.
+Assumes Part 1 (`1-endpoint-setup.md`, beside this file) is done and your endpoint is running.
 
 This part is short: you download a small public dataset, verify it loads, and tell us one
 number.
@@ -33,7 +33,7 @@ find the data afterwards. Running it as the service account avoids a whole class
 
 ```bash
 sudo -iu {{ service_account }}     # or however you switch to the service account
-conda activate appfl_env           # the same environment from Part 1
+conda activate {{ conda_env }}   # the same environment from Part 1
 ```
 
 Get FLamby from GitHub — it is not published on PyPI:
@@ -48,11 +48,14 @@ Now install it **without running its `setup.py`**:
 ```bash
 python -c "import site, pathlib; \
   pathlib.Path(site.getsitepackages()[0], 'flamby.pth').write_text(str(pathlib.Path.cwd()))"
-python -c "import flamby; print('flamby importable from', flamby.__file__)"
+python -c "from flamby.datasets.fed_heart_disease import FedHeartDisease; \
+  import flamby; print('flamby importable from', flamby.__file__)"
 ```
 
 That writes a `.pth` file pointing at your checkout, which puts FLamby on the import path
-and nothing else.
+and nothing else. The check imports the dataset module rather than just `flamby`, whose
+top level is empty, so that a missing dependency shows up here and not halfway through
+the download.
 
 > ### Do NOT run `pip install -e .` or `make install` here
 >
@@ -89,7 +92,9 @@ cd flamby/datasets/fed_heart_disease/dataset_creation_scripts
 python download.py --output-folder {{ data_dir }}
 ```
 
-A few seconds, about 40 KB.
+It first asks whether you have read and accept the data terms of the original dataset
+(CC BY 4.0, linked in the prompt). Answer `y`; it records the answer and does not ask
+again. Then a few seconds, about 40 KB.
 
 That path is a suggestion, not a requirement — FLamby records where the data went inside
 its own package directory and resolves it internally, so we never need to know. Any

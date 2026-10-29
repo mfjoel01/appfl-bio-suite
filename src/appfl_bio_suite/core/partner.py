@@ -99,7 +99,7 @@ def render_context(federation: Federation, experiment: str, site_key: str) -> di
     site = entry.resolved_site
     coordinator = federation.coordinator
 
-    return {
+    context = {
         # -- who is asking ------------------------------------------------
         # From federation.yaml, never a literal. A different coordinator running this
         # command gets correct bundles for their own federation with no code change.
@@ -118,6 +118,7 @@ def render_context(federation: Federation, experiment: str, site_key: str) -> di
         "install_spec": install_spec(",".join(spec.partner_extras)),
         "service_account": exp.service_account,
         "endpoint_name": exp.endpoint_name,
+        "conda_env": exp.conda_env,
         # -- this partner -------------------------------------------------
         "site_id": site.id,
         "site_name": site.name,
@@ -156,6 +157,42 @@ def render_context(federation: Federation, experiment: str, site_key: str) -> di
         "globus_compute_version": "4.9.0",
         "python_version": "3.12",
     }
+
+    # The endpoint template, rendered once. The setup guide shows it by including this
+    # text, and the bundle installs this same text as a file. The guide used to carry its
+    # own hand-kept copy of the YAML, which drifted: it rendered `account:` and
+    # `module load` with nothing after them long after the file had learned to mark an
+    # unknown value explicitly, so a partner copying from the guide got the bug the file
+    # had been fixed for.
+    context["worker_template"] = _render(
+        _worker_template_source().read_text(encoding="utf-8"), context
+    )
+
+    # The identity mapping, serialized once, for the same reason. The guide used to build
+    # its JSON by pasting the raw regex between quotes, which rendered
+    # `"a.researcher@example\.edu"` -- an invalid JSON escape. Told to "replace the entire
+    # contents with the block below", a partner installed a file the mapper could not parse.
+    context["identity_mapping"] = (
+        json.dumps(
+            build_mapping_document(
+                identity_match=context["coordinator_identity_match"],
+                output_account=context["service_account"],
+            ),
+            indent=2,
+        )
+        + "\n"
+    )
+    return context
+
+
+def _worker_template_source() -> Path:
+    source = repo_root() / "partners" / "templates" / "user_config_template.yaml.j2"
+    if not source.is_file():
+        raise RuntimeError(
+            f"{source} does not exist. The endpoint template is not packaged, so bundle "
+            "generation only works from a source checkout of the repository."
+        )
+    return source
 
 
 def _data_use_summary(federation: Federation, experiment: str) -> str:
@@ -267,22 +304,16 @@ def generate_bundle(
         written.append(request_path)
 
     # -- 3. their identity mapping, ready to install -----------------------
+    # The same text Part 1 shows them, byte for byte -- see render_context().
     mapping_path = destination / "example_identity_mapping_config.json"
-    mapping = build_mapping_document(
-        identity_match=context["coordinator_identity_match"],
-        output_account=context["service_account"],
-    )
-    mapping_path.write_text(json.dumps(mapping, indent=2) + "\n", encoding="utf-8")
+    mapping_path.write_text(context["identity_mapping"], encoding="utf-8")
     written.append(mapping_path)
 
     # -- 4. their endpoint template, with their scheduler filled in --------
-    template_source = repo_root() / "partners" / "templates" / "user_config_template.yaml.j2"
-    if template_source.is_file():
-        target = destination / "user_config_template.yaml.j2"
-        target.write_text(
-            _render(template_source.read_text(encoding="utf-8"), context), encoding="utf-8"
-        )
-        written.append(target)
+    # The same text Part 1 shows them, byte for byte -- see render_context().
+    target = destination / "user_config_template.yaml.j2"
+    target.write_text(context["worker_template"], encoding="utf-8")
+    written.append(target)
 
     # -- 5. the validator, so they can check their own mapping -------------
     validator = repo_root() / "partners" / "templates" / "validate_mapping.py"

@@ -54,7 +54,7 @@ engine:
       module load {{ conda_module }}
 {%- endif %}
       source "$(conda info --base)/etc/profile.d/conda.sh"
-      conda activate appfl_env
+      conda activate {{ conda_env }}
       # Scheduler $TMPDIR paths overflow the ~108-char Unix socket limit and workers
       # then never register ("AF_UNIX path too long").
       export TMPDIR=/tmp

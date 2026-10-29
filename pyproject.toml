@@ -62,9 +62,15 @@ Documentation = "https://github.com/mfjoel01/appfl-bio-suite/tree/main/docs"
 # a dependency resolver touching it can move your pinned packages. It is installed from a
 # GitHub checkout by a documented procedure that bypasses setup.py entirely.
 # See docs/partner/experiments/flamby-heart-disease.md.
+#
+# Because setup.py never runs, FLamby's own requirements are never installed either, so
+# everything its import chain needs that appfl does not already bring is listed here.
+# `flamby.utils` -- imported by every dataset and by download.py -- imports tqdm at module
+# scope; without it a partner's download fails with `No module named 'tqdm'`.
 flamby = [
     "pandas==2.2.2",
     "scikit-learn==1.7.2",
+    "tqdm==4.67.1",
     "wget",
 ]
 

@@ -1,6 +1,6 @@
 # Part 2 — Federated GWAS: placing your data
 
-Assumes [Part 1](../endpoint-setup.md) is done and your endpoint is running.
+Assumes Part 1 (`1-endpoint-setup.md`, beside this file) is done and your endpoint is running.
 
 ---
 
