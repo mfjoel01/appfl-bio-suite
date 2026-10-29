@@ -244,6 +244,12 @@ experiments:
     # The endpoint name partners create. Also per-experiment, for the same reason.
     endpoint_name: flamby-ep
 
+    # The conda environment partners create for this endpoint; its worker_init activates
+    # it by name. Optional, default appfl_env. Give it a distinct name for a partner who
+    # already hosts an earlier experiment's endpoint, so a fresh setup neither collides
+    # with nor installs over the environment that endpoint still runs in.
+    conda_env: appfl_env
+
     # Fed-Heart-Disease has 4 natural centers (the collection sites of the original UCI
     # study). `num_clients` is the dataset's split size, which the FLamby loader asserts
     # against -- it is NOT your number of participating sites. Three sites drawing from a

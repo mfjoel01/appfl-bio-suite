@@ -238,23 +238,16 @@ def test_generated_bundle_has_no_placeholders(tmp_path):
             assert not leftovers, f"{path} still contains {leftovers}"
 
 
-def test_unknown_scheduler_fields_are_marked_not_left_blank(tmp_path):
-    """`account:` with nothing after it parses as null and fails on the partner's cluster.
+def _partner_federation(tmp_path, **experiment_fields):
+    """A one-partner FLamby federation that knows nothing about the partner's scheduler.
 
-    federation.yaml legitimately may not carry a partner's scheduler account or queue --
-    the coordinator often does not know them before onboarding. Rendering them empty made
-    the endpoint template look complete and install cleanly, then fail at job submission
-    with an error naming neither the field nor the file. An explicit marker is the honest
-    form, and the coordinator is told which fields carry one.
-
-    The shipped example fills both fields in, so this builds a federation that does not.
-    Skipping instead would have made the test agree with whatever the example happened to
-    say, which is the one thing it must not do.
+    The shipped example fills every field in, so tests about what a bundle does with a
+    value the coordinator lacks build this instead. Skipping would make them agree with
+    whatever the example happened to say, which is the one thing they must not do.
     """
     import yaml
 
     from appfl_bio_suite.core.config import load_federation as _load
-    from appfl_bio_suite.core.partner import generate_bundle, unresolved_fields
 
     path = tmp_path / "federation.yaml"
     path.write_text(
@@ -262,7 +255,7 @@ def test_unknown_scheduler_fields_are_marked_not_left_blank(tmp_path):
             {
                 "schema_version": 1,
                 "coordinator": {"identity": "a.researcher@example.edu"},
-                # No `account`, no `partition`: the state this test exists for.
+                # No `account`, no `partition`.
                 "sites": [{"id": "partner", "name": "Partner University", "scheduler": "slurm"}],
                 "experiments": {
                     "flamby-heart-disease": {
@@ -282,13 +275,33 @@ def test_unknown_scheduler_fields_are_marked_not_left_blank(tmp_path):
                                 "expected_train_samples": 199,
                             }
                         ],
+                        **experiment_fields,
                     }
                 },
             }
         ),
         encoding="utf-8",
     )
-    federation = _load(path)
+    return _load(path)
+
+
+def test_unknown_scheduler_fields_are_marked_not_left_blank(tmp_path):
+    """`account:` with nothing after it parses as null and fails on the partner's cluster.
+
+    federation.yaml legitimately may not carry a partner's scheduler account or queue --
+    the coordinator often does not know them before onboarding. Rendering them empty made
+    the endpoint template look complete and install cleanly, then fail at job submission
+    with an error naming neither the field nor the file. An explicit marker is the honest
+    form, and the coordinator is told which fields carry one.
+
+    The setup guide is checked too. It used to show its own hand-kept copy of the
+    template, which kept rendering the blanks after the file itself was fixed.
+    """
+    import yaml
+
+    from appfl_bio_suite.core.partner import generate_bundle, unresolved_fields
+
+    federation = _partner_federation(tmp_path)
 
     assert unresolved_fields(federation, "flamby-heart-disease", "partner") == [
         "account",
@@ -296,10 +309,72 @@ def test_unknown_scheduler_fields_are_marked_not_left_blank(tmp_path):
     ]
 
     destination = generate_bundle(federation, "flamby-heart-disease", "partner", tmp_path / "out")
-    provider = yaml.safe_load(
-        (destination / "user_config_template.yaml.j2").read_text(encoding="utf-8")
-    )["engine"]["provider"]
+    template = (destination / "user_config_template.yaml.j2").read_text(encoding="utf-8")
+    provider = yaml.safe_load(template)["engine"]["provider"]
 
     for field in ("account", "partition"):
         assert provider[field], f"{field} rendered empty rather than as an explicit marker"
         assert str(provider[field]).startswith("REPLACE_WITH_"), provider[field]
+
+    guide = (destination / "1-endpoint-setup.md").read_text(encoding="utf-8")
+    assert template.strip() in guide, "the setup guide shows a template other than the file"
+    assert not re.search(r"^\s*(account|partition):\s*$", guide, re.M), "guide has a blank"
+    assert not re.search(r"^\s*module load\s*$", guide, re.M), "guide loads an empty module"
+
+
+def test_setup_guide_creates_the_environment_the_workers_activate(tmp_path):
+    """Step 1 must create, by name, the environment worker_init activates.
+
+    They used to disagree: Step 1 led with a venv at ~/appfl-env while worker_init ran
+    `conda activate appfl_env`, so a partner following the first instruction built an
+    endpoint whose workers could not start. And the name was fixed, so a partner already
+    hosting an earlier experiment's endpoint had to collide with that endpoint's
+    environment or install over it.
+    """
+    from appfl_bio_suite.core.partner import generate_bundle
+
+    federation = _partner_federation(tmp_path, conda_env="finemap_env")
+    destination = generate_bundle(federation, "flamby-heart-disease", "partner", tmp_path / "out")
+    guide = (destination / "1-endpoint-setup.md").read_text(encoding="utf-8")
+    template = (destination / "user_config_template.yaml.j2").read_text(encoding="utf-8")
+
+    assert "conda create -n finemap_env " in guide
+    assert "conda activate finemap_env\n" in template
+    assert "conda activate finemap_env &&" in guide, "the service-account check tests another env"
+    for stale in ("venv", "appfl_env", "appfl-env"):
+        assert stale not in guide, f"the guide still mentions {stale!r}"
+
+    # Part 2 installs FLamby into that same environment; naming another one puts the
+    # dataset where the workers cannot import it.
+    part2 = (destination / "2-flamby-heart-disease.md").read_text(encoding="utf-8")
+    assert "conda activate finemap_env " in part2
+    assert "appfl_env" not in part2, "Part 2 activates a different environment than Part 1"
+
+
+def test_setup_guide_mapping_is_the_installable_file(tmp_path):
+    """The JSON Step 4b shows must parse, and must be exactly the file the bundle ships.
+
+    It used to be assembled by pasting the regex between quotes, which rendered
+    `"a\\.researcher@example\\.edu"` with single backslashes -- an invalid JSON escape. A
+    partner who followed "replace the entire contents with the block below" installed a
+    file the mapper could not read, while the bundle's own copy was fine.
+    """
+    import json
+    import re
+
+    from appfl_bio_suite.core.partner import generate_bundle
+
+    destination = generate_bundle(
+        _partner_federation(tmp_path), "flamby-heart-disease", "partner", tmp_path / "out"
+    )
+    guide = (destination / "1-endpoint-setup.md").read_text(encoding="utf-8")
+    shipped = (destination / "example_identity_mapping_config.json").read_text(encoding="utf-8")
+
+    blocks = re.findall(r"```json\n(.*?)```", guide, re.S)
+    assert len(blocks) == 1, "expected exactly one JSON block in Part 1"
+    assert json.loads(blocks[0]) == json.loads(shipped)
+    assert blocks[0] == shipped
+
+    assert _partner_federation(tmp_path).experiment("flamby-heart-disease").conda_env == (
+        "appfl_env"
+    ), "the default changed, which would re-point every existing partner's workers"

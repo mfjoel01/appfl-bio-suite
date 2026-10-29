@@ -12,7 +12,7 @@ abstract: >-
   them across independently administered HPC centers over Globus Compute.
 type: software
 license: MIT
-version: 0.2.0
+version: 0.2.1
 
 # TODO: add ORCID for each author, and any co-authors from the partner sites who should
 # be credited.

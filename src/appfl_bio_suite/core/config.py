@@ -549,6 +549,15 @@ class Experiment(_Strict):
     enabled: bool = True
     service_account: str
     endpoint_name: str
+
+    # The conda environment partners create in Part 1 of their setup guide and their
+    # endpoint's worker_init activates by name. Per-experiment for the same reason as the
+    # two fields above: a site already hosting an earlier experiment's endpoint has an
+    # environment by the default name, and a fresh setup would either collide with it or
+    # silently install over the environment that endpoint still runs in. Rendered into a
+    # shell command, so restricted to what conda accepts in a name.
+    conda_env: str = Field(default="appfl_env", pattern=r"^[A-Za-z0-9._-]+$")
+
     sites: list[ExperimentSite] = Field(default_factory=list)
 
     # FLamby
