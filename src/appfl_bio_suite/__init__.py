@@ -19,7 +19,7 @@ from pathlib import Path
 
 from appfl_bio_suite.core.compat import ensure_appfl_globus_compute_importable
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 # Where partners install from.
 #
