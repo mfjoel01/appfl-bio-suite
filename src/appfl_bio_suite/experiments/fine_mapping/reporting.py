@@ -15,10 +15,13 @@ KEY = ["locus_id", "architecture_id", "replicate"]
 def clustered_ratio(
     frame: pd.DataFrame, numerator: str, denominator: str, seed: int = 20260914, draws: int = 2000
 ) -> tuple[float, float, float]:
-    """Bootstrap whole loci, preserving all replicates/sets within each draw."""
+    """Bootstrap regions when supplied, otherwise loci, preserving all repeats."""
     if "locus_id" not in frame:
         raise ValueError("Locus identifiers are required for scientific uncertainty intervals")
-    totals = frame.groupby("locus_id")[[numerator, denominator]].sum()
+    cluster = "region" if "region" in frame else "locus_id"
+    if frame[cluster].isna().any():
+        raise ValueError("Missing bootstrap cluster identifiers")
+    totals = frame.groupby(cluster)[[numerator, denominator]].sum()
     n = len(totals)
     den = totals[denominator].sum()
     point = float(totals[numerator].sum() / den) if den else np.nan
@@ -227,12 +230,15 @@ def harvest_archives(root: Path, results: pd.DataFrame, destination: Path) -> pd
 
 def paired_arm_differences(frame: pd.DataFrame, reference: str = "federation") -> pd.DataFrame:
     """Paired locus bootstrap of power differences on identical simulation instances."""
-    base = frame[frame.arm == reference].set_index(KEY)
+    keys = KEY + (["sampling_seed"] if "sampling_seed" in frame else [])
+    if frame.duplicated(["arm", *keys]).any():
+        raise ValueError("Duplicate arm/instance keys in paired comparison")
+    base = frame[frame.arm == reference].set_index(keys)
     rows = []
     for arm, group in frame.groupby("arm"):
         if arm == reference:
             continue
-        other = group.set_index(KEY)
+        other = group.set_index(keys)
         if set(base.index) != set(other.index):
             raise ValueError(f"Arm {arm} is not paired with {reference}")
         other = other.loc[base.index]
@@ -242,6 +248,9 @@ def paired_arm_differences(frame: pd.DataFrame, reference: str = "federation") -
             .reset_index()
         )
         d["one"] = 1
+        if "region" in frame:
+            regions = frame[["locus_id", "region"]].drop_duplicates()
+            d = d.merge(regions, on="locus_id", validate="many_to_one")
         point, lo, hi = clustered_ratio(d, "difference", "one")
         rows.append(
             {
@@ -252,7 +261,11 @@ def paired_arm_differences(frame: pd.DataFrame, reference: str = "federation") -
                 "ci_high": hi,
                 "n_loci": d.locus_id.nunique(),
                 "n_instances": len(d),
-                "uncertainty": "paired_locus_cluster_bootstrap",
+                "uncertainty": (
+                    "paired_region_cluster_bootstrap"
+                    if "region" in frame
+                    else "paired_locus_cluster_bootstrap"
+                ),
             }
         )
     return pd.DataFrame(rows)

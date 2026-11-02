@@ -725,4 +725,7 @@ def _write_text_summary(path: Path, s: dict) -> None:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # Import under the package name so loky can resolve cached worker helpers.
+    from .validation import main as imported_main
+
+    raise SystemExit(imported_main())

@@ -116,6 +116,15 @@ appfl-bio-suite simulate fine-mapping --scenario ci-tiny --out /tmp/fm-ci
 appfl-bio-suite run fine-mapping --config loopback --driver serial --data-root /tmp/fm-ci
 ```
 
+Federated methylation, still a work in progress, has the same pair. For now that pair is
+the whole experiment: it simulates all of its sites on this machine and has no partner
+side, so nothing later in this guide applies to it.
+
+```bash
+appfl-bio-suite simulate methylation --scenario ci-tiny --out /tmp/meth-ci
+appfl-bio-suite run methylation --config loopback --driver serial --data-root /tmp/meth-ci
+```
+
 Do this first. Every hour spent debugging your own environment while a partner waits is an
 hour of someone else's goodwill.
 

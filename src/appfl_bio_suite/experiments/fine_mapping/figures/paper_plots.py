@@ -197,7 +197,7 @@ def pap1_recall_grid(df: pd.DataFrame, out: Path) -> Path:
         f"{int((df['h2'] == CENTER_H2).sum()):,} instances at "
         f"$h^2$ = {CENTER_H2:g}. Each panel plots one arm of the star design, "
         "not the whole grid. Bars are 95% locus-clustered bootstrap "
-        "intervals. The two arms share their centre cell, so the rightmost "
+        "intervals. The two arms share their centre cell, so the middle "
         "point of a is the same data as the rightmost point of b for each "
         "$n_{csl}$.",
     )
@@ -319,16 +319,7 @@ def pap2_diversity_panels(
                 zorder=3,
             )
         ax_c.axhline(0.95, color=fs.INK, lw=1.3, ls="--", zorder=5)
-        ax_c.text(
-            0.005,
-            0.95,
-            " nominal 95%",
-            transform=ax_c.get_yaxis_transform(),
-            ha="left",
-            va="bottom",
-            fontsize=8.5,
-            color=fs.INK2,
-        )
+        fs.reference_label(ax_c, 0.95, "nominal\n95%")
         ax_c.set_xticks(x)
         ax_c.set_xticklabels([s.capitalize() for s in strata])
         ax_c.set_ylabel("coverage   =   P(credible set holds a causal variant)")
@@ -377,9 +368,8 @@ def pap2_diversity_panels(
     )
     cs_note = (
         f" Panel c is computed over the {len(cs_detail):,} credible sets of the "
-        "harvested sample rather than the full sweep, because the summary "
-        "results table cannot attribute a causal variant to a particular set; "
-        "its wider intervals are that smaller sample, not worse calibration."
+        "available per-set records, across all heritabilities represented there. "
+        "Coverage intervals resample whole loci."
         if cs_detail is not None and len(cs_detail)
         else ""
     )
@@ -595,16 +585,7 @@ def pap4_power_coverage(df: pd.DataFrame, out: Path, cs_detail: pd.DataFrame | N
         )
 
     ax.axhline(0.95, color=fs.INK, lw=1.3, ls="--", zorder=5)
-    ax.text(
-        0.995,
-        0.95,
-        "nominal 95% coverage ",
-        transform=ax.get_yaxis_transform(),
-        ha="right",
-        va="bottom",
-        fontsize=9,
-        color=fs.INK2,
-    )
+    fs.reference_label(ax, 0.95, "nominal\n95%", fontsize=9)
     ax.set_xlabel("yield   =   P(causal variant reaches PIP > 0.5)")
     ax.set_ylabel(
         "coverage" + ("   (per credible set)" if use_exact else "   (per instance, power)")
@@ -1225,6 +1206,16 @@ def pap9_coding_quality(df: pd.DataFrame, out: Path, flips: pd.DataFrame | None 
         fig, ax = plt.subplots(figsize=(7.4, 4.6))
         fs.no_data(ax)
         return fs.save(fig, out, log)
+    if not d["has_flip"].any():
+        # A corrected package has no contaminant to bin. Drawn anyway, every bin reads
+        # 0% and panel b compares the PIPs against an empty group ("median vs nan").
+        fig, ax = plt.subplots(figsize=(7.4, 4.6))
+        fs.no_data(
+            ax,
+            "No causal variant is coded inconsistently across sites\n"
+            f"(0 of {len(d):,} instances), so there is no contamination to bin.",
+        )
+        return fs.save(fig, out, log)
 
     bins = [0, 0.1, 0.3, 0.5, 0.7, 0.9, 0.95, 1.0001]
     labels = ["0–0.1", "0.1–0.3", "0.3–0.5", "0.5–0.7", "0.7–0.9", "0.9–0.95", ">0.95"]
@@ -1374,16 +1365,7 @@ def pap10_population_probability(
     data = [cs_detail[f"prob_causal_{p}"].dropna().values for p in pops]
     fs.violin_box(ax1, data, colors=fs.ancestry_colors(pops))
     ax1.axhline(0.8, color=fs.INK, lw=1.3, ls="--", zorder=6)
-    ax1.text(
-        0.995,
-        0.8,
-        "0.8 — called causal in this population ",
-        transform=ax1.get_yaxis_transform(),
-        ha="right",
-        va="bottom",
-        fontsize=8.5,
-        color=fs.INK2,
-    )
+    fs.reference_label(ax1, 0.8, "called\ncausal\nabove 0.8")
     labels = []
     for p in pops:
         n = f"\nn = {cohort_n[p]:,}" if cohort_n and p in cohort_n else ""
@@ -1802,7 +1784,10 @@ def write_figures(
     active = logger or log
     fs.apply_style()
     out_dir = Path(out_dir)
-    df = parse_architecture(pd.DataFrame(results))
+    frame = pd.DataFrame(results)
+    if "causal_mode" in frame:
+        frame = frame.loc[frame.causal_mode.eq("shared")]
+    df = parse_architecture(frame)
     if df.empty:
         active.warning("no results to plot")
         return []

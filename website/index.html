@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>APPFL Bio Suite</title>
+<meta name="description" content="Cross-silo federated learning experiments in computational biology. Institutions train on their own data, on their own hardware, and return only results.">
+<meta property="og:title" content="APPFL Bio Suite">
+<meta property="og:description" content="Cross-silo federated learning experiments in computational biology — federated GWAS, cross-ancestry fine-mapping and a FLamby benchmark across separately administered clusters, with federated methylation classification in development.">
+<meta property="og:type" content="website">
+<link rel="icon" href="./assets/suite-logo.png">
+<link rel="stylesheet" href="./assets/site.css">
+<script>
+  /* Resolve the theme before first paint: an explicit choice, else the OS preference.
+     Inline and synchronous on purpose -- a deferred script would paint dark first. */
+  (function () {
+    var stored = null;
+    try { stored = localStorage.getItem('appfl-bio-suite:theme'); } catch (e) {}
+    document.documentElement.dataset.theme =
+      stored === 'light' || stored === 'dark' ? stored
+        : window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  })();
+</script>
+<script src="./assets/site.js" defer></script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="./">
+      <img src="./assets/suite-logo.png" alt="" width="34" height="34">
+      <b>APPFL <span>Bio Suite</span></b>
+    </a>
+    <nav class="site-nav" aria-label="Main">
+      <a href="#about">About</a>
+      <a href="#experiments">Experiments</a>
+      <a href="#design">Design</a>
+      <a href="#standards">Standards</a>
+      <a href="#reproducibility">Reproducibility</a>
+      <a href="#quickstart">Installation</a>
+      <a href="./network.html" data-spy="map-teaser">Network map</a>
+      <a class="nav-repo" href="https://github.com/mfjoel01/appfl-bio-suite">GitHub ↗</a>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light theme" title="Switch to light theme" aria-pressed="false">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.6M12 19.4V22M4.2 4.2l1.9 1.9M17.9 17.9l1.9 1.9M2 12h2.6M19.4 12H22M4.2 19.8l1.9-1.9M17.9 6.1l1.9-1.9"/></svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<section class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Cross-silo federated learning in computational biology</p>
+    <h1>APPFL <span>Bio Suite</span></h1>
+    <p class="lead">
+      Four federated experiments in genomics, epigenomics and clinical prediction, one
+      still in development, built on
+      <a href="https://github.com/APPFL/APPFL">APPFL</a>,
+      <a href="https://github.com/APPFL/hivewatch">hivewatch</a> and
+      <a href="https://www.globus.org/compute">Globus&nbsp;Compute</a>, together with the
+      tooling to run them across independently administered HPC centres. Each institution
+      computes on its own data, on its own hardware, and returns only results.
+      <strong>No data movement, no shared credential, no VPN, and no inbound network
+      access.</strong>
+    </p>
+
+    <p class="byline">
+      Matthew Joel · <a href="https://lab.madduri.us/">Madduri Lab</a>, Argonne National
+      Laboratory
+    </p>
+
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#quickstart">Installation</a>
+      <a class="btn" href="https://github.com/mfjoel01/appfl-bio-suite">Source on GitHub ↗</a>
+      <a class="btn" href="./network.html">Network map</a>
+    </div>
+  </div>
+</section>
+
+<section id="about">
+  <div class="wrap">
+    <p class="eyebrow">Architecture</p>
+    <h2 class="section-title">Coordinator and partner sites</h2>
+    <p class="section-lead">
+      The coordinator runs a driver and an aggregator. Each partner runs a privileged
+      process on their own cluster, against data that stays there. What crosses the wire is
+      whatever the experiment's aggregation requires: model weights for the multi-round
+      experiment, per-variant summary statistics or second moments for the single-round
+      ones.
+    </p>
+
+    <figure class="figure">
+      <svg viewBox="0 0 900 320" role="img" aria-labelledby="arch-title arch-desc">
+        <title id="arch-title">Federation architecture</title>
+        <desc id="arch-desc">A coordinator running a driver and an aggregator dispatches
+          tasks to three partner sites. Each site computes on its own data on its own
+          cluster and returns only weights or summary statistics. No raw data is
+          returned.</desc>
+
+        <!-- coordinator -->
+        <text x="30" y="92" fill="var(--accent)" font-size="12" font-weight="600" letter-spacing="1.6">YOU · COORDINATOR</text>
+        <rect x="30" y="104" width="228" height="134" rx="12" fill="var(--surface-2)" stroke="var(--border)"/>
+        <text x="54" y="142" fill="var(--text)" font-size="16" font-weight="600">driver</text>
+        <text x="54" y="167" fill="var(--muted)" font-size="12.5">dispatches the work</text>
+        <line x1="54" y1="180" x2="234" y2="180" stroke="var(--border)"/>
+        <text x="54" y="199" fill="var(--text)" font-size="16" font-weight="600">aggregator</text>
+        <text x="54" y="224" fill="var(--muted)" font-size="12.5">combines what comes back</text>
+
+        <!-- flows -->
+        <g stroke="var(--accent)" stroke-width="1.6" fill="none">
+          <path d="M262 136 H600" marker-end="url(#arrow-fwd)"/>
+        </g>
+        <text x="300" y="126" fill="var(--accent)" font-size="13" font-weight="600">task</text>
+
+        <g stroke="var(--muted)" stroke-width="1.6" fill="none">
+          <path d="M600 190 H266" marker-end="url(#arrow-back)"/>
+        </g>
+        <text x="300" y="212" fill="var(--muted)" font-size="13">weights, or summary statistics</text>
+
+        <defs>
+          <marker id="arrow-fwd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)" stroke="none"/>
+          </marker>
+          <marker id="arrow-back" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="var(--muted)" stroke="none"/>
+          </marker>
+        </defs>
+
+        <!-- partner sites -->
+        <text x="616" y="28" fill="var(--muted)" font-size="12" font-weight="600" letter-spacing="1.6">PARTNER SITES</text>
+        <rect x="614" y="40" width="256" height="72" rx="10" fill="var(--surface-2)" stroke="var(--border)"/>
+        <circle cx="640" cy="66" r="4.5" fill="var(--accent)"/>
+        <text x="656" y="71" fill="var(--text)" font-size="14.5" font-weight="600">their cluster</text>
+        <text x="640" y="94" fill="var(--muted)" font-size="12.5">their scheduler, their accounts</text>
+
+        <rect x="614" y="126" width="256" height="72" rx="10" fill="var(--surface-2)" stroke="var(--border)"/>
+        <circle cx="640" cy="152" r="4.5" fill="var(--accent)"/>
+        <text x="656" y="157" fill="var(--text)" font-size="14.5" font-weight="600">their data</text>
+        <text x="640" y="180" fill="var(--muted)" font-size="12.5">genotypes never open to us</text>
+
+        <rect x="614" y="212" width="256" height="72" rx="10" fill="var(--surface-2)" stroke="var(--border)"/>
+        <circle cx="640" cy="238" r="4.5" fill="var(--accent)"/>
+        <text x="656" y="243" fill="var(--text)" font-size="14.5" font-weight="600">their consent code</text>
+        <text x="640" y="266" fill="var(--muted)" font-size="12.5">checked before a file is opened</text>
+      </svg>
+      <figcaption>
+        Partners need no inbound network access: their endpoint reaches out to Globus
+        Compute, and refuses tasks from anyone their own identity mapping does not name.
+      </figcaption>
+    </figure>
+
+    <div class="grid grid-2" style="margin-top:22px">
+      <div class="card">
+        <h3>Requirements</h3>
+        <p>Python&nbsp;3.12, a Globus account, and partners willing to run a privileged
+          process on their own clusters.</p>
+      </div>
+      <div class="card">
+        <h3>Not required</h3>
+        <p>A shared filesystem, a VPN, matching operating systems or schedulers, or inbound
+          network access to any participant.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="experiments">
+  <div class="wrap">
+    <p class="eyebrow">Experiments</p>
+    <h2 class="section-title">The four experiments</h2>
+    <p class="section-lead">
+      They differ by design. Two are multi-round model training: one on a public
+      benchmark, one a methylation classifier still in development. The other two are
+      single-round statistical federations, where the aggregation step is itself the
+      method under test.
+    </p>
+
+    <div class="grid grid-2">
+
+      <article class="card">
+        <span class="tag alt2">Multi-round · FedAvg</span>
+        <h3>FLamby Fed-Heart-Disease</h3>
+        <p>
+          Multi-round federated training on a public tabular benchmark whose client
+          partition follows the original hospital collection sites. The model is not the
+          object of study; the infrastructure is. The question it answers is whether APPFL
+          over Globus Compute can carry a multi-round job across separately administered
+          clusters on different continents and still reach the published baseline.
+        </p>
+        <dl>
+          <dt>Data</dt><dd>Partners download it; ~40&nbsp;KB, CC&nbsp;BY&nbsp;4.0</dd>
+          <dt>Splits</dt><dd>Four real hospital collection sites</dd>
+        </dl>
+        <a class="card-link" href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/docs/experiments/flamby-heart-disease/ABOUT.md">Design and record of runs →</a>
+      </article>
+
+      <article class="card">
+        <span class="tag alt">Single round · Meta-analysis</span>
+        <h3>Federated GWAS</h3>
+        <p>
+          A genome-wide association study with polygenic-score evaluation, run across
+          institutions on different continents. Each site performs a complete local GWAS and
+          transmits only per-variant effect size, standard error and minor-allele frequency.
+          The server combines these by inverse-variance fixed-effect meta-analysis.
+        </p>
+        <dl>
+          <dt>Traits</dt><dd>BMI (linear), T2D (logistic score test)</dd>
+          <dt>Payload</dt><dd>A few MB, whatever the cohort size</dd>
+        </dl>
+        <a class="card-link" href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/docs/experiments/gwas/ABOUT.md">Design and record of runs →</a>
+      </article>
+
+      <article class="card">
+        <span class="tag">Single round · Exact aggregation</span>
+        <h3>Cross-ancestry fine-mapping</h3>
+        <p>
+          Where a GWAS identifies an associated locus, fine-mapping asks which variant in
+          it is causal. Answering that requires the linkage-disequilibrium structure, which
+          does not decompose into per-variant summaries. Credible sets are instead built
+          from per-site second moments. Given three stated harmonization conditions, the
+          federated fit equals the centralized one — same credible sets, same posterior
+          inclusion probabilities, up to floating-point summation order — and that
+          equivalence is checked against a centralized path on a 79-locus benchmark rather
+          than assumed.
+        </p>
+        <dl>
+          <dt>Estimator</dt><dd>SuSiEx</dd>
+          <dt>Checked</dt><dd>79-locus benchmark against the centralized path</dd>
+          <dt>Governance</dt><dd>GA4GH DUO, DRS, TRS and TES</dd>
+        </dl>
+        <a class="card-link" href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/docs/experiments/fine-mapping/ABOUT.md">Design and record of runs →</a>
+      </article>
+
+      <article class="card">
+        <span class="tag alt2">Multi-round · Work in progress</span>
+        <h3>Federated methylation</h3>
+        <p>
+          A DNA-methylation subtype classifier for sparse, nanopore-like input, built
+          toward leukemia classification. FedAvg across simulated hospitals is compared
+          with pooled training and with each hospital training alone, at several levels
+          of CpG coverage. For now every site is simulated on one machine; partner
+          execution comes later, once the model holds up on real data.
+        </p>
+        <dl>
+          <dt>Model</dt><dd>Residual MLP over binary methylation calls</dd>
+          <dt>Data</dt><dd>Synthetic, or open TCGA-LAML from the NCI GDC</dd>
+          <dt>Status</dt><dd>Single-machine simulation; no partner bundle yet</dd>
+        </dl>
+        <a class="card-link" href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/docs/experiments/methylation/ABOUT.md">Design and record of runs →</a>
+      </article>
+
+    </div>
+  </div>
+</section>
+
+<section id="design">
+  <div class="wrap">
+    <p class="eyebrow">Implementation</p>
+    <h2 class="section-title">Design decisions</h2>
+    <p class="section-lead">
+      Most of the difficulty in a cross-institution run is operational rather than
+      statistical: version skew between sites, partially completed configuration, and setup
+      instructions a partner has to interpret. The following address those.
+    </p>
+
+    <div class="points">
+      <div>
+        <h3>A single configuration file</h3>
+        <p><code>federation.yaml</code> declares who you are, who your partners are, and what
+          each is doing. Every generator, configuration file, document template and check
+          reads from it. Nothing in <code>src/</code> contains a coordinator identity, an
+          endpoint UUID or a site name, and CI verifies this, since the repository has to be
+          usable by someone other than its author.</p>
+      </div>
+      <div>
+        <h3>Partner bundles are generated, not templated</h3>
+        <p>A bundle is a directory containing a partner's configuration fully resolved:
+          their site ID, their data assignment, the coordinator's identity, and their
+          scheduler's provider block, along with their two setup documents with no
+          placeholders remaining.</p>
+      </div>
+      <div>
+        <h3>Partner-facing content is a closed set</h3>
+        <p>Bundles are built from <code>docs/partner/</code> and nowhere else, enforced in
+          code, so nothing outside that tree can reach a partner by accident.</p>
+      </div>
+      <div>
+        <h3>Exact version pinning</h3>
+        <p>Every site runs byte-identical versions of the Globus Compute stack. Version skew
+          does not fail at install time; it surfaces as a deserialization error several
+          rounds into a run on another institution's cluster. <code>constraints.txt</code>
+          pins the stack and <code>preflight --check pins</code> verifies it.</p>
+      </div>
+      <div>
+        <h3>Troubleshooting is indexed by symptom</h3>
+        <p>The troubleshooting registry is keyed on the error a partner actually sees, and
+          records the underlying mechanism alongside the fix, so a message resolves to a
+          cause rather than to a support thread.</p>
+      </div>
+    </div>
+
+    <h3 style="margin:38px 0 16px;font-size:17px">The CLI</h3>
+    <pre><code>appfl-bio-suite preflight [--experiment X]           <span class="c">environment, pins, configs, endpoints</span>
+appfl-bio-suite endpoint status [SITE]               <span class="c">is it online</span>
+appfl-bio-suite endpoint smoke [SITE]                <span class="c">round-trip: does it actually work</span>
+appfl-bio-suite identity validate &lt;mapping.json&gt;     <span class="c">catch mapping bugs offline, in a second</span>
+appfl-bio-suite simulate EXPERIMENT --scenario NAME  <span class="c">generate and split synthetic data</span>
+appfl-bio-suite run EXPERIMENT                       <span class="c">run it</span>
+appfl-bio-suite partner-bundle EXPERIMENT --site X   <span class="c">a partner&#x27;s complete setup package</span>
+appfl-bio-suite watch build | serve | export         <span class="c">the federation, on a map</span>
+appfl-bio-suite ga4gh duo | drs | trs | tes          <span class="c">data use, data objects, tools, tasks</span></code></pre>
+  </div>
+</section>
+
+<section id="standards">
+  <div class="wrap">
+    <p class="eyebrow">Standards</p>
+    <h2 class="section-title">GA4GH standards</h2>
+    <p class="section-lead">
+      The fine-mapping experiment is built on four GA4GH specifications. Each supplies a
+      guarantee the design would otherwise have had to assume.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th scope="col">Service</th><th scope="col">Name</th><th scope="col">Answers</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>DUO</td><td>Data Use Ontology</td><td class="q">May this site's data be used for this study?</td></tr>
+          <tr><td>DRS</td><td>Data Repository Service</td><td class="q">Exactly which bytes did a site compute over?</td></tr>
+          <tr><td>TRS</td><td>Tool Registry Service</td><td class="q">Exactly which tool version computed them?</td></tr>
+          <tr><td>TES</td><td>Task Execution Service</td><td class="q">Run that tool, there, on those bytes.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout" style="margin-top:22px">
+      Taken together, they establish that <strong>a named tool version, pinned by checksum,
+      ran over content-addressed data whose use terms permit the study that dispatched
+      it</strong> — each clause verifiable after the fact rather than asserted.
+    </div>
+
+    <div class="grid grid-3" style="margin-top:22px">
+      <div class="card">
+        <h3>Consent is enforced at the site</h3>
+        <p>Each bundle carries a <code>DATA_USE.json</code>, which the site's worker matches
+          against the study the coordinator declared, refusing before it opens a genotype
+          file — on its own hardware, under the account it controls. The coordinator runs
+          the same check offline before dispatch, but that one only saves a queue wait.</p>
+      </div>
+      <div class="card">
+        <h3>Bundles are content-addressed</h3>
+        <p>A sha-256 per file and a Merkle identifier over the set reduce "did this site run
+          on the bundle issued to it" to a string comparison. Without that, a site running
+          an outdated bundle produces well-formed aggregates over the wrong individuals,
+          which pool without complaint and are wrong in no visible way.</p>
+      </div>
+      <div class="card">
+        <h3>Provenance is recorded per run</h3>
+        <p>The tool pin covers the source of the two modules APPFL ships to workers. It is
+          verified at launch and written into each run's
+          <code>ga4gh_provenance.json</code>, alongside what every site attests to having
+          done.</p>
+      </div>
+    </div>
+
+    <p style="margin-top:22px;color:var(--muted);font-size:14.5px">
+      All of this is opt-in per experiment: a <code>federation.yaml</code> with no
+      <code>ga4gh</code> blocks produces configurations byte-identical to those produced
+      before the GA4GH support existed.
+      <a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/docs/coordinator/ga4gh.md">Read the GA4GH design →</a>
+    </p>
+  </div>
+</section>
+
+<section id="reproducibility">
+  <div class="wrap">
+    <p class="eyebrow">Reproducibility</p>
+    <h2 class="section-title">Provenance and reproducibility</h2>
+
+    <div class="grid grid-3">
+      <div class="card">
+        <h3>Every simulation writes a manifest</h3>
+        <p>The scenario, every seed, the suite commit, input and output checksums, and
+          package versions. <code>simulate gwas --verify &lt;manifest&gt;</code> confirms a
+          rerun mechanically.</p>
+      </div>
+      <div class="card">
+        <h3>The GWAS simulation is deterministic</h3>
+        <p>For a fixed seed, all 35 outputs are byte-identical, verified against recorded
+          checksums.</p>
+      </div>
+      <div class="card">
+        <h3>Documented limits</h3>
+        <p>The per-experiment data documents state which input cohort is not regenerable,
+          and what the shipped substitute does and does not reproduce.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<section id="quickstart">
+  <div class="wrap">
+    <p class="eyebrow">Installation</p>
+    <h2 class="section-title">Installing, and a federation on one machine</h2>
+    <p class="section-lead">
+      The loopback configuration runs a complete federation locally: no partners, no
+      network, and nothing to fill in beforehand. It is the same pair of commands CI runs,
+      and it is worth completing before recruiting any sites.
+    </p>
+
+    <pre><code><span class="c"># install</span>
+git clone https://github.com/mfjoel01/appfl-bio-suite.git
+cd appfl-bio-suite
+python -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -e <span class="k">".[all]"</span> -c constraints.txt
+
+<span class="c"># a whole federation, on one machine</span>
+appfl-bio-suite simulate gwas --scenario ci-tiny --out /tmp/gwas-ci
+appfl-bio-suite run gwas --config loopback --driver serial --data-root /tmp/gwas-ci
+
+<span class="c"># then stand up a real one</span>
+cp federation.yaml.example local/federation.yaml
+$EDITOR local/federation.yaml
+appfl-bio-suite preflight</code></pre>
+
+    <p style="margin-top:20px;color:var(--muted);font-size:14.5px">
+      <a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/docs/coordinator/new-federation.md">docs/coordinator/new-federation.md</a>
+      covers going from here to a running experiment across institutions you recruit.
+    </p>
+  </div>
+</section>
+
+<section id="citation">
+  <div class="wrap">
+    <p class="eyebrow">Citation</p>
+    <h2 class="section-title">Authorship and citation</h2>
+    <p class="section-lead">
+      Developed by Matthew Joel in the <a href="https://lab.madduri.us/">Madduri Lab</a> at
+      Argonne National Laboratory. The suite is released under the MIT licence, with
+      third-party terms recorded for APPFL, FLamby and PGS Catalog data.
+    </p>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <h3>Citing the software</h3>
+        <p>Machine-readable metadata is in
+          <a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/CITATION.cff">CITATION.cff</a>,
+          which GitHub renders through <em>Cite this repository</em> and which reference
+          managers read directly. Cite the version you ran: releases are tagged, and
+          partners install from a tag rather than from <code>main</code>, so the version
+          string identifies the exact source.</p>
+      </div>
+      <div class="card">
+        <h3>Citing the study design</h3>
+        <p>The GWAS experiment reproduces the simulation design of <em>Simulation
+          Benchmarking of Differential Privacy and Federated Learning for Secure Genetic
+          Analysis and Polygenic Risk Scoring</em> (Joel et al.). That reference is
+          recorded in <code>CITATION.cff</code>, and
+          <a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/docs/experiments/gwas/DATA.md">docs/experiments/gwas/DATA.md</a>
+          states the documented limits on reproducing its published figures from this
+          repository alone.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="map-teaser">
+  <div class="wrap">
+    <div class="teaser">
+      <div>
+        <p class="eyebrow">Network map</p>
+        <h2>The federation on a map</h2>
+        <p>
+          Every institution plotted on a flat map or a globe, with the experiments each one
+          runs, the kind of data it holds, the sample counts it declared, and whether its
+          endpoint is currently answering. It is drawn from <code>federation.yaml</code>
+          alone, so it is populated before any run has taken place. The preview on the next
+          page shows the suite's current partner institutions and the stage each
+          partnership has reached.
+        </p>
+        <p style="margin-top:20px">
+          <a class="btn btn-primary" href="./network.html">Open the network map →</a>
+        </p>
+      </div>
+      <div class="teaser-art">
+        <svg viewBox="0 0 200 200" role="img" aria-label="A globe with three connected sites">
+          <circle cx="100" cy="100" r="78" fill="var(--surface-2)" stroke="var(--accent-dim)"/>
+          <g fill="none" stroke="var(--accent-dim)" stroke-width="1" opacity=".55">
+            <ellipse cx="100" cy="100" rx="78" ry="30"/>
+            <ellipse cx="100" cy="100" rx="78" ry="58"/>
+            <ellipse cx="100" cy="100" rx="30" ry="78"/>
+            <ellipse cx="100" cy="100" rx="58" ry="78"/>
+            <line x1="22" y1="100" x2="178" y2="100"/>
+          </g>
+          <g fill="none" stroke="var(--accent)" stroke-width="1.3" opacity=".8">
+            <path d="M63 72 Q100 40 142 86"/>
+            <path d="M63 72 Q78 120 118 140"/>
+          </g>
+          <circle cx="63" cy="72" r="6" fill="var(--amber)"/>
+          <circle cx="142" cy="86" r="5" fill="var(--accent)"/>
+          <circle cx="118" cy="140" r="5" fill="var(--accent)"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-col">
+      <h4>Project</h4>
+      <ul>
+        <li><a href="https://github.com/mfjoel01/appfl-bio-suite">appfl-bio-suite on GitHub</a></li>
+        <li><a href="./network.html">Federation network map</a></li>
+        <li><a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/LICENSE">MIT licence</a></li>
+        <li><a href="#citation">How to cite</a></li>
+      </ul>
+    </div>
+    <div class="foot-col">
+      <h4>Documentation</h4>
+      <ul>
+        <li><a href="https://github.com/mfjoel01/appfl-bio-suite/blob/main/docs/README.md">Index — which document, for whom</a></li>
+        <li><a href="https://github.com/mfjoel01/appfl-bio-suite/tree/main/docs/coordinator">Running a federation</a></li>
+        <li><a href="https://github.com/mfjoel01/appfl-bio-suite/tree/main/docs/partner">What a partner receives</a></li>
+        <li><a href="https://github.com/mfjoel01/appfl-bio-suite/tree/main/docs/experiments">Per-experiment design and runbooks</a></li>
+      </ul>
+    </div>
+    <div class="foot-col">
+      <h4>Built on</h4>
+      <ul>
+        <li><a href="https://github.com/APPFL/APPFL">APPFL — the federated learning framework</a></li>
+        <li><a href="https://github.com/APPFL/hivewatch">HiveWatch — APPFL's monitoring toolkit</a></li>
+        <li><a href="https://www.globus.org/compute">Globus Compute</a></li>
+        <li><a href="https://www.ga4gh.org/">GA4GH standards</a></li>
+      </ul>
+    </div>
+    <p class="colophon">
+      Matthew Joel · <a href="https://lab.madduri.us/">Madduri Lab</a>, Argonne National
+      Laboratory. MIT licensed, with third-party terms recorded for APPFL, FLamby and PGS
+      Catalog data.
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>

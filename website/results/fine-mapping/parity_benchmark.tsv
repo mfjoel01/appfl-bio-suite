@@ -1,0 +1,10 @@
+Check	Federated vs pooled
+Instances fine-mapped on both paths	11,850
+Loci	79
+Converged on both paths	11,850
+Converged on one path only	0
+Instances that differ	0
+Largest difference in any PIP	0
+Credible-set members compared	102,150
+Tolerance	rtol 2e-05, atol 1e-12
+Verdict	identical

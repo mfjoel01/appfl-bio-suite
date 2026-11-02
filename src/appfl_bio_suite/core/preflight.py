@@ -388,6 +388,17 @@ def _installed_versions() -> dict[str, str]:
     return out
 
 
+def _satisfies_pin(installed: str, pinned: str) -> bool:
+    """Whether ``installed`` satisfies ``==pinned``, the way pip decides it.
+
+    PEP 440 ignores a local version label when the pin carries none, so ``2.8.0+cpu``
+    satisfies ``torch==2.8.0``. That build is what partners are told to install -- every
+    experiment runs on CPU, and the default build brings 3 GB of CUDA libraries with it
+    -- and comparing strings reported it as a skew.
+    """
+    return installed == pinned or ("+" not in pinned and installed.split("+", 1)[0] == pinned)
+
+
 def _check_pins(report: PreflightReport, constraints: Path | None) -> None:
     if constraints is None or not constraints.is_file():
         report.add(
@@ -408,7 +419,7 @@ def _check_pins(report: PreflightReport, constraints: Path | None) -> None:
             # extras are legitimately not all installed.
             if name in FEDERATION_CRITICAL:
                 missing.append(name)
-        elif have != want:
+        elif not _satisfies_pin(have, want):
             mismatched.append(f"{name}: pinned {want}, installed {have}")
 
     if not mismatched and not missing:

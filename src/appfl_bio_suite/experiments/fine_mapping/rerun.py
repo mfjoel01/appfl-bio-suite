@@ -274,6 +274,7 @@ def plots(root: Path) -> None:
     ]:
         directory = root / "reports" / subdirectory
         frame = pd.read_csv(directory / filename, sep="\t")
+        frame = frame.loc[frame.causal_mode.eq("shared")].copy()
         frames[name] = frame
         detail = directory / "detail"
         detail.mkdir(exist_ok=True)
@@ -343,17 +344,9 @@ def plots(root: Path) -> None:
             logger=log,
             strict=True,
         )
-    # No new flips are expected after the reference-coding gate. Show that outcome
-    # explicitly rather than borrowing recoding counts from an old run's log.
-    from .fedfm.utils import read_bim
-
-    first = next(iter(cfg.sites))
-    n_variants = len(read_bim(cfg.site_dir(first) / f"{first}_chr{cfg.chromosome}.bim"))
+    counts, n_variants, affected = federation.audit_harmonization(cfg, frames["centralized"])
     harmonization = federation.fed4_harmonization(
-        {site: 0 for site in cfg.sites},
-        n_variants,
-        output / "federation/harmonization.png",
-        (0, len(frames["centralized"])),
+        counts, n_variants, output / "federation/harmonization.png", affected
     )
     written["harmonization"] = [harmonization]
     record = {
@@ -362,7 +355,7 @@ def plots(root: Path) -> None:
             group: [str(p.relative_to(root)) for p in paths] for group, paths in written.items()
         },
         "n_figures": sum(map(len, written.values())),
-        "scope": "EDA; centralized/federated shared and divergent fits; all participation arms",
+        "scope": "EDA; shared-causal centralized/federated fits; participation arms",
         "omissions": [
             "Genome-wide candidate-window plots are unavailable for a frozen selected-locus panel.",
             "Population/effect and exemplar panels require at least one retained credible set.",

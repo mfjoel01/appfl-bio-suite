@@ -39,6 +39,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from threadpoolctl import threadpool_limits
 
 from appfl_bio_suite.experiments.gwas.simulation.schema import PhenotypeParams
 
@@ -162,6 +163,15 @@ def _compute_pgs(pgs_df: pd.DataFrame, G, snp_to_pos: dict, chunk_size: int = 20
     variants, not samples.
 
     ``chunk_size`` changes floating-point accumulation order and therefore the result.
+
+    So does the number of threads the BLAS uses for the ``chunk @ w`` product, which is
+    why this pins it to one. Above four threads OpenBLAS splits that matrix-vector
+    product's reduction across threads and sums the partial results in a different
+    order, moving the low-order bits of every score. Nothing errors: the scores are
+    equally valid, they are just not the published ones, and every downstream phenotype
+    and summary file inherits the difference. Thread count is a property of the machine,
+    so without this pin the same input reproduces on a laptop and silently does not on a
+    64-core node -- the exact failure this pipeline's checksums exist to catch.
     """
     ea = pgs_df["effect_allele"].str.upper().values
     a1v = pgs_df["A1"].str.upper().values
@@ -182,22 +192,25 @@ def _compute_pgs(pgs_df: pd.DataFrame, G, snp_to_pos: dict, chunk_size: int = 20
 
     scores = np.zeros(G.sizes["sample"], dtype=np.float64)
 
-    for start in range(0, len(positions), chunk_size):
-        sl = slice(start, start + chunk_size)
-        idx = positions[sl]
-        w = wts[sl]
-        flip_sl = flip[sl]
+    # Serial BLAS for the accumulation. threadpool_limits restores the caller's setting
+    # on exit, so this constrains the reduction order and nothing else about the process.
+    with threadpool_limits(limits=1, user_api="blas"):
+        for start in range(0, len(positions), chunk_size):
+            sl = slice(start, start + chunk_size)
+            idx = positions[sl]
+            w = wts[sl]
+            flip_sl = flip[sl]
 
-        chunk = G.isel(variant=idx).values.astype(np.float64)
+            chunk = G.isel(variant=idx).values.astype(np.float64)
 
-        if flip_sl.any():
-            chunk[:, flip_sl] = 2.0 - chunk[:, flip_sl]
+            if flip_sl.any():
+                chunk[:, flip_sl] = 2.0 - chunk[:, flip_sl]
 
-        col_means = np.nanmean(chunk, axis=0)
-        r, c = np.where(np.isnan(chunk))
-        chunk[r, c] = col_means[c]
+            col_means = np.nanmean(chunk, axis=0)
+            r, c = np.where(np.isnan(chunk))
+            chunk[r, c] = col_means[c]
 
-        scores += chunk @ w
+            scores += chunk @ w
 
     return scores
 

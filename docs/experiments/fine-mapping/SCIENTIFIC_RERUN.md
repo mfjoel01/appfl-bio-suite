@@ -67,7 +67,9 @@ same-ancestry references, not European LD substituted for African LD.
 Rates and paired-arm differences use a bootstrap over whole loci, retaining replicates
 and credible sets within each locus. Coverage means the fraction of returned credible
 sets containing a true causal variant, distinct from per-instance power. Shared and
-divergent causal modes have separate summaries and figure groups. The effect-draw `rg`
+divergent causal modes had separate summaries and figure groups; the divergent mode has
+since been withdrawn (see
+[Ancestry-divergent architectures](#ancestry-divergent-architectures)). The effect-draw `rg`
 parameter is distinguished from realized genetic-value correlation, and site-marginal
 heritability from within-ancestry heritability. Homogeneous-noise, null-association and
 LD-isolation studies would be needed for stronger general calibration or causal claims.
@@ -290,17 +292,35 @@ against 0.35–0.44, mean credible-set size 6.8 variants against 9.5–12.7, mea
 0.981 against 0.937–0.955, and 1.27 sets per instance against 0.75–0.92. It finds more
 signals and localizes each one more tightly.
 
-**The gain is sample size, not diversity.** The matched-N control is decisive and points
-the other way: hold analyzed N at 50,000 and the three-site composition is the *worst*
-arm in the run, below every solo site, reproducibly across three independent draws.
-SuSiEx fits one effect per ancestry column, so power tracks the largest column rather
-than the total, and the solo arms win by concentration — Covenant puts 47,500 of its
-50,000 people into AFR, where the matched-N federation's largest column is 20,339. The
-controlled version of that comparison holds both N and column count fixed, ANL (5
-columns, largest 30,000) against matched-N draw 1 (5 columns, largest 20,339): **13.3 pp
-apart (12.3–14.3) in ANL's favour.** Splitting a fixed cohort across ancestries costs
-power. Adding cohorts buys it back several times over. Neither bar measures ancestral
-diversity, and labelling either one "diversity" would invert the finding.
+**The power gain is sample size, not diversity — but diversity is not idle.** The two act
+at different stages and the marginal figures conflate them.
+
+At the discovery stage the matched-N control points against diversity, decisively. Hold
+analyzed N at 50,000 and the three-site composition is the *worst* arm in the run, below
+every solo site, reproducibly across three independent draws. SuSiEx fits one effect per
+ancestry column, so power tracks the largest column rather than the total, and the solo
+arms win by concentration — Covenant puts 47,500 of its 50,000 people into AFR, where the
+matched-N federation's largest column is 20,339. The controlled version of that comparison
+holds both N and column count fixed, ANL (5 columns, largest 30,000) against matched-N
+draw 1 (5 columns, largest 20,339): **13.3 pp apart (12.3–14.3) in ANL's favour.**
+
+At the localization stage it reverses. Restricting to the **4,987** instances where both
+arms returned a set — which removes the differential-discovery selection that makes a
+marginal resolution comparison unreadable — the diverse arm's best credible set is
+**2.16 variants smaller (95% CI 1.75–2.58)**, 8.50 against 11.05, with higher mean purity
+(0.963 against 0.954) and higher causal PIP (0.583 against 0.530). Capture rate within
+that subset is essentially equal (0.965 against 0.970), so this is sharper localization of
+the same signals, not a different set of them. That is the canonical cross-ancestry
+fine-mapping benefit — differing LD breaking ties between correlated variants — and it is
+present here.
+
+So at fixed N, ancestral composition trades discovery for resolution: fewer signals found,
+each one pinned down better. The full federation escapes the trade because it is not at
+fixed N — 150,000 people buy both, and it leads every arm on power *and* on set size
+(6.8 variants). Because matching N does not match allele frequencies, realized effects or
+site noise, the 2.16-variant gap is consistent with the LD-diversity mechanism rather than
+an isolated measurement of it. Labelling either bar simply "diversity" would misstate the
+finding in one direction or the other.
 
 Borrowing a same-ancestry external LD panel is, on this design, close to free: Covenant
 statistics against ANL's AFR panel reach power 0.7769 against Covenant's own 0.7773 and
@@ -312,12 +332,9 @@ construction.
 
 ### Limitations
 
-- **Ancestry-divergent architectures are not evaluated.** The mode carries 30 of 11,850
-  instances per arm (0.25%), yielding 3 to 31 credible sets. Per-arm divergent coverage
-  ranges from 0.75 to 1.00 and recall from 0.014 to 0.138; at those denominators neither
-  is an estimate. The separate divergent figure group renders from the same 30 instances,
-  and `pap4_power_coverage` correctly refuses to draw at all there. Ancestry-private
-  causal architectures remain an open question, not a negative result.
+- **Ancestry-divergent architectures are not evaluated, and the mode is now off.** See
+  [Ancestry-divergent architectures](#ancestry-divergent-architectures) below. Nothing in
+  this run speaks to ancestry-private causal variants.
 - **Coverage is conditional on power.** See the h² table above. Nothing here licenses a
   95% claim for a single site at the weakest signal.
 - **`rg` is the effect-draw correlation**, not realized genetic-value correlation, and the
@@ -337,6 +354,41 @@ construction.
   supply it.
 - **Still centralized and standalone-federated HPC computation.** The two placeholder
   partner endpoints remain undeployed.
+
+### Ancestry-divergent architectures
+
+Withdrawn. The mode simulated a causal set that differs by ancestry — a union of shared
+variants plus one private to each superpopulation — as a stress test of the assumption the
+whole method rests on, that the causal variant is the same in every ancestry. The question
+is the right one and the compute was negligible: 2.7 core-hours, 0.23% of the run. The
+design could not answer it, for two independent reasons.
+
+It was far too small. `min_per_stratum: 1` selected three (locus, architecture) pairs, so
+the mode was 30 of 11,850 instances per arm, yielding 3 to 31 credible sets. Per-arm
+coverage ranged from 0.75 to 1.00 and recall from 0.014 to 0.138; at those denominators
+neither is an estimate.
+
+More instances would not have rescued it, because the comparison is confounded. A
+divergent instance draws a union of `ncsl - n_private` shared variants plus
+`n_private_per_pop` for each of six superpopulations, while keeping the architecture's
+target h². An architecture **labelled** `ncsl2` therefore carried **seven** causal
+variants where its shared counterpart carried two, making each effect roughly 3.5 times
+fainter, and the shared grid spans `ncsl` 1–3 only, so there is no seven-causal cell to
+compare against. The observed recall drop — 0.615 shared against 0.138 divergent for the
+full federation, with every arm falling 27 to 48 points — mixes ancestry-private
+architecture with much weaker per-variant effects and cannot separate them.
+
+`ancestry_divergent_causal` is consequently `enabled: false` in the shipped configuration,
+and no future run emits a divergent figure group. The implementation is retained, and
+`_assign_ancestry_divergent_flags` now warns once at simulation setup whenever the grid
+lacks a shared cell at the union size — which is exactly the condition that made this run's
+contrast unreadable. Re-enabling it responsibly needs both a larger `min_per_stratum` and
+a matched `ncsl` cell equal to `n_shared + 6 x n_private_per_pop`.
+
+The completed 14 September run is left intact as a frozen artifact: its divergent figures
+and `plots.accepted.json` still list what that run produced, with a `NOT-EVALUATED.md`
+marker placed in each divergent figure directory. Nothing in this repository cites a
+divergent number as a result.
 
 ### Corrections applied during this review
 

@@ -1,12 +1,21 @@
 /* Federation-first shell; upstream run controls remain available under Runs. */
 .bio-viewer [hidden] { display: none !important; }
 .bio-viewer { --accent: #50d9c7; --green: #50d9c7; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; height: 100dvh; }
-[data-theme="dark"] .bio-viewer { --bg: #081219; --surface: #101d26; --border: #25343e; --text: #e1edf0; --muted: #93a8b3; --tile-filter: invert(1) hue-rotate(180deg) brightness(.72) saturate(.5); }
-[data-theme="light"] .bio-viewer { --bg: #edf3f3; --surface: #fff; --border: #d6e3e3; --text: #143038; --muted: #536c75; --accent: #087f75; --green: #087f75; }
+[data-theme="dark"] .bio-viewer { color-scheme: dark; --scrollbar: #93a8b366; --coordinator: #f5c77e; --bg: #081219; --surface: #101d26; --border: #25343e; --text: #e1edf0; --muted: #93a8b3; --tile-filter: invert(1) hue-rotate(180deg) brightness(.72) saturate(.5); }
+[data-theme="light"] .bio-viewer { color-scheme: light; --scrollbar: #536c7566; --coordinator: #a8690f; --bg: #edf3f3; --surface: #fff; --border: #d6e3e3; --text: #143038; --muted: #536c75; --accent: #087f75; --green: #087f75; }
 .bio-viewer button { font: inherit; }
 .bio-viewer button, .bio-viewer input, .bio-viewer summary { -webkit-tap-highlight-color: transparent; }
 .bio-viewer button:focus-visible, .bio-viewer input:focus-visible, .bio-viewer summary:focus-visible, .bio-viewer canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .bio-viewer button { cursor: pointer; }
+/* One scrollbar for every scrolling region, in the theme's colours. Upstream styles the WebKit
+   scrollbar of a few lists only, so the experiment filters and the site list beneath them used
+   to scroll with two different bars. scrollbar-color is inherited, and where it is supported
+   the ::-webkit-scrollbar rules are ignored; they cover Safari, which does not support it. */
+.bio-viewer { scrollbar-color: var(--scrollbar) transparent; }
+.bio-viewer * { scrollbar-width: thin; }
+.bio-viewer ::-webkit-scrollbar { width: 8px; height: 8px; }
+.bio-viewer ::-webkit-scrollbar-track, .bio-viewer ::-webkit-scrollbar-corner { background: transparent; }
+.bio-viewer ::-webkit-scrollbar-thumb { background: var(--scrollbar); border: 2px solid transparent; border-radius: 4px; background-clip: padding-box; }
 .bio-viewer header { height: 88px; padding: 0 30px; box-shadow: none; background: var(--bg); border-color: var(--border); gap: 24px; }
 .bio-viewer .logo { gap: 12px; flex-shrink: 0; }
 .bio-mark { color: var(--accent); font-size: 52px; line-height: 1; font-weight: 300; }
@@ -20,25 +29,30 @@
 .bio-viewer .status-pill { font-size: 10px; padding: 8px 12px; background: transparent; }
 .bio-viewer .theme-btn { font-size: 21px; width: 34px; height: 34px; padding: 0; border-radius: 50%; }
 .bio-viewer .status-dot.live { animation: none; box-shadow: 0 0 8px #50d9c740; }
-.bio-viewer .sidebar { width: 326px; background: var(--bg); }
+/* Half the column for the tabs and experiment filters, half for the participating sites.
+   Every panel spans both rows below the tabs; the experiments panel lays its two parts onto them. */
+.bio-viewer .sidebar { width: 326px; background: var(--bg); display: grid; grid-template-rows: auto minmax(0, 1fr) 50%; }
 .bio-tabs { display: grid; grid-template-columns: 1.3fr 1fr .8fr; margin: 20px 20px 0; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .bio-tabs button { background: none; color: var(--muted); border: none; padding: 14px 4px; font-size: 12px; font-weight: 600; border-bottom: 2px solid transparent; }
 .bio-tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
 .bio-tabs button span { margin-left: 8px; opacity: .6; }
-#bio-experiments-panel, #bio-results-panel, #bio-runs-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+#bio-experiments-panel, #bio-results-panel, #bio-runs-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; grid-row: 2 / -1; }
+#bio-experiments-panel { display: grid; grid-template-rows: subgrid; }
 #bio-runs-panel { overflow: auto; }
 .bio-panel-intro { padding: 24px 22px 20px; }
 .bio-panel-intro h1 { font-size: 19px; font-weight: 550; letter-spacing: -.5px; }
 .bio-panel-intro p { font-size: 11px; color: var(--muted); margin-top: 7px; line-height: 1.6; }
-#bio-filters { border: 0; padding: 0 18px 21px; flex-shrink: 0; }
+#bio-filters { border: 0; padding: 16px 18px; min-height: 0; overflow: auto; }
 .bio-filter { display: flex; align-items: center; gap: 11px; min-height: 44px; border: 1px solid transparent; border-radius: 8px; padding: 10px 12px; font-size: 12px; cursor: pointer; margin: 3px 0; }
 .bio-filter:hover { background: var(--surface); }
 .bio-filter.selected { background: #50d9c70b; border-color: #50d9c737; }
 .bio-filter input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
 .bio-filter-count { margin-left: auto; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; background: var(--surface); min-width: 23px; text-align: center; padding: 3px 5px; border-radius: 4px; }
-.bio-sites-heading { display: flex; justify-content: space-between; font-size: 9px; letter-spacing: 1.6px; padding: 20px 22px 0; border-top: 1px solid var(--border); }
-#bio-site-count { letter-spacing: 0; color: var(--accent); font-size: 11px; }
-#bio-filter-note { color: var(--muted); padding: 8px 22px 12px; font-size: 10px; line-height: 1.5; }
+#bio-sites-pane { display: flex; flex-direction: column; min-height: 0; }
+.bio-sites-heading { display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); font-size: 12px; font-weight: 600; padding: 18px 22px 12px; border-top: 1px solid var(--border); }
+#bio-site-count { color: var(--accent); font-size: 11px; font-weight: 400; font-variant-numeric: tabular-nums; }
+#bio-filter-note { color: var(--muted); padding: 0 22px 12px; font-size: 10px; line-height: 1.5; }
+#bio-filter-note:empty { display: none; }
 .bio-viewer .client-list { padding: 2px 16px 20px; }
 .bio-site-card { display: block; width: 100%; text-align: left; border: 1px solid var(--border); color: var(--text); background: var(--surface); border-radius: 10px; padding: 16px 14px 12px; margin-bottom: 10px; transition: border-color .15s, background .15s; }
 .bio-site-card:hover, .bio-site-card.selected { border-color: var(--accent); background: color-mix(in srgb, var(--surface) 95%, var(--accent)); }
@@ -50,7 +64,11 @@
 .bio-card-bottom { display: flex; justify-content: space-between; font-size: 9px; color: var(--muted); border-top: 1px solid var(--border); margin-top: 13px; padding-top: 10px; }
 .bio-card-bottom span:last-child { color: var(--accent); }
 .bio-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #50d9c7; flex-shrink: 0; box-shadow: 0 0 0 3px #50d9c711; }
-.bio-dot.bio-hub { background: #f5bd66; box-shadow: 0 0 0 3px #f5bd6611; }
+/* The coordinator's mark: a gold diamond around a site's own point, and a gold label. */
+.bio-dot.bio-hub { position: relative; margin: 0 3px; box-shadow: none; }
+.bio-dot.bio-hub::before { content: ''; position: absolute; inset: -4px; border: 1.5px solid var(--coordinator); transform: rotate(45deg); }
+.bio-coordinator-label { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; color: var(--coordinator); font-size: 9px; font-weight: 600; letter-spacing: 1.6px; line-height: 1.4; text-transform: uppercase; }
+.bio-coordinator-label::before { content: ''; width: 5px; height: 5px; border: 1.5px solid currentColor; transform: rotate(45deg); }
 .bio-viewer .map-area { min-width: 0; overflow: hidden; background: #08131d; }
 .bio-viewer #map { background: #122834; }
 .bio-map-toolbar { position: absolute; z-index: 500; top: 28px; left: 30px; right: 30px; display: flex; align-items: center; justify-content: space-between; gap: 14px; pointer-events: none; }
@@ -71,7 +89,12 @@
 .bio-viewer .leaflet-control-attribution { font-size: 9px; background: var(--bg); color: var(--muted); padding: 3px 10px; }
 .bio-viewer .leaflet-control-attribution a { color: var(--muted); }
 .bio-leaflet-marker span { display: block; width: 13px; height: 13px; margin: 3px; background: var(--site-color); border: 2px solid #eafff8; border-radius: 50%; box-shadow: 0 0 0 5px #50d9c725, 0 0 18px #50d9c766; }
-.bio-leaflet-hub span { display: block; width: 11px; height: 11px; margin: 4px; transform: rotate(45deg); background: #f5bd66; border: 1px solid #fff3d7; box-shadow: 0 0 0 4px #f5bd661a, 0 0 16px #f5bd6644; }
+.bio-leaflet-marker.bio-coordinator span { position: relative; margin: 9.5px; box-shadow: 0 0 12px #50d9c755; }
+.bio-leaflet-marker.bio-coordinator::before { content: ''; position: absolute; inset: 6px; border: 2px solid var(--coordinator); border-radius: 2px; transform: rotate(45deg); background: color-mix(in srgb, var(--coordinator) 14%, transparent); box-shadow: 0 0 14px color-mix(in srgb, var(--coordinator) 45%, transparent); }
+.bio-viewer .bio-hover-tip { font-family: inherit; font-size: 11px; line-height: 1.5; padding: 8px 11px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px #0004; }
+.bio-viewer .bio-hover-tip::before { display: none; }
+.bio-hover-tip .bio-coordinator-label { margin-bottom: 3px; }
+.bio-hover-tip div { color: var(--muted); }
 .bio-viewer .leaflet-popup-content-wrapper { font-family: inherit !important; min-width: 235px; }
 .bio-viewer .popup-title { font-family: inherit; font-size: 15px; line-height: 1.5; }
 .bio-detail-location { font-size: 11px; color: var(--muted); margin: 6px 0 16px; }
@@ -136,14 +159,16 @@
   .bio-viewer .status-pill { display: none; }
   .bio-viewer .main { flex-direction: column-reverse; }
   .bio-viewer .map-area { flex: 1; min-height: 270px; }
-  .bio-viewer .sidebar { width: 100%; height: 40%; min-height: 215px; border-right: 0; border-top: 1px solid var(--border); }
+  /* Here the sidebar is a strip under the map, too short to split: filters and sites scroll as one. */
+  .bio-viewer .sidebar { width: 100%; height: 40%; min-height: 215px; border-right: 0; border-top: 1px solid var(--border); display: flex; }
   .bio-tabs { margin: 0 16px; }
   .bio-tabs button { padding: 10px; }
   #bio-experiments-panel { display: block; overflow: auto; }
+  #bio-sites-pane { display: block; }
   .bio-panel-intro { padding: 14px 20px 8px; }
   .bio-panel-intro h1 { font-size: 16px; }
   .bio-panel-intro p { display: none; }
-  #bio-filters { display: flex; flex-wrap: wrap; padding: 0 14px 10px; gap: 3px; }
+  #bio-filters { display: flex; flex-wrap: wrap; padding: 12px 14px 10px; gap: 3px; }
   .bio-filter { min-height: 38px; font-size: 10px; padding: 8px; gap: 6px; }
   .bio-filter-count { font-size: 9px; min-width: 17px; }
   .bio-sites-heading { padding-top: 12px; }
@@ -174,8 +199,12 @@
 /* Keep the suite identity and the HiveWatch attribution visible at every size. */
 .bio-viewer .bio-suite-logo { display: block; width: 54px; height: 54px; flex: 0 0 54px; object-fit: contain; border-radius: 12px; }
 .bio-viewer .header-right { display: flex; align-items: center; gap: 17px; flex-shrink: 0; }
-.bio-hive-credit { display: flex; align-items: center; padding-right: 16px; border-right: 1px solid var(--border); flex-shrink: 0; }
-.bio-viewer .bio-hive-logo { display: block; width: auto; height: 33px; max-width: 108px; object-fit: contain; flex-shrink: 0; border-radius: 3px; }
+.bio-hive-credit { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding-right: 16px; border-right: 1px solid var(--border); flex-shrink: 0; }
+.bio-credit-label { font-size: 9px; letter-spacing: 1.5px; color: var(--muted); }
+.bio-credit-links { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap; }
+.bio-credit-links > span { color: var(--border); }
+.bio-viewer .bio-credit-links a { color: var(--text); text-decoration: none; }
+.bio-viewer .bio-credit-links a:hover { color: var(--accent); text-decoration: underline; }
 .bio-viewer #theme-btn { font-size: 0; }
 .bio-viewer #theme-btn::before { content: '◐'; font-size: 20px; }
 .bio-partner-stage { display: block; margin-top: 10px; color: var(--stage-color, var(--muted)); font-size: 9px; line-height: 1.6; }
@@ -212,7 +241,7 @@
 .bio-group-description:empty { display: none; }
 .bio-result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 1fr)); gap: 18px; margin-top: 18px; }
 .bio-result-card { min-width: 0; overflow: hidden; padding: 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 5px 18px #0000000a; }
-.bio-result-table, .bio-result-report { grid-column: 1 / -1; }
+.bio-result-table, .bio-result-report, .bio-result-wide { grid-column: 1 / -1; }
 .bio-artifact-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .bio-artifact-header h3 { min-width: 0; font-size: 13px; line-height: 1.6; font-weight: 600; overflow-wrap: anywhere; }
 .bio-download { display: inline-flex; flex-shrink: 0; align-items: center; color: var(--accent); font-size: 10px; line-height: 1.8; text-decoration: none; border-bottom: 1px solid transparent; }
@@ -221,6 +250,7 @@
 .bio-figure-button { display: block; width: 100%; margin-top: 18px; padding: 8px; border: 1px solid var(--border); border-radius: 7px; background: #fff; overflow: hidden; cursor: zoom-in !important; }
 .bio-figure-button:hover { border-color: var(--accent); }
 img.bio-result-image { display: block; width: 100%; max-height: 360px; min-height: 150px; object-fit: contain; }
+.bio-result-wide img.bio-result-image { max-height: 560px; }
 .bio-table-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0 12px; }
 .bio-table-controls input { width: min(100%, 290px); min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); color: var(--text); font-size: 11px; }
 .bio-table-controls input::placeholder { color: var(--muted); opacity: 1; }
@@ -230,7 +260,7 @@ img.bio-result-image { display: block; width: 100%; max-height: 360px; min-heigh
 .bio-table-scroll th { position: sticky; top: 0; z-index: 1; background: var(--bg); color: var(--text); font-weight: 600; border-bottom: 1px solid var(--border); }
 .bio-table-scroll th button { display: block; width: 100%; text-align: left; border: 0; padding: 12px 14px; color: inherit; background: transparent; white-space: nowrap; font-size: 10px; }
 .bio-table-scroll th[aria-sort="ascending"], .bio-table-scroll th[aria-sort="descending"] { color: var(--accent); }
-.bio-table-scroll td { padding: 11px 14px; max-width: 360px; overflow-wrap: anywhere; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.5; }
+.bio-table-scroll td { padding: 11px 14px; max-width: 360px; overflow-wrap: break-word; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.5; }
 .bio-table-scroll tbody tr:nth-child(even) { background: color-mix(in srgb, var(--bg) 48%, transparent); }
 .bio-table-scroll tbody tr:hover { background: color-mix(in srgb, var(--accent) 7%, transparent); }
 .bio-table-scroll tbody tr:last-child td { border-bottom: 0; }
@@ -262,13 +292,13 @@ img.bio-result-image { display: block; width: 100%; max-height: 360px; min-heigh
 @media (max-width: 1200px) {
   .bio-viewer .header-right { gap: 12px; }
   .bio-hive-credit { padding-right: 12px; }
-  .bio-viewer .bio-hive-logo { max-width: 82px; height: 29px; }
   .bio-viewer .header-stats { gap: 24px; margin-right: 0; }
   #bio-results-workspace { padding: 28px; }
 }
 @media (max-width: 1050px) {
   .bio-viewer .bio-suite-logo { width: 46px; height: 46px; flex-basis: 46px; border-radius: 10px; }
-  .bio-viewer .bio-hive-logo { max-width: 70px; height: 27px; }
+  .bio-credit-label { display: none; }
+  .bio-credit-links { font-size: 11px; }
   .bio-viewer .header-stats { gap: 18px; }
   .bio-viewer .header-right { gap: 10px; }
   .bio-viewer .status-pill { padding: 7px 9px; }
@@ -285,7 +315,7 @@ img.bio-result-image { display: block; width: 100%; max-height: 360px; min-heigh
 @media (max-width: 760px) {
   .bio-viewer .bio-suite-logo { width: 40px; height: 40px; flex-basis: 40px; border-radius: 9px; }
   .bio-viewer .logo { gap: 9px; }
-  .bio-viewer .bio-hive-logo { height: 27px; max-width: 67px; }
+  .bio-credit-links { gap: 6px; }
   .bio-hive-credit { padding-right: 9px; }
   .bio-viewer .header-right { gap: 9px; }
   .bio-viewer .header-stats { gap: 14px; }
@@ -327,7 +357,7 @@ img.bio-result-image { display: block; width: 100%; max-height: 360px; min-heigh
   .bio-viewer .logo { gap: 7px; }
   .bio-brand { font-size: 13px; }
   .bio-brand-note { font-size: 6px; letter-spacing: .8px; }
-  .bio-viewer .bio-hive-logo { height: 24px; max-width: 56px; }
+  .bio-credit-links { font-size: 10px; gap: 5px; }
   .bio-hive-credit { padding-right: 7px; }
   .bio-viewer .header-stats .stat-val { font-size: 17px; }
   .bio-viewer .header-stats .stat-label { font-size: 6px; }

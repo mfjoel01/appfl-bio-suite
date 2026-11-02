@@ -36,7 +36,12 @@ def test_every_implemented_experiment_has_its_required_configs():
     for name, spec in REGISTRY.items():
         if not spec.implemented:
             continue
-        for required in ("server.yaml", "clients.template.yaml"):
+        required_configs = (
+            ("ci-tiny.yaml", "poc.yaml")
+            if spec.serial_runner
+            else ("server.yaml", "clients.template.yaml")
+        )
+        for required in required_configs:
             assert (spec.configs_path / required).is_file(), (
                 f"{name} is implemented but has no {required}"
             )
@@ -47,7 +52,8 @@ def test_every_implemented_experiment_has_a_loopback_config():
     for name, spec in REGISTRY.items():
         if not spec.implemented:
             continue
-        assert (spec.configs_path / "server.loopback.yaml").is_file(), (
+        filename = "ci-tiny.yaml" if spec.serial_runner else "server.loopback.yaml"
+        assert (spec.configs_path / filename).is_file(), (
             f"{name} has no loopback config. Without one there is no way to check an "
             "install end to end without an external partner."
         )
@@ -56,7 +62,7 @@ def test_every_implemented_experiment_has_a_loopback_config():
 def test_loopback_configs_are_synchronous():
     """A serial run executes clients one after another; async has nothing to overlap."""
     for spec in REGISTRY.values():
-        if not spec.implemented:
+        if not spec.implemented or spec.serial_runner:
             continue
         path = spec.configs_path / "server.loopback.yaml"
         config = yaml.safe_load(path.read_text(encoding="utf-8"))

@@ -94,6 +94,24 @@ SCOPED_EXEMPTIONS = [
         "PBS scripts for a named scheduler necessarily name it; the allocation and every "
         "path in them is a variable",
     ),
+    (
+        "website/federation.yaml",
+        {"partner institution"},
+        "the project site's map shows the suite's real partners by design; it is "
+        "presentation data, never loaded by a run",
+    ),
+    (
+        "website/partners.json",
+        {"partner institution"},
+        "the partner roster behind the project site's map; check_site_preview.py keeps "
+        "contacts and addresses out of what it publishes",
+    ),
+    (
+        "website/results/fine-mapping/",
+        {"partner institution"},
+        "published fine-mapping results; like docs/experiments/fine-mapping/, they name "
+        "the study design's three simulated cohorts",
+    ),
 ]
 
 
@@ -107,7 +125,7 @@ def _exempt(rel: str, label: str) -> bool:
 # Never scanned: not shipped, not tracked, or not text.
 SKIP_DIRS = {".git", "local", ".venv", "venv", "__pycache__", ".pytest_cache",
              ".ruff_cache", ".mypy_cache", "build", "dist", "node_modules"}
-SKIP_SUFFIXES = {".png", ".jpg", ".gz", ".bed", ".bim", ".fam", ".pyc", ".whl", ".pdf"}
+SKIP_SUFFIXES = {".png", ".jpg", ".webp", ".gz", ".bed", ".bim", ".fam", ".pyc", ".whl", ".pdf"}
 
 
 def tracked_files(root: Path) -> list[Path]:

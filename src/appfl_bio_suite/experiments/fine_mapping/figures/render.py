@@ -104,6 +104,8 @@ def render_all(
     written: dict[str, list[Path]] = {}
 
     df = pd.read_csv(results, sep="\t")
+    if "causal_mode" in df:
+        df = df.loc[df.causal_mode.eq("shared")].copy()
     active.info(
         "results: %d instance(s), %d architecture(s), %d loci",
         len(df),
@@ -128,7 +130,9 @@ def render_all(
         fed = pd.read_csv(federated, sep="\t") if federated and Path(federated).exists() else None
         by_arm = cohort = None
         if by_arm_results and Path(by_arm_results).exists():
-            by_arm = pd.read_csv(by_arm_results, sep="\t")
+            by_arm = pd.read_csv(by_arm_results, sep="\t", low_memory=False)
+            if "causal_mode" in by_arm:
+                by_arm = by_arm.loc[by_arm.causal_mode.eq("shared")].copy()
             active.info(
                 "arms: %s",
                 ", ".join(f"{a} ({n:,})" for a, n in by_arm["arm"].value_counts().items()),

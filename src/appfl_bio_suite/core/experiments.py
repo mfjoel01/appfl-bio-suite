@@ -87,6 +87,10 @@ class ExperimentSpec:
     # False means the slots exist and the docs explain the plan, but there is no code.
     implemented: bool = True
 
+    # A coordinator-only comparison may own a serial workflow instead of dispatching
+    # partner configs. The module provides run(**CLI_options); remote drivers fail.
+    serial_runner: str | None = None
+
     # Extras a coordinator needs, and extras a partner needs. They differ: simulation
     # dependencies are coordinator-only and must never land on a partner.
     partner_extras: tuple[str, ...] = ()
@@ -226,6 +230,22 @@ REGISTRY: dict[str, ExperimentSpec] = {
             "trainer_path": "trainer",
             "aggregator_path": "aggregator",
         },
+    ),
+    "methylation": ExperimentSpec(
+        name="methylation",
+        package="methylation",
+        title="Federated methylation subtype classification (work in progress)",
+        summary=(
+            "Pooled, local-only and APPFL FedAvg subtype classifiers trained on sparse, "
+            "nanopore-like methylation input across four simulated hospitals, in one "
+            "process. Runs on synthetic cohorts or the open TCGA-LAML methylation cohort. "
+            "There is no partner execution yet."
+        ),
+        data_kind="Methylation beta values with subtype labels and canonical CpG IDs",
+        implemented=True,
+        has_simulation=True,
+        coordinator_extras=("methylation",),
+        serial_runner="appfl_bio_suite.experiments.methylation.runner",
     ),
 }
 

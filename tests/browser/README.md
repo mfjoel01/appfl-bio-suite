@@ -18,13 +18,15 @@ WATCH_VIEWER_URL=http://127.0.0.1:7081/map.html node tests/browser/watch_viewer.
 
 The browser test supplies synthetic metadata and a controlled SSE stream, then uses the
 actual exported viewer. It checks default flat view, experiment unions and empty
-selection, matching map layers/counts, null and zero coordinates, globe interaction and
+selection, matching map layers/counts, null and zero coordinates, the sidebar's heading,
+note and scrollbars, keeping the place when switching between the flat map and the globe
+(including a viewer opened on the globe), globe interaction and
 reduced motion, mobile layout, JSONL playback, late joining an active run, stream
 isolation, and escaped metadata. The flat map still loads Leaflet and tiles from the
 internet, just as the product does.
 
 It also checks light/dark globe rendering (including paused and newly created globes),
-both header logos, experiment results selection, figure expansion, table search/sorting,
+the suite logo and upstream credit links, experiment results selection, figure expansion, table search/sorting,
 downloads, sandboxed reports, and restoring map layers after leaving Results.
 
 Optional environment variables:
