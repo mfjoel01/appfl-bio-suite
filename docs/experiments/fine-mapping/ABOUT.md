@@ -16,6 +16,9 @@ per-variant summaries.
 
 The estimator is **SuSiEx**, a C++ command-line tool the coordinator shells out to.
 
+An experimental [MultiSuSiE pilot](MULTISUSIE.md) fits the existing raw-moment
+summaries with a correlated-effect prior. It is a separate, optional coordinator path.
+
 ## The claim is exactness, not approximation
 
 The [GWAS experiment](../gwas/ABOUT.md) combines sites by inverse-variance meta-analysis,

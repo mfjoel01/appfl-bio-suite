@@ -426,6 +426,11 @@ def run_susiex(
 
     ncol = len(sumstats)
     opts = {**DEFAULT_OPTIONS, **(options or {})}
+    purity_args = []
+    if "min_purity" in opts:
+        if not 0 <= float(opts["min_purity"]) <= 1:
+            raise ValueError("min_purity must be between zero and one")
+        purity_args = ["--min_purity", str(opts["min_purity"])]
     out_dir.mkdir(parents=True, exist_ok=True)
     from ..inference import variant_input_manifest
     try:
@@ -447,7 +452,7 @@ def run_susiex(
          "--pval_thresh", str(pval_thresh), "--threads", str(threads),
          "--keep-ambig", str(opts["keep_ambiguous"]),
          "--n_sig", str(opts["n_signals"]), "--max_iter", str(opts["max_iter"]),
-         "--tol", str(opts["tol"]), "--mult-step", "False"],
+         "--tol", str(opts["tol"]), "--mult-step", "False", *purity_args],
         binary=susiex, check=False,
     )
     (out_dir / f"{out_name}.stdout.log").write_text(result.stdout)
