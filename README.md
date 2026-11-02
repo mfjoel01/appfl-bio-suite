@@ -24,6 +24,11 @@ map](https://mfjoel01.github.io/appfl-bio-suite/network.html).
 
 ## The experiments
 
+Fine-mapping also has a completed optional
+[MultiSuSiE coordinator pipeline](docs/experiments/fine-mapping/MULTISUSIE.md) and
+[matched-filter comparison against SuSiEx](docs/experiments/fine-mapping/MATCHED_RESULTS.md).
+
+
 Four experiments, one toolchain. The first three dispatch to partner sites; the fourth is
 in development.
 

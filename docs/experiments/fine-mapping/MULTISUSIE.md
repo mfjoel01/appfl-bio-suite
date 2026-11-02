@@ -1,9 +1,31 @@
-# Experimental MultiSuSiE comparison
+# MultiSuSiE coordinator pipeline
 
-This branch adds a coordinator adapter, a bounded local pilot, a frozen PBS
-three-method comparison, and a checkpointed full-grid pipeline (see the 23 October
-continuation below). The existing SuSiEx and APPFL workflows retain their default
-behavior. MultiSuSiE is not yet wired into the remote aggregator.
+## Current status — 2 November 2026
+
+The full pipeline is complete: 240,900 fits across 2,281 tasks, plus 11,850
+independently formed centralized comparison fits. All comparisons passed numerical
+PIP tolerance; one exact credible-set membership mismatch is retained and reported.
+The editable poster, print PDFs and visual audit are complete. No jobs remain active.
+
+The subsequent matched-filter comparison is also complete: 139,650 paired instances
+across 931 tasks. See [the comparison design](MATCHED_COMPARISON.md) and
+[results with paired confidence intervals](MATCHED_RESULTS.md). With common purity
+filtering, the full-cohort result is modestly higher recall for MultiSuSiE versus
+better-calibrated, smaller sets and lower FDR for SuSiEx. Rankings depend on cohort
+and filter policy; these results do not establish universal superiority.
+
+All local artifacts now reside in the primary checkout. See
+[artifact locations and archive verification](MULTISUSIE_ARTIFACTS.md).
+The original poster reports the MultiSuSiE pipeline; the matched comparison report
+is a separate deliverable. MultiSuSiE remains an optional coordinator path, not a
+remote APPFL aggregator backend. Default SuSiEx behavior is unchanged.
+
+Latest targeted regression validation: 46 passed, 2 skipped; lint, formatting and
+reusability checks passed. The skipped tests require optional executables. Real-backend
+paired comparison and checkpoint reuse passed. Historical test counts below refer
+to their dated runs.
+
+## Model and inputs
 
 The estimator is [MultiSuSiE](https://github.com/jordanero/MultiSuSiE), pinned to
 `10351ebbbc0ed4c891c455000eb6ec7800d0b717`. Its `susie_multi_ss` sufficient-statistic API
@@ -76,7 +98,7 @@ Native PIPs include active components before CS filtering; they must not be rela
 as SuSiEx's retained-component PIPs. Default `--min-abs-corr 0` follows the MultiSuSiE
 RSS interface. An optional purity cutoff filters sets, not the native PIPs.
 
-## Validation and next experiments
+## Validation
 
 ```bash
 PYTHONPATH=src OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
@@ -87,6 +109,12 @@ Tests use the real backend when installed: federated moments versus independentl
 centered centralized data, identical PIPs/CSs within numerical tolerance, ancestry-only
 censoring, malformed inputs, nonconvergence, and the existing miniature site filesets.
 Backend-dependent tests skip when the optional dependency is absent.
+
+## Historical execution record
+
+The following dated notes preserve how the run and acceptance criteria evolved.
+Job IDs, old worktree paths, pending states and test counts are historical; use the
+current status and artifact guide above for the completed run.
 
 Initial validation on 18 September 2026: all nine new tests passed. The combined
 MultiSuSiE, federated and scientific regression files passed 41 tests, with 12 skipped
@@ -153,15 +181,16 @@ interpreting it. Its selected loci are L0037 (low), L0021 (medium), and L0043 (h
 
 After adding the comparison and batch gates, 71 targeted tests passed with the existing
 SuSiEx/PLINK binaries on PATH, including the original centralized/federated tests and
-the real three-method comparison. There were no skips in that run. At the last check,
-the production pilot remained queued for production-tagged nodes; there are no
-large-cohort MultiSuSiE findings yet.
+the real three-method comparison. There were no skips in that run. At that September check,
+the production pilot remained queued for production-tagged nodes. The completed
+full-grid and matched results linked above supersede that preliminary status.
 
-MultiSuSiE currently uses native moments while SuSiEx retains the existing six-digit
+In this historical pilot, MultiSuSiE used native moments while SuSiEx retained six-digit
 summary statistics and float32 LD protocol. The variant union must agree between fits;
 the numerical representations differ. An RSS-versus-moment sensitivity check remains
-necessary before attributing small differences solely to the model. Full-grid calibration,
-broader rho sensitivity and APPFL backend selection also remain future work.
+necessary before attributing small differences solely to the model. The completed
+matched comparison uses 17-digit summary statistics and reports full-grid calibration;
+broader rho sensitivity and remote APPFL backend selection remain future work.
 
 ## Full-grid continuation (23 October 2026)
 
@@ -196,7 +225,7 @@ continue through independent loci and report all task failures. Failed or incomp
 phases cannot enter selection or the final poster. Code, configs and backend source
 are frozen in the run; large genotype BEDs use size/mtime identity checks.
 
-PBS chain (full IDs and submission commands are in `submission.*.json`):
+Historical PBS chain (full IDs and submission commands are in `submission.*.json`):
 
 | Stage | Job |
 | --- | --- |
@@ -206,18 +235,22 @@ PBS chain (full IDs and submission commands are in `submission.*.json`):
 | Held-out evaluation, eight shards | `198239[]` |
 | Validation, summaries, poster build/export | `198243` |
 
+Historical worktree status command (do not use against the relocated archive; see
+[MULTISUSIE_ARTIFACTS.md](MULTISUSIE_ARTIFACTS.md)):
+
 ```bash
 local/venv-multisusie/bin/python scripts/fine-mapping/multisusie_status.py \
   --root local/output/multisusie-full-20261023
 ```
 
-The copied poster is in `local/scratch/poster`. Its original SuSiEx outputs and audits
+The copied poster was built in the worktree at `local/scratch/poster`
+(now `local/scratch/poster-multisusie` in the primary checkout). Its original SuSiEx outputs and audits
 are preserved in `reference-native`; these are not MultiSuSiE evidence. New outputs
 are `native/multisusie-fine-mapping-poster.pptx`, the half-size PDF, a full-size
 `*-print-72x36.pdf`, and a PNG preview. `multisusie_data.py` requires accepted complete
 MultiSuSiE grids. `finalize_multisusie.py` verifies export paragraph preservation,
-finite chart caches, embedded fonts, and print dimensions. A final visual review is
-still required after the real results render. `layout-check/` is an explicitly
+finite chart caches, embedded fonts, and print dimensions. At this stage, a final visual review was
+still required; it passed on 29 October. `layout-check/` is an explicitly
 watermarked mechanical test using the original data, never a result poster.
 
 Validation on this continuation: 48 targeted tests passed (47 in the combined run
@@ -283,7 +316,7 @@ no-eligible selection, and actual backend reconstruction of batched moments.
 If no development candidate passes the prespecified screen, the selection records
 `name: null` and the held-out evaluation runs the four baseline cohorts only. It does
 not force an ineligible winner or change the thresholds. The poster reports “None
-eligible” and omits the selected-cohort arm in this case. The active manager status is
+eligible” and omits the selected-cohort arm in this case. The manager status at that stage was
 `recovery-20261024-r2/manager.status.json`.
 
 
@@ -295,9 +328,9 @@ completion. The prespecified winner is `csa_to_anl_afr_1000` (49,000 Covenant + 
 ANL; 48,500 AFR + 1,500 EUR overall). Development coverage is 0.945057 and FDR is
 0.012837. Evaluation did not influence selection; selection.lock.json freezes it.
 
-Current jobs: benchmark `199674[]` (19 remaining loci, one per subjob), held-out
+Jobs at the 28 October checkpoint: benchmark `199674[]` (19 remaining loci, one per subjob), held-out
 evaluation `199675[]` (378 cohort/loci, 56,700 fits), final export `199676`.
-The active monitor is `recovery-20261028/manager-v2.py`; its status is in that
+The monitor at that checkpoint was `recovery-20261028/manager-v2.py`; its status is in that
 recovery directory. Eight recovery tests passed. The monitor can now retry a
 premature downstream job only when its exact missing task acceptance file exists;
 other executed failures still require inspection.
@@ -317,7 +350,8 @@ original strict test passed. New comparisons record strict_pass and
 credible_sets_exact separately. The poster removes “Lossless” and universal CS
 agreement claims and reports the number of CS-mismatched pairs. Prior accepted
 comparisons already passed the stricter criterion. No credible sets were edited to
-force agreement. Final data and poster acceptance remain pending the running jobs.
+force agreement. Final data and poster acceptance were still pending at this checkpoint; both
+passed on 29 October.
 
 
 ### Final-locus continuation on 29 October
@@ -342,7 +376,8 @@ All pooled comparisons passed numerical PIP tolerance; one exact CS membership
 mismatch is reported. The separate comparison pilot also remains accepted.
 Final jobs 199917, 199918 and 199925 exited zero; no MultiSuSiE jobs remain active.
 The final PPTX, standard and 72x36-inch PDFs, preview, integrity audit and completed
-visual-review record are under local/scratch/poster/native. The final results panel
+visual-review record are now accessible from the primary checkout at
+`local/scratch/poster-multisusie/native`. The final results panel
 was inspected at higher resolution and its selected-cohort annotation corrected.
 completion.json and RUN_STATUS.md in the run root are the final status records.
 

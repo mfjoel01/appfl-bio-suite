@@ -45,3 +45,6 @@ The selected 50,000-person design does not reproduce the full-cohort recall adva
 The people, phenotypes, eligible variant union and external set filters are matched. Native priors, active-component/PIP definitions and precision remain method-specific (MultiSuSiE rho=0.75; SuSiEx float32 LD). The development-selected cohort was fixed before this comparison and selected using MultiSuSiE. These are results for the frozen synthetic design and configured methods, not every possible tuning or population. Intervals are marginal, without multiplicity adjustment; overlapping cohort draws are not independent replications. Archived timings do not support speed claims.
 
 `design.json` and `snapshot.json` record the frozen design. `accepted.json` hashes the complete numerical outputs. `comparison.tsv` contains the full paired grid; `summary.tsv` and `paired_differences.tsv` contain overall estimates and paired intervals; the corresponding `_stratified.tsv` files contain architecture/causal-mode results. The original MultiSuSiE poster remains the original pipeline report; this report supplies the completed matched-estimator comparison.
+
+Artifact paths, poster scope and relocation verification are documented in
+[the archive guide](MULTISUSIE_ARTIFACTS.md).

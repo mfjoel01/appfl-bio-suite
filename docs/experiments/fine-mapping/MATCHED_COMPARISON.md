@@ -1,9 +1,11 @@
 # Full matched-filter MultiSuSiE–SuSiEx comparison
 
 This run addresses the output-filter confounding in the original comparison.
-It does not presuppose which estimator will win.
+It completed on 30 October 2026; all 931 tasks passed. See
+[the results and paired confidence intervals](MATCHED_RESULTS.md).
 
-Run root: `local/output/matched-multisusie-susiex-20261029`.
+Run root in the primary checkout: `local/output/matched-multisusie-susiex-20261029`.
+See [artifact locations and relocation verification](MULTISUSIE_ARTIFACTS.md).
 
 ## Fixed design
 
@@ -64,7 +66,9 @@ the full array. The array runs up to 16 locus jobs concurrently, eight independe
 instances per job. The monitor retries only unfinished tasks and stops for
 persistent nonconvergence or unresolved failures.
 
-Inspect monitor.status.json and submission.*.json for current scheduler IDs.
+The monitor and submission records retain historical scheduler IDs; no jobs remain
+active. The final acceptance record is authoritative. The monitor's last poll caught
+the collector running; the collector subsequently exited successfully.
 Final outputs, created only after complete acceptance:
 
 - comparison.tsv: complete paired grid (558,600 method/policy rows).
@@ -74,7 +78,8 @@ Final outputs, created only after complete acceptance:
 
 Four tests passed, including actual execution of both backends, the shared purity
 rule, unchanged PIPs after CS filtering, paired-bootstrap identity, and checkpoint
-reuse. The cluster preflight remains a separate production-data gate.
+reuse. The separate production-data preflight also passed: three full-cohort instances,
+two methods and two policies (12 validated rows).
 
 ## Completed results (November 2, 2026 verification)
 

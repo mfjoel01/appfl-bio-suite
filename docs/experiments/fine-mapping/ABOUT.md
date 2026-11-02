@@ -1,4 +1,4 @@
-> Current protocol: [September scientific corrections and rerun](SCIENTIFIC_RERUN.md). Its validation gates have passed and the run is complete; the findings and limitations are in that document's [outcome section](SCIENTIFIC_RERUN.md#outcome--17-september-2026). Numerical results below that predate the rerun are historical.
+> SuSiEx protocol:  [September scientific corrections and rerun](SCIENTIFIC_RERUN.md). Its validation gates have passed and the run is complete; the findings and limitations are in that document's [outcome section](SCIENTIFIC_RERUN.md#outcome--17-september-2026). Numerical results below that predate the rerun are historical.
 
 # Federated cross-ancestry fine-mapping
 
@@ -16,10 +16,20 @@ per-variant summaries.
 
 The estimator is **SuSiEx**, a C++ command-line tool the coordinator shells out to.
 
-An experimental [MultiSuSiE pilot](MULTISUSIE.md) fits the existing raw-moment
-summaries with a correlated-effect prior. It is a separate, optional coordinator path.
+The optional [MultiSuSiE coordinator pipeline](MULTISUSIE.md) fits the same raw-moment
+summaries with a correlated-effect prior. Its full grid and
+[matched-filter SuSiEx comparison](MATCHED_RESULTS.md) are complete. Under common
+purity filtering in the full-cohort held-out evaluation, MultiSuSiE gains modest
+causal recall; SuSiEx has coverage nearer 95%, lower FDR and smaller sets. The default
+remote APPFL workflow remains SuSiEx. [Artifact locations](MULTISUSIE_ARTIFACTS.md)
+include the completed poster and checksum-verification instructions.
 
 ## The claim is exactness, not approximation
+
+The following protocol and exact-CS regression describe the SuSiEx path. In the
+completed MultiSuSiE pooled/federated comparison, all 11,850 pairs passed numerical
+PIP tolerance, but one pair differed at a credible-set boundary. MultiSuSiE completion
+therefore reports exact CS identity separately; it does not claim universal CS equality.
 
 The [GWAS experiment](../gwas/ABOUT.md) combines sites by inverse-variance meta-analysis,
 which *approximates* what a pooled analysis would have found. That is the standard and it

@@ -43,6 +43,12 @@ experiment; Part 2 is what differs for yours.
 
 ## I want to understand or reproduce an experiment
 
+For the completed fine-mapping extension, see the
+[MultiSuSiE pipeline](experiments/fine-mapping/MULTISUSIE.md),
+[matched-filter comparison results](experiments/fine-mapping/MATCHED_RESULTS.md), and
+[artifact/archive guide](experiments/fine-mapping/MULTISUSIE_ARTIFACTS.md).
+
+
 Each experiment has the same four documents, always:
 
 | | |

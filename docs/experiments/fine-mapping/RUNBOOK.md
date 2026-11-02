@@ -10,6 +10,12 @@ Three things you can run, in increasing order of what they need.
 | **Centralized baseline** | a data package | the reference fit, all data in one place |
 | **Federated** | a data package, or partners | the same fit, computed without pooling |
 
+This runbook describes the default SuSiEx workflow. For the optional coordinator
+backend, use the [MultiSuSiE guide](MULTISUSIE.md). Its full pipeline and
+[matched-filter comparison](MATCHED_COMPARISON.md) are complete; see
+[results](MATCHED_RESULTS.md) and [archived artifacts](MULTISUSIE_ARTIFACTS.md).
+MultiSuSiE is not selected through the remote APPFL commands below.
+
 ## 1. Make a data package
 
 ```bash
