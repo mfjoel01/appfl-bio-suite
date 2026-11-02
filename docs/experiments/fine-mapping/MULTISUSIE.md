@@ -17,10 +17,12 @@ and filter policy; these results do not establish universal superiority.
 All local artifacts now reside in the primary checkout. See
 [artifact locations and archive verification](MULTISUSIE_ARTIFACTS.md).
 The original poster reports the MultiSuSiE pipeline; the matched comparison report
-is a separate deliverable. MultiSuSiE remains an optional coordinator path, not a
-remote APPFL aggregator backend. Default SuSiEx behavior is unchanged.
+is a separate deliverable. MultiSuSiE is now selectable in the remote APPFL
+aggregator as well as the standalone coordinator pipeline. Default SuSiEx behavior
+is unchanged. The completed large-grid studies used locally staged synthetic sites;
+they are not evidence of a live remote MultiSuSiE deployment.
 
-Latest targeted regression validation: 46 passed, 2 skipped; lint, formatting and
+Before remote-backend integration, targeted validation was 46 passed, 2 skipped; lint, formatting and
 reusability checks passed. The skipped tests require optional executables. Real-backend
 paired comparison and checkpoint reuse passed. Historical test counts below refer
 to their dated runs.
@@ -56,6 +58,107 @@ analysis. Variants retained in any ancestry enter the union. Ineligible ancestry
 combinations have zero rows/columns and zero cross-products, rather than discarding the
 variant from every ancestry. Within an ancestry, the existing complete-variant policy
 and allele harmonization are retained. Mismatched or duplicate site contributions fail.
+
+## Switch methods without changing the workflow
+
+Both methods use the same `run fine-mapping` command, site payloads, sharding,
+driver choices and reporting paths. Override just the backend; use distinct results
+directories to preserve each fit:
+
+```bash
+appfl-bio-suite run fine-mapping --config loopback --driver serial \
+  --data-root /path/to/simulation --backend susiex --results-dir local/output/run-susiex
+appfl-bio-suite run fine-mapping --config loopback --driver serial \
+  --data-root /path/to/simulation --backend multisusie --results-dir local/output/run-multisusie
+```
+
+For remote runs, keep your federation and driver unchanged:
+
+```bash
+appfl-bio-suite run fine-mapping --federation local/federation.yaml \
+  --driver globus_compute --backend multisusie --results-dir local/output/remote-multisusie
+```
+
+`--backend` overrides `experiments.fine-mapping.fine_mapping_backend` for that run.
+`--results-dir` overrides `fine_mapping_output_dir`; `--out-dir` still selects where
+resolved launch configurations are written, not inference results. These two new flags
+apply only to fine-mapping. The SuSiEx default remains unchanged when neither is supplied.
+
+Both backends write the same `data/fed_fm_results.tsv` column schema, rollup paths,
+`data/inference_backend.json`, and per-instance `data/instances/<instance>/fit.json`,
+`variants.tsv`, and `credible_sets.tsv`. The common posterior tables expose `snp_id`
+and `pip`, and component/set membership with component PIP and coverage. Native
+backend details are retained additionally: MultiSuSiE posterior arrays in the instance
+directory, SuSiEx compressed outputs in `artifacts/<instance>/`. Existing instance
+outputs cannot be silently overwritten. Both backends reject unsuccessful fits before
+reporting the exchange ready. With unknown truth, both leave truth-based metrics missing.
+
+This is an interface swap, not identical statistical behavior. PIP definitions, priors,
+precision and filters remain method-specific and are recorded. MultiSuSiE's per-ancestry
+minimum-p-value and CS-purity summaries are currently missing in the shared table;
+SuSiEx populates its own native diagnostics. Neither missing value means zero.
+The full matched-filter study remains the appropriate comparison for estimator claims.
+
+## Select MultiSuSiE for an APPFL federation
+
+Install the optional backend on the coordinator from this checkout:
+
+```bash
+python -m pip install '.[multisusie]'
+```
+
+Set these fields in your existing federation YAML (keep your site/endpoint settings):
+
+```yaml
+experiments:
+  fine-mapping:
+    fine_mapping_backend: multisusie
+    multisusie_rho: 0.75
+    multisusie_min_abs_corr: 0.0
+    multisusie_min_mac: 0.0
+    n_signals: 10
+    max_iter: 1000
+    tol: 1.0e-6
+    credible_set_level: 0.95
+    maf: 0.005
+```
+
+```bash
+appfl-bio-suite preflight --experiment fine-mapping --check env --federation local/federation.yaml
+appfl-bio-suite run fine-mapping --driver globus_compute --federation local/federation.yaml
+```
+
+The launcher forwards backend selection to `FineMappingAggregator`. Sites run the
+same shipped trainer and send the same raw-moment tensors; partners do not install
+MultiSuSiE. Backend-aware preflight requires the optional Python backend, not SuSiEx
+or PLINK, for this inference path. Simulation preparation may still need PLINK.
+Select `fine_mapping_backend: susiex` (the default) to retain the original path.
+
+Shared settings are `n_signals`, `max_iter`, `tol`, `credible_set_level`, and `maf`.
+`pval_thresh` and `keep_ambiguous` are SuSiEx-specific; MultiSuSiE does not apply a
+significance filter. Its purity/MAC/rho settings are the prefixed fields above.
+The remote path does not silently retry with a higher iteration ceiling: a
+nonconverged fit retains diagnostic files and raises before reporting a ready result.
+Use a fresh output directory for a rerun; existing native fit directories are never
+overwritten. `n_workers` in the server configuration controls instance parallelism.
+
+Results retain the standard `data/fed_fm_results.tsv` and rollups. Backend/options
+are recorded in `data/inference_backend.json`; native MultiSuSiE PIPs, credible sets,
+posterior arrays and backend source/version provenance are retained under
+`data/instances/<instance>/`, including when `keep_work` is false. Native PIPs are
+not redefined by CS filtering. Without a causal manifest, truth-based metrics are
+missing rather than false or zero. CS purity summaries are currently unreported
+(missing) in the remote result table; the native CS membership remains available.
+
+Regression tests use actual shipped trainer payloads and compare decoded-aggregate
+fits with independently formed standalone moments, PIPs, sets and posterior arrays,
+including serial/parallel execution. They also check configuration propagation,
+backend-aware preflight and failure on nonconvergence. These are local protocol
+integration tests; no live partner endpoint was contacted for this validation.
+All 12 backend integration tests passed, including CLI selection for both drivers,
+identical result/artifact schemas, no-truth behavior and overwrite protection.
+The original SuSiEx APPFL-versus-standalone parity, configuration, preflight and
+documentation regression checks also passed.
 
 ## Run a pilot
 
@@ -190,7 +293,8 @@ summary statistics and float32 LD protocol. The variant union must agree between
 the numerical representations differ. An RSS-versus-moment sensitivity check remains
 necessary before attributing small differences solely to the model. The completed
 matched comparison uses 17-digit summary statistics and reports full-grid calibration;
-broader rho sensitivity and remote APPFL backend selection remain future work.
+broader rho sensitivity remains future work. Remote APPFL backend selection was
+added on 2 November; see the current configuration instructions below.
 
 ## Full-grid continuation (23 October 2026)
 
@@ -258,7 +362,7 @@ and one additional held-out-selection test), 12 optional-dependency skips; this 
 and the three-method miniature comparison. Full-grid jobs were still running/queued
 at the time this section was written; inspect acceptance files before citing findings.
 The execution remains local synthetic site stages and aggregate-only coordinator
-inference. This does not add a remote APPFL MultiSuSiE backend.
+inference. That historical run did not exercise a remote APPFL MultiSuSiE backend.
 
 ### Recovery on 24 October
 

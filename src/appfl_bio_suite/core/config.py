@@ -596,6 +596,11 @@ class Experiment(_Strict):
     # Coordinator-side. The ground-truth causal variants, for scoring a simulated run;
     # a real federation has no such file and leaves this unset.
     causal_manifest: str | None = None
+    fine_mapping_output_dir: str | None = None
+    fine_mapping_backend: Literal["susiex", "multisusie"] = "susiex"
+    multisusie_rho: float = Field(default=0.75, ge=0, lt=1)
+    multisusie_min_abs_corr: float = Field(default=0.0, ge=0, le=1)
+    multisusie_min_mac: float = Field(default=0.0, ge=0)
     susiex_binary: str | None = None
     credible_set_level: float | None = None
     pval_thresh: float | None = None

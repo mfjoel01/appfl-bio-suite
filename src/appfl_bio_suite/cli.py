@@ -300,6 +300,18 @@ def identity_validate(
     default=None,
     help="Loopback only: the --out directory `simulate` wrote per-site data to.",
 )
+@click.option(
+    "--backend",
+    type=click.Choice(["susiex", "multisusie"]),
+    default=None,
+    help="Fine-mapping only: override the coordinator inference backend.",
+)
+@click.option(
+    "--results-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Fine-mapping only: write results to a fresh directory.",
+)
 @click.option("--federation", "federation_path", default=None, help=_FEDERATION_HELP)
 def run_cmd(
     experiment: str,
@@ -310,6 +322,8 @@ def run_cmd(
     watch: bool,
     data_root: Path | None,
     federation_path: str | None,
+    backend: str | None,
+    results_dir: Path | None,
 ) -> None:
     """Run an experiment.
 
@@ -331,6 +345,9 @@ def run_cmd(
             f"'{experiment}' is planned but not implemented. "
             f"See docs/experiments/{experiment}/ABOUT.md."
         )
+
+    if experiment != "fine-mapping" and (backend is not None or results_dir is not None):
+        raise click.UsageError("--backend and --results-dir apply only to fine-mapping")
 
     if get_spec(experiment).serial_runner:
         import importlib
@@ -372,6 +389,11 @@ def run_cmd(
             "each site's data_dir is a path on its own cluster. Add --driver serial, or "
             "drop --data-root."
         )
+
+    if backend is not None:
+        fed.experiment(experiment).fine_mapping_backend = backend
+    if results_dir is not None:
+        fed.experiment(experiment).fine_mapping_output_dir = str(results_dir.resolve())
 
     code = launch(
         federation=fed,

@@ -48,7 +48,7 @@ from appfl_bio_suite.experiments.fine_mapping.trainer import SiteFineMappingTrai
 
 # Statistics only. runtime_s is wall clock; `error` is empty string on one path and NaN on
 # the other, and carries no result.
-_EXCLUDED_COLUMNS = {"runtime_s", "error"}
+_EXCLUDED_COLUMNS = {"runtime_s", "error", "backend"}
 
 # Must match what the aggregator is constructed with below, or the two paths would be
 # fine-mapping with different settings and the comparison would mean nothing.

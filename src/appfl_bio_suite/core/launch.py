@@ -331,6 +331,11 @@ def build_server_config(
     for field, key in (
         ("causal_manifest", "causal_manifest"),
         ("susiex_binary", "susiex_binary"),
+        ("fine_mapping_backend", "backend"),
+        ("fine_mapping_output_dir", "output_dir"),
+        ("multisusie_rho", "multisusie_rho"),
+        ("multisusie_min_abs_corr", "multisusie_min_abs_corr"),
+        ("multisusie_min_mac", "multisusie_min_mac"),
         ("credible_set_level", "level"),
         ("pval_thresh", "pval_thresh"),
         ("maf", "maf"),
@@ -339,9 +344,16 @@ def build_server_config(
         ("max_iter", "max_iter"),
         ("tol", "tol"),
     ):
+        if experiment != "fine-mapping" and (
+            field.startswith("fine_mapping_") or field.startswith("multisusie_")
+        ):
+            continue
         value = getattr(exp, field, None)
         if value is not None:
             server.setdefault("aggregator_kwargs", {})[key] = value
+
+    if experiment == "fine-mapping" and exp.fine_mapping_output_dir:
+        server["logging_output_dirname"] = str(Path(exp.fine_mapping_output_dir) / "logs")
 
     # GA4GH provenance for the aggregator to write beside the results. Assembled from
     # the federation config rather than from the payloads, because it records what this

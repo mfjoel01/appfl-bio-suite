@@ -339,6 +339,13 @@ experiments:
   # three, in a fixed order, and a scenario naming others is refused rather than silently
   # producing a smaller cohort. See docs/experiments/fine-mapping/DATA.md.
   fine-mapping:
+    # Coordinator backend; site payloads and partner dependencies are identical.
+    # Set multisusie after installing the coordinator extra .[multisusie].
+    fine_mapping_backend: susiex
+    fine_mapping_output_dir: null  # or override per run with --results-dir
+    multisusie_rho: 0.75
+    multisusie_min_abs_corr: 0.0
+    multisusie_min_mac: 0.0
     enabled: true
     service_account: finemap_svc
     endpoint_name: finemap-ep

@@ -21,7 +21,8 @@ summaries with a correlated-effect prior. Its full grid and
 [matched-filter SuSiEx comparison](MATCHED_RESULTS.md) are complete. Under common
 purity filtering in the full-cohort held-out evaluation, MultiSuSiE gains modest
 causal recall; SuSiEx has coverage nearer 95%, lower FDR and smaller sets. The default
-remote APPFL workflow remains SuSiEx. [Artifact locations](MULTISUSIE_ARTIFACTS.md)
+remote APPFL workflow remains SuSiEx; `fine_mapping_backend: multisusie` selects
+MultiSuSiE using the same site payloads. [Artifact locations](MULTISUSIE_ARTIFACTS.md)
 include the completed poster and checksum-verification instructions.
 
 ## The claim is exactness, not approximation

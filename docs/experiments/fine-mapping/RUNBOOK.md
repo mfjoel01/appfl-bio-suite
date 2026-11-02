@@ -14,7 +14,11 @@ This runbook describes the default SuSiEx workflow. For the optional coordinator
 backend, use the [MultiSuSiE guide](MULTISUSIE.md). Its full pipeline and
 [matched-filter comparison](MATCHED_COMPARISON.md) are complete; see
 [results](MATCHED_RESULTS.md) and [archived artifacts](MULTISUSIE_ARTIFACTS.md).
-MultiSuSiE is not selected through the remote APPFL commands below.
+For either remote APPFL or local coordinator inference, set
+`experiments.fine-mapping.fine_mapping_backend` to `susiex` (default) or `multisusie`.
+The same choice can be overridden per run with `--backend susiex|multisusie`;
+use `--results-dir` to keep the two runs separate.
+See [MultiSuSiE configuration and outputs](MULTISUSIE.md#select-multisusie-for-an-appfl-federation).
 
 ## 1. Make a data package
 
