@@ -48,3 +48,7 @@ The people, phenotypes, eligible variant union and external set filters are matc
 
 Artifact paths, poster scope and relocation verification are documented in
 [the archive guide](MULTISUSIE_ARTIFACTS.md).
+
+The [comparison figure guide](COMPARISON_FIGURES.md) lists the dedicated offline
+report, ten comparison figures, complete tables and reproduction command in the
+primary checkout.

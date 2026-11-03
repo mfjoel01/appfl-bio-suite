@@ -29,6 +29,8 @@ Fine-mapping also has a completed optional
 [matched-filter comparison against SuSiEx](docs/experiments/fine-mapping/MATCHED_RESULTS.md).
 Use `run fine-mapping --backend susiex` or `--backend multisusie` with either the
 local or remote driver; `--results-dir` keeps their outputs separate.
+The [comparison report and figures](docs/experiments/fine-mapping/COMPARISON_FIGURES.md)
+cover both methods across cohorts and filter policies.
 
 
 Four experiments, one toolchain. The first three dispatch to partner sites; the fourth is

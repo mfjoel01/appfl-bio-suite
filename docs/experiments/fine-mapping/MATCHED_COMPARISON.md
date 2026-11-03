@@ -103,3 +103,7 @@ The former pilot-only evidence gap is resolved.
 
 For a new PBS run, set `account`, `python`, `workers`, and `concurrency` in
 `scheduler.json` before starting the monitor. Use your own scheduler allocation.
+
+The [comparison figure guide](COMPARISON_FIGURES.md) lists the dedicated offline
+report, ten comparison figures, complete tables and reproduction command in the
+primary checkout.

@@ -176,3 +176,8 @@ Full index and the mapping onto the SuSiEx paper's own figures:
 | federated ≠ centralized | first check the run log for variants dropped as *not fully observed* — Corollary 1 assumes both paths see the same variant list |
 | a site's uplink is huge | it is O(M²) per ancestry; shard by locus |
 | DRS mismatch | the site ran on a different bundle than the one cut for it — re-cut and re-dispatch |
+
+## Render the completed estimator comparison
+
+See [COMPARISON_FIGURES.md](COMPARISON_FIGURES.md) for the checked numerical inputs,
+reproduction command, offline report and PNG/PDF/SVG exports in the primary checkout.

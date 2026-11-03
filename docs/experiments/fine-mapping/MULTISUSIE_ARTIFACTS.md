@@ -3,8 +3,9 @@
 The pipeline completed on 29 October 2026 and the matched comparison completed on
 30 October. On 2 November, all worktree-local artifacts were moved into the primary
 `appfl-bio-suite` checkout using same-filesystem renames, with inode identity checked.
-The source worktree is no longer required for artifact storage. It was left in place
-for deletion; its local artifact entries are convenience symlinks into the archive.
+The source worktree was retired on 3 November after the comparison figures were
+created, the source branch was pushed, and relocated results were verified. The archive
+and primary-checkout links retain all scientific artifacts independently of that worktree.
 
 ## Locations in the primary checkout
 
@@ -13,6 +14,7 @@ provided by a fresh clone. Paths below are relative to the primary checkout.
 
 | Artifact | Path |
 | --- | --- |
+| Dedicated comparison report and ten figure sets | `local/output/susiex-vs-multisusie/` |
 | Matched comparison report and numerical outputs | `local/output/matched-multisusie-susiex-20261029/` |
 | Full MultiSuSiE grid, selection and numerical parity evidence | `local/output/multisusie-full-20261023/` |
 | Three-method pilot | `local/output/multisusie-comparison-20261023/` |
@@ -24,7 +26,8 @@ provided by a fresh clone. Paths below are relative to the primary checkout.
 The output and poster paths above link into the archive. The existing primary-checkout
 `local/scratch/poster` was not overwritten. The MultiSuSiE poster reports the original
 pipeline; the subsequent matched-estimator findings are in
-[MATCHED_RESULTS.md](MATCHED_RESULTS.md), not inserted into that poster.
+[MATCHED_RESULTS.md](MATCHED_RESULTS.md), not inserted into that poster. The dedicated
+[comparison report and graphs](COMPARISON_FIGURES.md) visualize those findings.
 
 The archive retains every output/checkpoint, unsuccessful attempt, scheduler log,
 frozen source/configuration snapshot, poster source/export, backend vendor checkout,

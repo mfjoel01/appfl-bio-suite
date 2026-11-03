@@ -24,6 +24,8 @@ causal recall; SuSiEx has coverage nearer 95%, lower FDR and smaller sets. The d
 remote APPFL workflow remains SuSiEx; `fine_mapping_backend: multisusie` selects
 MultiSuSiE using the same site payloads. [Artifact locations](MULTISUSIE_ARTIFACTS.md)
 include the completed poster and checksum-verification instructions.
+[Comparison figures](COMPARISON_FIGURES.md) show both methods across cohorts,
+filter policies and architectures.
 
 ## The claim is exactness, not approximation
 

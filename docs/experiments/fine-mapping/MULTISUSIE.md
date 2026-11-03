@@ -27,6 +27,9 @@ reusability checks passed. The skipped tests require optional executables. Real-
 paired comparison and checkpoint reuse passed. Historical test counts below refer
 to their dated runs.
 
+The [comparison figure guide](COMPARISON_FIGURES.md) documents the dedicated
+SuSiEx-versus-MultiSuSiE report, figures and tables in the primary checkout.
+
 ## Model and inputs
 
 The estimator is [MultiSuSiE](https://github.com/jordanero/MultiSuSiE), pinned to
