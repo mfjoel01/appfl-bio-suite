@@ -7,9 +7,9 @@ Federated Learning for Secure Genetic Analysis and Polygenic Risk Scoring" (Joel
 NUMERICAL BEHAVIOUR IS FROZEN. This code backs published figures.
 =============================================================================
 
-``tests/test_gwas_simulation_parity.py`` runs the pre-migration scripts and this port
-against the same fixture and compares checksums of all 35 outputs. Any change that alters
-a single byte fails that test.
+``tests/test_gwas_simulation_parity.py`` holds this port to checksums of all 35 outputs
+the pre-migration scripts produce from a fixed fixture, on the machine running the tests
+and again under an emulated older CPU. Any change that alters a single byte fails it.
 
 That is deliberately strict, because the ways to break this silently are not obvious:
 
@@ -22,6 +22,10 @@ That is deliberately strict, because the ways to break this silently are not obv
 * **Chunked accumulation.** The scoring dot product is chunked at 2000 variants.
   Floating-point addition is not associative, so changing the chunk size changes the
   low-order bits of every score.
+* **Summation order within a chunk.** ``_compute_pgs`` adds each chunk's terms itself,
+  in the order the reference BLAS defines. Handing them back to BLAS (``@``, ``np.dot``,
+  ``np.einsum`` and friends) lets the library pick the order, and OpenBLAS picks it by
+  CPU model and thread count, so the scores would follow the machine again.
 * **Operation order in the PGS overlap.** The groupby-then-join-then-filter sequence
   determines which duplicate variants survive and in what row order.
 
@@ -29,6 +33,11 @@ What DID change from the original, all of it non-numerical: module-level constan
 an explicit configuration object; the ``GWAS_PROJECT_DIR`` environment variable and its
 ``sys.path.insert`` with a guessed relative fallback became ordinary package imports; and
 the script became a function that takes its inputs and returns its outputs.
+
+The one change that touches the arithmetic: the score's matrix-vector product is computed
+here instead of by BLAS. It performs the operations the original's BLAS performs on
+OpenBLAS's reference-order kernel, and matches the original's bytes with that kernel
+pinned. What it removes is the machine's choice of kernel. See ``_compute_pgs``.
 """
 
 from __future__ import annotations
@@ -39,7 +48,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from threadpoolctl import threadpool_limits
 
 from appfl_bio_suite.experiments.gwas.simulation.schema import PhenotypeParams
 
@@ -151,7 +159,7 @@ def _prep_pgs(df: pd.DataFrame, bim: pd.DataFrame, bim_set: set) -> pd.DataFrame
 
 
 def _compute_pgs(pgs_df: pd.DataFrame, G, snp_to_pos: dict, chunk_size: int = 2000) -> np.ndarray:
-    """Weighted allele-dosage sum, chunked.
+    """Weighted allele-dosage sum over the PGS variants.
 
     Dosage encoding with ``ref="a1"`` is the count of the SECOND allele (the BIM's A2):
     0 = A1/A1, 1 = A1/A2, 2 = A2/A2, NaN = missing. If the PGS effect allele is A1, the
@@ -160,18 +168,30 @@ def _compute_pgs(pgs_df: pd.DataFrame, G, snp_to_pos: dict, chunk_size: int = 20
     Missing genotypes are mean-imputed per variant, within the chunk. That is what the
     original does, and the per-chunk (rather than global) mean is part of the frozen
     behaviour -- with a fixed chunk size the two coincide anyway, since chunks partition
-    variants, not samples.
+    variants, not samples. The mean is exact up to its one division: dosages are whole
+    numbers, and their sum over any cohort is exactly representable.
 
-    ``chunk_size`` changes floating-point accumulation order and therefore the result.
+    Each chunk's contribution is the matrix-vector product ``chunk @ w``, computed the
+    way the reference BLAS defines DGEMV: starting from zero, one variant at a time in
+    PGS-file order, one multiplication and one addition per term::
 
-    So does the number of threads the BLAS uses for the ``chunk @ w`` product, which is
-    why this pins it to one. Above four threads OpenBLAS splits that matrix-vector
-    product's reduction across threads and sums the partial results in a different
-    order, moving the low-order bits of every score. Nothing errors: the scores are
-    equally valid, they are just not the published ones, and every downstream phenotype
-    and summary file inherits the difference. Thread count is a property of the machine,
-    so without this pin the same input reproduces on a laptop and silently does not on a
-    64-core node -- the exact failure this pipeline's checksums exist to catch.
+        product[i] = ((0 + d[i,1]*w[1]) + d[i,2]*w[2]) + ... + d[i,k]*w[k]
+
+    and the products are added to the scores chunk by chunk. IEEE-754 rounds each of
+    those operations the same way on every CPU, so the scores depend on the inputs and
+    their order and on nothing about the machine. ``chunk_size`` still changes the
+    result, because it decides where the partial products start from zero.
+
+    The product is deliberately NOT handed to BLAS, which is what the original did.
+    BLAS may add the terms in any order and fuse multiply-adds, and OpenBLAS chooses its
+    kernel by CPU model and its split by thread count, so the original's scores, and
+    every phenotype and summary file computed from them, followed the machine. Pinning
+    BLAS to one thread removed the thread-count half and left the CPU half: CI passed on
+    hosts that select the Haswell-family kernel the first golden checksums were captured
+    with, and failed on the rest. Run with OpenBLAS's reference-order kernel
+    (``OPENBLAS_CORETYPE=Prescott``), the original scripts produce exactly the bytes this
+    function produces everywhere; tests/legacy_harness.py pins that kernel for the
+    comparison.
     """
     ea = pgs_df["effect_allele"].str.upper().values
     a1v = pgs_df["A1"].str.upper().values
@@ -192,25 +212,29 @@ def _compute_pgs(pgs_df: pd.DataFrame, G, snp_to_pos: dict, chunk_size: int = 20
 
     scores = np.zeros(G.sizes["sample"], dtype=np.float64)
 
-    # Serial BLAS for the accumulation. threadpool_limits restores the caller's setting
-    # on exit, so this constrains the reduction order and nothing else about the process.
-    with threadpool_limits(limits=1, user_api="blas"):
-        for start in range(0, len(positions), chunk_size):
-            sl = slice(start, start + chunk_size)
-            idx = positions[sl]
-            w = wts[sl]
-            flip_sl = flip[sl]
+    for start in range(0, len(positions), chunk_size):
+        sl = slice(start, start + chunk_size)
+        idx = positions[sl]
+        w = wts[sl]
+        flip_sl = flip[sl]
 
-            chunk = G.isel(variant=idx).values.astype(np.float64)
+        # Column-major, so that each variant's dosages are contiguous for the sum below.
+        chunk = G.isel(variant=idx).values.astype(np.float64, order="F")
 
-            if flip_sl.any():
-                chunk[:, flip_sl] = 2.0 - chunk[:, flip_sl]
+        if flip_sl.any():
+            chunk[:, flip_sl] = 2.0 - chunk[:, flip_sl]
 
-            col_means = np.nanmean(chunk, axis=0)
-            r, c = np.where(np.isnan(chunk))
-            chunk[r, c] = col_means[c]
+        col_means = np.nanmean(chunk, axis=0)
+        r, c = np.where(np.isnan(chunk))
+        chunk[r, c] = col_means[c]
 
-            scores += chunk @ w
+        # chunk @ w in the reference order: every term at once, then summed from zero in
+        # variant order. Each row of chunk.T is one variant's term for every sample.
+        chunk *= w
+        product = np.zeros_like(scores)
+        for term in chunk.T:
+            product += term
+        scores += product
 
     return scores
 

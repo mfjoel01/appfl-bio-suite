@@ -151,6 +151,16 @@ guarantee: `tests/test_gwas_simulation_parity.py` asserts all 35 outputs are byt
 to the pre-migration scripts for a fixed seed, against checksums captured by running those
 scripts unmodified.
 
+**2026-11-04.** That guarantee had a hole: the scripts compute the polygenic score with a
+BLAS matrix-vector product, so 13 of the 35 checksums (the scores and everything computed
+from them) held only on CPUs where OpenBLAS selects the Haswell-family kernel they were
+captured with, and CI failed on the others. The port now computes the product in the
+reference-BLAS order without BLAS, and the checksums were recaptured from the unmodified
+scripts with OpenBLAS pinned to the kernel that adds in that order. The guarantee now
+holds on any machine. Against the old capture, case/control labels and every count are
+unchanged; BMI moves by at most 3 units in the last place, and the scores by at most
+1.4e-13 relative. See `docs/coordinator/releasing.md`.
+
 The training path was refactored for self-containment — the trainer no longer imports
 sibling modules, which removed the `PYTHONPATH` requirement from every partner's endpoint
 configuration. Per-site plotting moved to the coordinator, which has all the information

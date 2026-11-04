@@ -66,9 +66,10 @@ class PhenotypeParams:
 
     # Chunk size for the polygenic-score dot product.
     #
-    # NUMERICALLY LOAD-BEARING: floating-point addition is not associative, so changing
-    # this changes the accumulation order and therefore the low-order bits of every
-    # score. Byte-identical output requires this value to stay at 2000.
+    # NUMERICALLY LOAD-BEARING: floating-point addition is not associative, and each
+    # chunk's partial product is summed from zero, so changing this changes the
+    # accumulation order and therefore the low-order bits of every score. Byte-identical
+    # output requires this value to stay at 2000.
     pgs_chunk_size: int = 2000
 
     def to_dict(self) -> dict[str, Any]:

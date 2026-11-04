@@ -196,7 +196,7 @@ full endpoint UUIDs never reach the published page.
   commit, input and output checksums, and package versions.
   `simulate gwas --verify <manifest>` confirms a rerun mechanically.
 - **The GWAS simulation is deterministic.** For a fixed seed, all 35 outputs are
-  byte-identical, verified against recorded checksums.
+  byte-identical on any machine, verified against recorded checksums.
 - **Known limits are documented.**
   [docs/experiments/gwas/DATA.md](docs/experiments/gwas/DATA.md) states which input cohort
   is not regenerable, and what the shipped substitute does and does not reproduce.

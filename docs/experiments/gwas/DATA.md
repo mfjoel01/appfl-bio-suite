@@ -57,7 +57,14 @@ cohort:
 ```
 
 Everything downstream — phenotype simulation, the site split, every seed — is byte-identical
-to the pre-migration pipeline, verified by `tests/test_gwas_simulation_parity.py`.
+to the pre-migration pipeline, verified by `tests/test_gwas_simulation_parity.py`. One
+qualification for the files built on the polygenic score (`pgs_scores.csv`,
+`phenotypes_gwas.csv`, `phenotypes_pgs_eval.csv`, `simulation_summary.csv`): the
+pre-migration pipeline produced them with whichever BLAS kernel its machine selected, and
+this one computes them in the reference-BLAS order on every machine. The site split,
+covariates and genotypes of an earlier run are reproduced byte for byte. Those four files
+agree with it to rounding, and are byte-identical to the original scripts run with
+`OPENBLAS_CORETYPE=Prescott` (see [Numerical stability](#numerical-stability)).
 
 ---
 
@@ -203,9 +210,11 @@ block against the current environment before assuming the code is wrong. A moved
 
 The simulation is **frozen**: `tests/test_gwas_simulation_parity.py` asserts that all 35
 outputs are byte-identical to those of the pre-migration pipeline for a fixed seed,
-against checksums captured by running the original scripts unmodified.
+against checksums captured by running the original scripts unmodified. It asserts this on
+whatever machine runs it, and again under an emulated older CPU, because the outputs must
+not depend on the hardware.
 
-Four ways this breaks silently, all guarded by that test:
+Five ways this breaks silently, all guarded by that test:
 
 1. **RNG algorithm.** The site split uses numpy's *legacy* global generator
    (`np.random.seed` + `np.random.shuffle`). Modernizing to `default_rng` is a different
@@ -217,6 +226,13 @@ Four ways this breaks silently, all guarded by that test:
    is not associative, so the chunk size affects low-order bits.
 4. **Operation order in the PGS overlap.** The groupby-join-filter sequence determines
    which duplicate variants survive.
+5. **BLAS.** Each chunk's matrix-vector product is computed in the order the reference
+   BLAS defines, without calling BLAS. A library BLAS picks its own order by CPU model
+   and thread count, so routing the product through `@` or `np.dot` would make every
+   score follow the machine. The original scripts did, and their PGS-derived outputs
+   reproduce only with OpenBLAS pinned to its reference-order kernel
+   (`OPENBLAS_CORETYPE=Prescott`). That pinned output is what the golden checksums
+   record.
 
 Regenerating the golden checksums is a decision to change published numerical behaviour,
 not a routine fix.

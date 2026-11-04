@@ -41,6 +41,21 @@ the checksums exist to catch:
 * ``standardise()`` uses ``ndarray.std()``, which is the population standard deviation
   (ddof=0). ``pandas.Series.std()`` defaults to ddof=1. Swapping one for the other
   changes every polygenic score by a factor of sqrt(n/(n-1)).
+
+WHY THE BLAS KERNEL IS PINNED
+-----------------------------
+The legacy scripts form the polygenic score with a BLAS matrix-vector product
+(``scores += chunk @ w``), and OpenBLAS picks the kernel that computes it by CPU model.
+Kernels add and fuse the terms differently, so the scores, and every phenotype and
+summary file computed from them, come out differently on different hardware: the same
+scripts on the same fixture give one set of checksums on an AMD node's Haswell-family
+kernel and another on any CI host that selects a different one.
+
+So ``run_legacy_stage`` pins ``OPENBLAS_CORETYPE=Prescott``. That kernel computes the
+product in the reference-BLAS order, one multiply and one add per term from zero, which
+is exactly what the port's ``_compute_pgs`` does without BLAS. Pinned, the legacy scripts
+produce the same bytes on any x86-64 machine, and those bytes are the golden file. The
+first capture predated the pin and matched only hosts that select the Haswell family.
 """
 
 from __future__ import annotations
@@ -67,6 +82,10 @@ _LEGACY_ENV = "APPFL_BIO_SUITE_LEGACY_GWAS"
 LEGACY_GWAS_REPO = Path(os.environ.get(_LEGACY_ENV, "/nonexistent"))
 LEGACY_SIM_DIR = LEGACY_GWAS_REPO / "local" / "data_sim"
 LEGACY_CONFIG_DIR = LEGACY_GWAS_REPO / "examples" / "resources" / "configs" / "gwas"
+
+# OpenBLAS kernel the legacy scripts run on. x86-64 only: other architectures have
+# other kernel names, so there the pin is ignored and the scores follow the CPU again.
+LEGACY_BLAS_KERNEL = "Prescott"
 
 # Outputs the legacy pipeline produces, in the order the pipeline writes them. The port
 # must produce all of these, with identical content.
@@ -183,6 +202,9 @@ def run_legacy_stage(local: Path, script: str, timeout: int = 900) -> subprocess
     env["PYTHONNOUSERSITE"] = "1"
     for var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
         env[var] = "1"
+    # The reference-order kernel, so the legacy polygenic score does not depend on the
+    # CPU. See "WHY THE BLAS KERNEL IS PINNED" above.
+    env["OPENBLAS_CORETYPE"] = LEGACY_BLAS_KERNEL
     # Deliberately NOT set: the scripts' own fallback path discovery is part of what is
     # being characterized.
     env.pop("GWAS_PROJECT_DIR", None)

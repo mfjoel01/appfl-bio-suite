@@ -48,19 +48,35 @@ the current environment before assuming the code is wrong.
 
 ### And one thing that is not a package
 
-**The machine's core count.** The polygenic-score accumulation in `phenotypes.py` is a
-BLAS matrix-vector product, and given eight or more threads OpenBLAS splits its reduction
-and sums the parts in a different order. The scores move in their low-order bits, every
-phenotype and summary file inherits the difference, and nothing raises. It reproduces on
-a laptop and fails on a 64-core node with the source unchanged, which is exactly what
-happened once: a CI runner grew and the committed golden file stopped matching.
+**The machine.** A BLAS matrix-vector product adds its terms in whatever order the
+library chooses. OpenBLAS chooses its kernel by CPU model, and its split by thread count,
+and each choice rounds the low-order bits differently. Nothing raises; the numbers just
+follow the hardware.
 
-`_compute_pgs` therefore pins that accumulation to a single BLAS thread, via
-`threadpoolctl`, which is why that package is a declared dependency of the `gwas` extra
-rather than an incidental one from scikit-learn.
-`test_pgs_accumulation_does_not_follow_the_machine` fails if the pin is removed. Do not
-"fix" a thread-count parity failure by regenerating the golden file: the golden is the
-single-threaded result, and it is the published one.
+The GWAS simulation's polygenic score used to be such a product, and the GWAS parity
+tests failed intermittently on CI because of it. The first golden checksums were
+captured with the Haswell-family kernel of an AMD node. CI passed on hosts that select
+that kernel and failed on the rest, so re-running an unchanged commit could turn red
+green. Pinning BLAS to one thread removed the thread-count half of the dependence and
+left the CPU half in place.
+
+`_compute_pgs` now computes the product itself, in the order the reference BLAS defines,
+with no BLAS call at all. The golden checksums are the legacy scripts' own output with
+OpenBLAS pinned to the kernel that adds in that same order (`OPENBLAS_CORETYPE=Prescott`,
+set by `tests/legacy_harness.py`), so they hold on every machine. Two tests keep it that
+way, and unlike the golden comparison on its own, neither depends on which host CI lands
+on:
+
+- `test_golden_holds_on_an_older_cpu` re-runs the whole fixture pipeline in a fresh
+  interpreter with a different OpenBLAS kernel and numpy's vectorized loops switched off.
+  A score routed back through BLAS fails it on any x86-64 machine.
+- `test_pgs_is_the_reference_blas_product` holds `_compute_pgs` to the same arithmetic
+  written out term by term.
+
+If a parity failure comes and goes between re-runs, the code is following the machine
+again. Find the operation that does it. Do not regenerate the golden file, because a
+checksum captured on one machine just fails on another. A failure on every machine after
+a version bump is the case above: compare the environment against `constraints.txt`.
 
 ## Removing the compat shim
 
