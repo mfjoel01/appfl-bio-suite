@@ -1,0 +1,10 @@
+#!/bin/bash
+set -euo pipefail
+: "${FM_ROOT:?}" "${FM_PYTHON:?}" "${FM_PHASE:?}"
+export PYTHONPATH="${FM_ROOT}/code/src"
+export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMBA_NUM_THREADS=1
+cd "${FM_ROOT}"
+exec > "${FM_ROOT}/logs/${FM_PHASE}.${PBS_JOBID}.log" 2>&1
+"${FM_PYTHON}" -m appfl_bio_suite.experiments.fine_mapping.multisusie_pipeline run \
+ --root "${FM_ROOT}" --phase "${FM_PHASE}" --workers "${FM_WORKERS:-16}" \
+ --shard "${PBS_ARRAY_INDEX:-0}" --shards "${FM_SHARDS:-1}"

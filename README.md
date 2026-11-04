@@ -24,6 +24,15 @@ map](https://mfjoel01.github.io/appfl-bio-suite/network.html).
 
 ## The experiments
 
+Fine-mapping also has a completed optional
+[MultiSuSiE coordinator pipeline](docs/experiments/fine-mapping/MULTISUSIE.md) and
+[matched-filter comparison against SuSiEx](docs/experiments/fine-mapping/MATCHED_RESULTS.md).
+Use `run fine-mapping --backend susiex` or `--backend multisusie` with either the
+local or remote driver; `--results-dir` keeps their outputs separate.
+The [comparison report and figures](docs/experiments/fine-mapping/COMPARISON_FIGURES.md)
+cover both methods across cohorts and filter policies.
+
+
 Four experiments, one toolchain. The first three dispatch to partner sites; the fourth is
 in development.
 

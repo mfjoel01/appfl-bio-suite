@@ -18,8 +18,9 @@ results combinable.
 **What leaves your cluster:** sums and sums of products over your own individuals — a
 matrix of variant-by-variant co-occurrence counts, per-variant totals, and a handful of
 scalars, for each region and each ancestry group you hold. Genotypes and phenotypes never
-leave, and neither does anything about any individual. The analysis runs entirely on your
-machine.
+leave, and neither does anything about any individual. Your site computes those summaries locally. The coordinator combines them and
+fits either SuSiEx or MultiSuSiE; that backend choice does not change your payload
+or require additional partner packages.
 
 **The payload is larger than you may expect** — hundreds of megabytes rather than a few,
 because the statistic being combined is a variant-by-variant matrix rather than one number

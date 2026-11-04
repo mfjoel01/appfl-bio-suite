@@ -80,8 +80,8 @@ appfl-bio-suite preflight --check pins
 Everything must pass. If it does not, fix it now — version skew does not fail at install
 time, it fails as a deserialization error partway into a run on someone else's cluster.
 
-**If you are running fine-mapping**, it also needs two C++ binaries that pip cannot
-provide. Once, with network access:
+**For the default SuSiEx fine-mapping backend and simulation preparation**, install
+the C++ binaries that pip cannot provide. Once, with network access:
 
 ```bash
 scripts/fine-mapping/install_plink.sh      # PLINK 1.9 -> vendor/bin/
@@ -89,7 +89,11 @@ scripts/fine-mapping/install_susiex.sh     # SuSiEx    -> vendor/bin/
 ```
 
 Both are coordinator-side only; no partner is asked to install either.
-`appfl-bio-suite preflight --experiment fine-mapping` checks for them.
+`appfl-bio-suite preflight --experiment fine-mapping` checks for them by default.
+For MultiSuSiE inference, install `.[multisusie]` on the coordinator and set
+`experiments.fine-mapping.fine_mapping_backend: multisusie` in your federation YAML.
+Preflight then checks that Python backend instead. Both backends consume the same
+partner payloads; see the [MultiSuSiE setup guide](../experiments/fine-mapping/MULTISUSIE.md).
 
 ## Step 2 — Prove the install works, before involving anyone
 

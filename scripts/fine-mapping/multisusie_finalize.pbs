@@ -1,0 +1,12 @@
+#!/bin/bash
+set -euo pipefail
+: "${FM_ROOT:?}" "${FM_PYTHON:?}" "${FM_STAGE:?}" "${FM_CHECKOUT:?}"
+export PYTHONPATH="${FM_ROOT}/code/src:${FM_CHECKOUT}/local/poster-python"
+export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMBA_NUM_THREADS=1
+exec > "${FM_ROOT}/logs/${FM_STAGE}.${PBS_JOBID}.log" 2>&1
+cd "${FM_ROOT}"
+if [[ "${FM_STAGE}" == select ]]; then
+    "${FM_PYTHON}" -m appfl_bio_suite.experiments.fine_mapping.multisusie_pipeline select --root "${FM_ROOT}"
+else
+    "${FM_PYTHON}" "${FM_CHECKOUT}/local/scratch/poster/finalize_multisusie.py"
+fi

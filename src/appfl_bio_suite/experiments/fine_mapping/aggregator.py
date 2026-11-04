@@ -1,4 +1,4 @@
-"""Pool site aggregates, standardize once, and fine-map with SuSiEx.
+"""Pool site aggregates and fine-map with SuSiEx or MultiSuSiE.
 
 COORDINATOR-SIDE. APPFL's ServerAgent loads ``aggregator_path`` locally and never ships
 it, so unlike ``trainer.py`` and ``dataset.py`` this module may import freely from the
@@ -6,11 +6,12 @@ suite -- and it does, deliberately.
 
 IT DELEGATES THE STATISTICS RATHER THAN REIMPLEMENTING THEM
 ------------------------------------------------------------
-Every number this produces comes out of ``fedfm/fed_fine_mapping.py``, the module
-vendored verbatim from the standalone repository: :func:`pool_geno` sums the sites' raw
+The default SuSiEx path delegates to the maintained science implementation in
+``fedfm/fed_fine_mapping.py``: :func:`pool_geno` sums the sites' raw
 moments, :func:`build_columns` standardizes them once and writes each ancestry's LD panel,
 :func:`pool_pheno` sums the phenotype moments, and :func:`fed_finemap_instance` runs
-SuSiEx and scores the credible sets.
+SuSiEx and scores the credible sets. The optional MultiSuSiE path passes decoded
+raw moments to ``multisusie.run_multisusie`` without serializing LD or summary statistics.
 
 This module's whole job is the part APPFL adds: decode the wire payload back into the
 aggregate objects that code already accepts, group them, and write the results out. That
@@ -137,6 +138,30 @@ class FineMappingAggregator(BaseAggregator):
 
         from appfl_bio_suite.experiments.fine_mapping.inference import DEFAULT_OPTIONS
 
+        self.backend = cfg.get("backend", "susiex")
+        if self.backend not in ("susiex", "multisusie"):
+            raise ValueError("backend must be 'susiex' or 'multisusie'")
+        self.multisusie_options = None
+        if self.backend == "multisusie":
+            from appfl_bio_suite.experiments.fine_mapping.multisusie import MultiSuSiEOptions
+
+            self.multisusie_options = MultiSuSiEOptions(
+                rho=float(cfg.get("multisusie_rho", 0.75)),
+                n_signals=int(cfg.get("n_signals", 10)),
+                max_iter=int(cfg.get("max_iter", 1000)),
+                tol=float(cfg.get("tol", 1e-6)),
+                coverage=float(cfg.get("level", DEFAULT_LEVEL)),
+                maf=float(cfg.get("maf", DEFAULT_MAF)),
+                min_abs_corr=float(cfg.get("multisusie_min_abs_corr", 0.0)),
+                min_mac=float(cfg.get("multisusie_min_mac", 0.0)),
+            )
+            try:
+                from MultiSuSiE.susiepy_ss import susie_multi_ss  # noqa: F401
+            except ImportError as exc:
+                raise ImportError(
+                    "Install the coordinator extra appfl-bio-suite[multisusie]"
+                ) from exc
+
         self.inference_options = {k: cfg.get(k, v) for k, v in DEFAULT_OPTIONS.items()}
         self.population_order = list(
             cfg.get("population_order", ["EUR", "AFR", "AMR", "EAS", "CSA", "MID"])
@@ -178,11 +203,16 @@ class FineMappingAggregator(BaseAggregator):
         # present, which on this path they always are -- a coordinator holds no genotypes
         # and so has no reason to have PLINK at all.
         self.vendor_root = Path(cfg.get("vendor_root", ".")).resolve()
-        self.susiex = str(cfg.get("susiex_binary") or _resolve_binary("SuSiEx", self.vendor_root))
-        try:
-            self.plink = str(cfg.get("plink_binary") or _resolve_binary("plink", self.vendor_root))
-        except FileNotFoundError:
-            self.plink = "plink"
+        if self.backend == "susiex":
+            self.susiex = str(
+                cfg.get("susiex_binary") or _resolve_binary("SuSiEx", self.vendor_root)
+            )
+            try:
+                self.plink = str(
+                    cfg.get("plink_binary") or _resolve_binary("plink", self.vendor_root)
+                )
+            except FileNotFoundError:
+                self.plink = "plink"
 
         self.global_state = {"fine_mapping_ready": torch.tensor([0], dtype=torch.int64)}
 
@@ -311,6 +341,7 @@ class FineMappingAggregator(BaseAggregator):
     # -- the exchange ------------------------------------------------------
 
     def aggregate(self, local_models, **kwargs):
+        self.global_state = {"fine_mapping_ready": torch.tensor([0], dtype=torch.int64)}
         started = time.time()
         client_ids = list(local_models.keys())
         self.logger.info(f"fine-mapping across {len(client_ids)} site(s)")
@@ -338,6 +369,29 @@ class FineMappingAggregator(BaseAggregator):
         for locus_id in sorted(geno_by_locus):
             locus = loci[locus_id]
             blocks = geno_by_locus[locus_id]
+            if self.backend == "multisusie":
+                instances = sorted(
+                    inst for inst in pheno_by_instance if inst.startswith(f"{locus_id}_")
+                )
+                from joblib import Parallel, delayed
+
+                rows.extend(
+                    Parallel(n_jobs=self.n_workers)(
+                        delayed(self._run_multisusie_instance)(
+                            locus,
+                            inst,
+                            blocks,
+                            [
+                                block
+                                for group in pheno_by_instance[inst].values()
+                                for block in group
+                            ],
+                            truth_map,
+                        )
+                        for inst in instances
+                    )
+                )
+                continue
             locus_dir = self.work_root / f"{locus_id}_ld"
             locus_dir.mkdir(parents=True, exist_ok=True)
 
@@ -380,12 +434,37 @@ class FineMappingAggregator(BaseAggregator):
                     )
                 jobs.append((arch_id, rep, truth_map.get((locus_id, arch_id, rep), []), pooled))
 
-            rows.extend(self._run_instances(locus, jobs, columns))
+            from appfl_bio_suite.experiments.fine_mapping.backend_outputs import export_susiex
+
+            for arch_id, rep, _, _ in jobs:
+                target = self.data_dir / "instances" / f"{locus_id}_{arch_id}_rep{rep}"
+                if target.exists():
+                    raise FileExistsError(f"Use a fresh output directory; existing fit: {target}")
+            fitted = self._run_instances(locus, jobs, columns)
+            for row in fitted:
+                instance = f"{locus_id}_{row['architecture_id']}_rep{row['replicate']}"
+                export_susiex(
+                    self.work_root.parent / "artifacts" / instance,
+                    self.data_dir / "instances" / instance,
+                    columns,
+                    row,
+                    {
+                        **self.inference_options,
+                        "coverage": self.level,
+                        "pval_thresh": self.pval_thresh,
+                        "maf": self.maf,
+                    },
+                )
+            rows.extend(fitted)
             if not self.keep_work:
                 shutil.rmtree(locus_dir, ignore_errors=True)
 
-        results = pd.DataFrame(rows)
+        from appfl_bio_suite.experiments.fine_mapping.backend_outputs import result_table
+
+        results = result_table(rows, self.backend, pops, truth_map)
         self._write_outputs(results, client_ids, manifests)
+        if len(results) and not results.converged.fillna(False).all():
+            raise RuntimeError("Fine-mapping did not converge; inspect result rows and artifacts")
 
         elapsed = time.time() - started
         self.global_state = {
@@ -407,6 +486,55 @@ class FineMappingAggregator(BaseAggregator):
             f"fine-mapping complete in {elapsed:.1f}s -> {self.output_dir}/{{data,graphs}}"
         )
         return self.global_state
+
+    def _run_multisusie_instance(self, locus, instance, geno, pheno, truth_map):
+        """Fit decoded wire moments only; retain native posterior artifacts in data/."""
+        from appfl_bio_suite.experiments.fine_mapping.inference import METRIC_COLS
+        from appfl_bio_suite.experiments.fine_mapping.multisusie import run_multisusie
+        from appfl_bio_suite.experiments.fine_mapping.multisusie_compare import score
+
+        arch, rep = split_instance_id(instance, locus.locus_id)
+        destination = self.data_dir / "instances" / instance
+        record = run_multisusie(geno, pheno, destination, self.multisusie_options)
+        if not record["converged"]:
+            raise RuntimeError(f"Nonconverged MultiSuSiE fit; diagnostic outputs: {destination}")
+        variants = pd.read_csv(destination / "variants.tsv", sep="\t")
+        cs = pd.read_csv(destination / "credible_sets.tsv", sep="\t")
+        pips = dict(zip(variants.snp_id, variants.pip, strict=True))
+        sets = [set(group.snp_id) for _, group in cs.groupby("component")]
+        truth = truth_map.get((locus.locus_id, arch, rep))
+        row = dict.fromkeys(METRIC_COLS, np.nan)
+        row.update(
+            locus_id=locus.locus_id,
+            architecture_id=arch,
+            replicate=rep,
+            stratum=locus.get("stratum", ""),
+            backend=self.backend,
+            converged=True,
+            fit_status=record["fit_status"],
+            runtime_s=record["runtime_s"],
+            pip_definition=record["pip_definition"],
+            analysis_protocol="multisusie-raw-moments-v1",
+            n_credible_sets=len(sets),
+            cs_sizes_json=json.dumps([len(s) for s in sets]),
+            total_cs_snps=sum(map(len, sets)),
+            top_pip=max(pips.values(), default=np.nan),
+            error="",
+        )
+        if truth is not None:
+            row.update(score(pips, sets, truth, True))
+            row.update(
+                n_excluded_causal=len(set(truth) - set(pips)),
+                best_cs_size=min((len(s) for s in sets if s.intersection(truth)), default=np.nan),
+                causal_pip_max=max((pips.get(s, 0.0) for s in truth), default=np.nan),
+                causal_pip_mean=np.mean([pips.get(s, 0.0) for s in truth]) if truth else np.nan,
+                causal_pip_mean_eligible=(
+                    np.mean([pips[s] for s in truth if s in pips])
+                    if set(truth).intersection(pips)
+                    else np.nan
+                ),
+            )
+        return row
 
     def _run_instances(self, locus, jobs, columns) -> list[dict]:
         """Fine-map every instance at one locus, in parallel where asked.
@@ -558,6 +686,7 @@ class FineMappingAggregator(BaseAggregator):
         record = {
             "run": {
                 "experiment": "fine-mapping",
+                "backend": self.backend,
                 "finished_at": pd.Timestamp.utcnow().isoformat(),
                 "sites": len(client_ids),
             },
@@ -574,15 +703,19 @@ class FineMappingAggregator(BaseAggregator):
             # neither can contain its own checksum. Including them would also make a
             # rerun's registry list the previous run's leftovers -- the same trap
             # core/simulation.py's checksum_tree avoids by excluding the run manifest.
+            artifacts = self.data_dir.rglob("*")
             outputs = sorted(
                 path
-                for path in self.data_dir.glob("*")
+                for path in artifacts
                 if path.is_file() and path.name not in ("drs_outputs.json", "ga4gh_provenance.json")
             )
             registry = registry_for_files(outputs, hostname, description="fine-mapping results")
             registry.save(self.data_dir / "drs_outputs.json")
+            from appfl_bio_suite.core.ga4gh.drs import file_sha256
+
             record["outputs"] = {
-                obj.name: obj.self_uri for obj in registry.objects.values() if not obj.is_bundle
+                str(path.relative_to(self.data_dir)): registry.objects[file_sha256(path)].self_uri
+                for path in outputs
             }
 
         path = self.data_dir / "ga4gh_provenance.json"
@@ -591,6 +724,27 @@ class FineMappingAggregator(BaseAggregator):
         return path
 
     def _write_outputs(self, results: pd.DataFrame, client_ids, manifests) -> None:
+        from dataclasses import asdict
+
+        (self.data_dir / "inference_backend.json").write_text(
+            json.dumps(
+                {
+                    "backend": self.backend,
+                    "options": (
+                        asdict(self.multisusie_options)
+                        if self.multisusie_options
+                        else {
+                            **self.inference_options,
+                            "level": self.level,
+                            "pval_thresh": self.pval_thresh,
+                            "maf": self.maf,
+                        }
+                    ),
+                },
+                indent=2,
+            )
+            + "\n"
+        )
         results_path = self.data_dir / "fed_fm_results.tsv"
         results.to_csv(results_path, sep="\t", index=False)
         self.logger.info(f"wrote {len(results)} result row(s) -> {results_path}")
