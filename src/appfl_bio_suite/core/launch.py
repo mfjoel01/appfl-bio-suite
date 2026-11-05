@@ -458,6 +458,7 @@ def launch(
     dry_run: bool = False,
     driver: str = "globus_compute",
     watch: bool = False,
+    site_credentials: Path | None = None,
 ) -> int:
     """Resolve, write, and run. Returns the driver's exit code.
 
@@ -466,6 +467,16 @@ def launch(
     the environment is wrong now than to find out from a worker three time zones away.
     """
     from appfl_bio_suite.core.preflight import run_preflight
+    from appfl_bio_suite.core.site_credentials import CREDENTIALS_ENV, load_site_credentials
+
+    credential_path = site_credentials or os.environ.get(CREDENTIALS_ENV)
+    if credential_path:
+        if driver != "globus_compute":
+            raise ValueError("Site credentials apply only to the globus_compute driver.")
+        load_site_credentials(
+            credential_path,
+            [entry.endpoint_uuid for entry in federation.experiment(experiment).sites],
+        )
 
     report = run_preflight(federation=federation, experiment=experiment, check="env")
     print(report.render(), file=sys.stderr)
@@ -505,6 +516,8 @@ def launch(
     print(f"\nlaunching: {shlex.join(cmd)}\n", file=sys.stderr)
 
     env = dict(os.environ)
+    if credential_path:
+        env[CREDENTIALS_ENV] = str(Path(credential_path).resolve())
     # The same caps the workers get. Without them a busy shared login node can refuse to
     # spawn threads during numpy import, and the driver dies before it dispatches.
     env.setdefault("OPENBLAS_NUM_THREADS", "1")
