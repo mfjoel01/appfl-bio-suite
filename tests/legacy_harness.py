@@ -183,6 +183,11 @@ def run_legacy_stage(local: Path, script: str, timeout: int = 900) -> subprocess
     env["PYTHONNOUSERSITE"] = "1"
     for var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
         env[var] = "1"
+    # OpenBLAS picks its kernel by CPU model, and the legacy polygenic score (chunk @ w)
+    # rounds differently on each. Prescott adds in the reference-BLAS order, which is the
+    # order the port computes in, so pinned, the legacy outputs are the golden file's on
+    # any x86-64 machine.
+    env["OPENBLAS_CORETYPE"] = "Prescott"
     # Deliberately NOT set: the scripts' own fallback path discovery is part of what is
     # being characterized.
     env.pop("GWAS_PROJECT_DIR", None)

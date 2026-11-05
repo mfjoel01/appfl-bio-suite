@@ -205,7 +205,7 @@ The simulation is **frozen**: `tests/test_gwas_simulation_parity.py` asserts tha
 outputs are byte-identical to those of the pre-migration pipeline for a fixed seed,
 against checksums captured by running the original scripts unmodified.
 
-Four ways this breaks silently, all guarded by that test:
+Five ways this breaks silently, all guarded by that test:
 
 1. **RNG algorithm.** The site split uses numpy's *legacy* global generator
    (`np.random.seed` + `np.random.shuffle`). Modernizing to `default_rng` is a different
@@ -217,6 +217,11 @@ Four ways this breaks silently, all guarded by that test:
    is not associative, so the chunk size affects low-order bits.
 4. **Operation order in the PGS overlap.** The groupby-join-filter sequence determines
    which duplicate variants survive.
+5. **BLAS.** Each chunk's product is computed in the reference-BLAS order, not by BLAS,
+   whose order follows the CPU. The checksums are the original scripts' output with
+   OpenBLAS pinned to that order (`OPENBLAS_CORETYPE=Prescott`). Runs made before this
+   used whatever kernel their machine picked, so a rerun matches their score-derived
+   files to rounding rather than byte for byte.
 
 Regenerating the golden checksums is a decision to change published numerical behaviour,
 not a routine fix.

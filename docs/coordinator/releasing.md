@@ -48,19 +48,19 @@ the current environment before assuming the code is wrong.
 
 ### And one thing that is not a package
 
-**The machine's core count.** The polygenic-score accumulation in `phenotypes.py` is a
-BLAS matrix-vector product, and given eight or more threads OpenBLAS splits its reduction
-and sums the parts in a different order. The scores move in their low-order bits, every
-phenotype and summary file inherits the difference, and nothing raises. It reproduces on
-a laptop and fails on a 64-core node with the source unchanged, which is exactly what
-happened once: a CI runner grew and the committed golden file stopped matching.
+**The machine.** A BLAS matrix-vector product adds its terms in an order the library
+chooses, and OpenBLAS chooses by CPU model and thread count, each rounding the low-order
+bits differently. The GWAS polygenic score used to be one, so the scores and every
+phenotype and summary file computed from them followed the hardware. CI passed or failed
+depending on which host it landed on, even after BLAS was pinned to one thread.
 
-`_compute_pgs` therefore pins that accumulation to a single BLAS thread, via
-`threadpoolctl`, which is why that package is a declared dependency of the `gwas` extra
-rather than an incidental one from scikit-learn.
-`test_pgs_accumulation_does_not_follow_the_machine` fails if the pin is removed. Do not
-"fix" a thread-count parity failure by regenerating the golden file: the golden is the
-single-threaded result, and it is the published one.
+`_compute_pgs` now computes the product itself, in the reference-BLAS order, without
+calling BLAS. The golden checksums are the legacy scripts' output with OpenBLAS pinned to
+the kernel that adds in that order (`OPENBLAS_CORETYPE=Prescott`, set by
+`tests/legacy_harness.py`), so they hold on every machine.
+`test_pgs_is_the_reference_blas_product` fails if the product goes back through BLAS. A
+parity failure that comes and goes between re-runs means something follows the machine
+again: find it, and do not regenerate the golden file.
 
 ## Removing the compat shim
 
