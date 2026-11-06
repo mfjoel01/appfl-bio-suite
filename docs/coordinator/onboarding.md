@@ -73,9 +73,27 @@ publication. Publish the matching version/tag using the existing release procedu
 Until this branch has a published release, install the built wheel into a Python 3.12
 environment and include it with `experiment package --wheel`. Partners install the
 bootstrap tool from the ZIP and setup uses that same wheel automatically.
-`site setup --install-source` remains available for a separately supplied artifact. Do not use the old published
-0.2.1 tag to test these new commands. No release/tag is created by this change.
+`site setup --install-source` remains available for a separately supplied artifact.
+Do not use the old published 0.2.1 tag to test these new commands. No release/tag is created by this change.
 
 The v1 flow uses venv runtimes. Container-backed runtimes can be added behind the same
 bundle/setup interface later. It does not provision cluster accounts, alter institutional
 endpoints, or claim to eliminate the first administrator onboarding step.
+
+## Validation boundary
+
+Automated tests cover bundle/schema validation, guided input, reusable profiles,
+resumable installation, endpoint ownership protection, receipt matching, and coordinator
+configuration updates. Packaging is checked from an installed wheel outside the checkout.
+Endpoint activation and remote execution are mocked in those tests; they do not establish
+that a real partner's scheduler or network is configured correctly.
+
+Before a first live deployment, exercise setup, administrator activation, local receipt
+creation, and coordinator registration against a dedicated test MEP. Confirm the remote
+probe runs as the intended service account on a scheduled worker with access to the
+shared installation, data, and output directories. No live endpoint was started as part
+of implementing this feature.
+
+The [single-user service-account trial](service-account-trial.md) remains a separate
+experimental path. Its eventual integration must retain bundle revision and readiness
+checks while replacing the MEP activation/identity-mapping step.
