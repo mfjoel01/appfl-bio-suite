@@ -357,7 +357,7 @@ class ExperimentSite(_Strict):
 
     site: str
     client_id: str
-    endpoint_uuid: str
+    endpoint_uuid: str | None = None
     output_dir: str
 
     # FLamby
@@ -393,8 +393,8 @@ class ExperimentSite(_Strict):
 
     @field_validator("endpoint_uuid")
     @classmethod
-    def _uuid_shape(cls, value: str) -> str:
-        return _require_uuid(value, "endpoint_uuid")
+    def _uuid_shape(cls, value: str | None) -> str | None:
+        return _require_uuid(value, "endpoint_uuid") if value is not None else None
 
     @field_validator("output_dir", "data_dir")
     @classmethod

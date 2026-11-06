@@ -231,3 +231,5 @@ inbound network access.
 
 MIT. See [LICENSE](LICENSE) — and note the third-party terms recorded there for APPFL,
 FLamby, and PGS Catalog data.
+
+For automated partner setup, see [bundle-based onboarding](docs/coordinator/onboarding.md).

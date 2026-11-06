@@ -1423,5 +1423,13 @@ def _wrap(text: str, width: int) -> list[str]:
     return textwrap.wrap(text, width=width)
 
 
+from appfl_bio_suite.core.join import join  # noqa: E402
+from appfl_bio_suite.core.onboarding_cli import experiment, site  # noqa: E402
+
+main.add_command(join)
+main.add_command(site)
+main.add_command(experiment)
+
+
 if __name__ == "__main__":
     main()
