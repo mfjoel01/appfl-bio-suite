@@ -1,5 +1,8 @@
 # Bundle-based onboarding
 
+Prepared for **{{ site_name }}** ({{ client_id }}), experiment **{{ experiment }}**.
+Coordinator identity: **{{ coordinator_identity }}**.
+
 The coordinator supplies one ZIP per partner. It contains `onboarding.json`, local
 settings in `site.yaml`, and the experiment's data instructions. The bundle identifies
 only your participation; keep your edited `site.yaml` separate from the original ZIP.

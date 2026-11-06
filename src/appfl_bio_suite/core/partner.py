@@ -281,7 +281,9 @@ def generate_bundle(
     onboarding_doc = docs_root / "onboarding.md"
     _assert_inside_partner_docs(onboarding_doc)
     onboarding_target = destination / "0-onboarding.md"
-    onboarding_target.write_text(onboarding_doc.read_text(encoding="utf-8"), encoding="utf-8")
+    onboarding_text = _render(onboarding_doc.read_text(encoding="utf-8"), context)
+    _check_no_placeholders_remain(onboarding_text, onboarding_doc)
+    onboarding_target.write_text(onboarding_text, encoding="utf-8")
     written.append(onboarding_target)
 
     # -- 2. their client config block --------------------------------------
