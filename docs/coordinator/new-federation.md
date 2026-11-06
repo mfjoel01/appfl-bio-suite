@@ -1,6 +1,6 @@
 # Standing up your own federation
 
-> **WIP alternative:** A [single-user service-account prototype](service-account-trial.md)
+> **Experimental alternative:** A [single-user service-account prototype](service-account-trial.md)
 > is available for controlled testing where privileged multi-user setup is a blocker.
 > It is not the onboarding default. Dashboard provisioning, partner bundles for this
 > mode, and the Hyperstack–Argonne acceptance run remain unfinished.

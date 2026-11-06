@@ -98,7 +98,7 @@ def endpoint() -> None:
     "--site-credentials",
     type=click.Path(path_type=Path, exists=True),
     envvar="APPFL_BIO_SUITE_GLOBUS_CREDENTIALS",
-    help="WIP: coordinator-only JSON credential routing manifest.",
+    help="Experimental: coordinator-only JSON credential routing manifest.",
 )
 @click.argument("site", required=False)
 @click.option("--experiment", type=click.Choice(experiment_names()), default=None)
@@ -136,7 +136,7 @@ def endpoint_status(
     "--site-credentials",
     type=click.Path(path_type=Path, exists=True),
     envvar="APPFL_BIO_SUITE_GLOBUS_CREDENTIALS",
-    help="WIP: coordinator-only JSON credential routing manifest.",
+    help="Experimental: coordinator-only JSON credential routing manifest.",
 )
 @click.argument("site", required=False)
 @click.option("--experiment", type=click.Choice(experiment_names()), default=None)
@@ -307,7 +307,7 @@ def identity_validate(
     "--site-credentials",
     type=click.Path(path_type=Path, exists=True),
     envvar="APPFL_BIO_SUITE_GLOBUS_CREDENTIALS",
-    help="WIP: coordinator-only JSON credential routing manifest for single-user endpoints.",
+    help="Experimental: coordinator-only credential manifest for single-user endpoints.",
 )
 @click.argument("experiment", type=click.Choice(experiment_names()))
 @click.option(
@@ -398,8 +398,7 @@ def run_cmd(
     if get_spec(experiment).serial_runner:
         if site_credentials is not None:
             raise click.ClickException(
-                "WIP site credentials apply to federated Globus Compute runs, "
-                "not a serial simulation."
+                "Site credentials apply to federated Globus Compute runs, not a serial simulation."
             )
         import importlib
 

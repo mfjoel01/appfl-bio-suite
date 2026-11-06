@@ -1,4 +1,4 @@
-"""WIP: Coordinator-only credential routing for single-user Compute endpoints.
+"""Experimental: Coordinator-only credential routing for single-user Compute endpoints.
 
 The manifest contains public client IDs and environment-variable references, never
 secrets. Nothing from this module is added to the configuration sent to workers.

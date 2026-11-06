@@ -1,4 +1,4 @@
-"""WIP: Prepare a small, synthetic two-site APPFL trial; no study data is required."""
+"""Experimental: Prepare a small, synthetic two-site APPFL trial; no study data is required."""
 
 from __future__ import annotations
 

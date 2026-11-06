@@ -9,7 +9,7 @@ rather than a judgment call.
 
 ## I am setting up a federation
 
-**WIP alternative:** [Single-user service-account trial](coordinator/service-account-trial.md)
+**Experimental alternative:** [Single-user service-account trial](coordinator/service-account-trial.md)
 and [design evaluation](coordinator/endpoint-sharing-evaluation.md). This opt-in prototype
 avoids a privileged endpoint manager, but remains pending cross-machine and scheduler
 validation. The guides below describe the established onboarding flow.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""WIP: Exercise the proposed "shared service account" endpoint-sharing design, for real.
+"""Experimental: Exercise the proposed "shared service account" endpoint-sharing design, for real.
 
 WHAT IS BEING PROPOSED
 ----------------------

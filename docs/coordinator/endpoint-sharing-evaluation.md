@@ -1,6 +1,6 @@
-# WIP: Evaluating single-user service-account endpoints
+# Experimental: Evaluating single-user service-account endpoints
 
-> **WIP — draft implementation, not a production onboarding default.**
+> **Experimental implementation, not a production onboarding default.**
 > Hyperstack–Argonne execution and scheduler validation are pending.
 > Dashboard account minting and automated partner onboarding are not implemented.
 

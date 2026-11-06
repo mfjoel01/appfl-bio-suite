@@ -1,10 +1,10 @@
-# WIP: Hyperstack and Argonne single-user endpoint trial
+# Experimental: Hyperstack and Argonne single-user endpoint trial
 
-> **WIP — draft implementation, not a production onboarding default.**
+> **Experimental implementation, not a production onboarding default.**
 > Hyperstack–Argonne execution and scheduler validation are pending.
 > Dashboard account minting and automated partner onboarding are not implemented.
 
-## WIP exit criteria
+## Pilot acceptance checks
 
 - [ ] Run owner execution and both cross-site denial checks between Hyperstack and Argonne.
 - [ ] Complete two APPFL training rounds using an Argonne scheduler allocation.
@@ -13,7 +13,7 @@
 - [ ] Finish recoverable credential provisioning and teardown before dashboard integration.
 - [ ] Add root-free partner bundles and operator guidance before changing onboarding defaults.
 
-This draft is for review and controlled testing; these unchecked items are not completed
+This implementation is for review and controlled testing; these unchecked items are not completed
 by the local training tests below.
 
 This branch supports an opt-in coordinator route for distinct service accounts. The
@@ -42,7 +42,8 @@ scheduler-backed training test.
 The coordinator and both workers need Python 3.12 and the branch's pinned dependencies:
 APPFL 1.10.0, Compute SDK/endpoint 4.9.0, Globus SDK 4.4.1, and Torch 2.8.0.
 Install the trial branch from a checkout or its locally built wheel. This development
-work is not published on PyPI. For a checkout:
+work is not published on PyPI. For a checkout (see the [tracked setup examples](../../examples/service-account-trial/)
+for cloning, a virtual environment, and the CPU installation variant):
 
 ```bash
 python -m pip install -e . -c constraints.txt
@@ -74,7 +75,9 @@ the local account's filesystem permissions.
 
 ## Coordinator routing manifest
 
-Create `local/site-credentials.json` with the two real endpoint UUIDs as keys:
+Copy [the routing example](../../examples/service-account-trial/site-credentials.example.json)
+to `local/site-credentials.json`, then replace the placeholders with real values.
+The two real endpoint UUIDs are the keys:
 
 ```json
 {
@@ -165,10 +168,10 @@ experimental provisioning probe is not yet a production credential lifecycle man
 
 ## Software validation, 2026-11-05
 
-For the focused WIP PR against current `main`, 114 targeted tests passed, plus a
+For the focused PR against current `main`, 114 targeted tests passed, plus a
 separate regression check for rejecting site credentials on serial simulations.
 Lint, formatting, diff, and reusability checks also passed. These are local checks;
-the WIP exit criteria above remain outstanding.
+the pilot acceptance checks above remain outstanding.
 
 - 62 focused checks passed against published APPFL 1.10.0 in the existing environment.
 - A fresh virtual environment installed the actual suite wheel and published APPFL wheel.
@@ -183,7 +186,9 @@ aggregation, with an in-process test transport. It is not evidence of successful
 deployment, cross-machine authorization, message queues, or Argonne scheduler execution.
 Those are the next pilot acceptance checks.
 
-The bundle includes a separate CPU-trial constraint file for reproducing the clean test.
+The [tracked CPU constraints](../../examples/service-account-trial/constraints-cpu.txt)
+and [installation steps](../../examples/service-account-trial/README.md) reproduce the
+clean test environment without a locally built bundle.
 Its `+cpu` Torch build is intentional. The repository's standard pin check still requires
 the exact production Torch version string; use the direct synthetic-trial driver above
 for this CPU pilot, rather than treating it as a production experiment environment.

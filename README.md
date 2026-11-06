@@ -9,11 +9,11 @@ Institutions train on their own data, on their own hardware, and return only res
 The standard multi-user deployment uses individual identities, with no shared credential,
 VPN, or inbound network access.
 
-> **WIP: single-user service-account onboarding.** An opt-in prototype uses one service
+> **Experimental: single-user service-account onboarding.** An opt-in prototype uses one service
 > identity per site, with credentials held by that site and the coordinator. It is not
 > yet the default or a production-ready replacement for multi-user endpoints.
-> See the [WIP trial guide](docs/coordinator/service-account-trial.md) and
-> [WIP design evaluation](docs/coordinator/endpoint-sharing-evaluation.md).
+> See the [trial guide](docs/coordinator/service-account-trial.md) and
+> [design evaluation](docs/coordinator/endpoint-sharing-evaluation.md).
 
 **→ [mfjoel01.github.io/appfl-bio-suite](https://mfjoel01.github.io/appfl-bio-suite/)** —
 the project site, with a live preview of the [federation network
