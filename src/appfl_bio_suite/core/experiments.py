@@ -146,9 +146,9 @@ def package_root() -> Path:
 def repo_root() -> Path:
     """Repository root when running from a source checkout.
 
-    Docs are not packaged, so anything that reads them only works from a checkout. That
-    is fine -- the audiences for docs (coordinators, reviewers, partners) all have one --
-    but callers must handle the directory being absent in an installed-only environment.
+    Callers must handle this directory being absent in an installed-only environment.
+    Partner documents, templates and constraints have packaged resource fallbacks;
+    coordinator/research documents remain in the source checkout.
     """
     return package_root().parent.parent
 

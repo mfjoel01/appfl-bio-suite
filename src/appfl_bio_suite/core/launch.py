@@ -121,7 +121,11 @@ def _shipped_module_path(spec: ExperimentSpec, module: str) -> str:
 
 
 def build_client_configs(
-    federation: Federation, experiment: str, spec: ExperimentSpec | None = None
+    federation: Federation,
+    experiment: str,
+    spec: ExperimentSpec | None = None,
+    *,
+    allow_unregistered: bool = False,
 ) -> list[dict[str, Any]]:
     """One APPFL client config per participating site, fully resolved.
 
@@ -131,6 +135,10 @@ def build_client_configs(
     """
     spec = spec or get_spec(experiment)
     exp = federation.experiment(experiment)
+    if not allow_unregistered:
+        missing = [entry.client_id for entry in exp.sites if not entry.endpoint_uuid]
+        if missing:
+            raise ValueError(f"Sites must register endpoints before launch: {', '.join(missing)}")
     template = _load_template(spec, "clients.template.yaml")
     defaults = template.get("client_defaults", {}) or {}
 
