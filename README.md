@@ -6,7 +6,14 @@ Cross-silo **federated learning experiments in computational biology**, built on
 [Globus Compute](https://www.globus.org/compute).
 
 Institutions train on their own data, on their own hardware, and return only results.
-No data movement, no shared credential, no VPN, no inbound network access.
+The standard multi-user deployment uses individual identities, with no shared credential,
+VPN, or inbound network access.
+
+> **Experimental: single-user service-account onboarding.** An opt-in prototype uses one service
+> identity per site, with credentials held by that site and the coordinator. It is not
+> yet the default or a production-ready replacement for multi-user endpoints.
+> See the [trial guide](docs/coordinator/service-account-trial.md) and
+> [design evaluation](docs/coordinator/endpoint-sharing-evaluation.md).
 
 **→ [mfjoel01.github.io/appfl-bio-suite](https://mfjoel01.github.io/appfl-bio-suite/)** —
 the project site, with a live preview of the [federation network

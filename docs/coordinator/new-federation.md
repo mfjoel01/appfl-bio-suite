@@ -1,5 +1,10 @@
 # Standing up your own federation
 
+> **Experimental alternative:** A [single-user service-account prototype](service-account-trial.md)
+> is available for controlled testing where privileged multi-user setup is a blocker.
+> It is not the onboarding default. Dashboard provisioning, partner bundles for this
+> mode, and the Hyperstack–Argonne acceptance run remain unfinished.
+
 **Start here.** This takes you from a clone to a running federated experiment across
 institutions you recruit yourself. It assumes no prior contact with anyone involved in
 building this suite.
