@@ -80,7 +80,8 @@ of that shim. It is a real constraint, not a tidiness issue.
 
 ## Cutting a release
 
-Partners install from a git tag, not from PyPI and not from `main`
+Release wheels and source archives are published on PyPI. Generated partner bundles
+continue to install from a matching immutable git tag
 (`docs/partner/endpoint-setup.md`, Step 1). `main` moves; a tag does not. Two sites that
 installed from `main` a week apart are running different code with no way to say which,
 which is the same failure mode `constraints.txt` exists to prevent — just one level up.
@@ -122,3 +123,44 @@ Cut a new version instead.
       3.12 environment — this is literally a partner's step one, so run it as one
 - [ ] No live endpoint UUID, coordinator identity, or partner name appears in the tracked
       tree or in git history
+
+## Publishing on PyPI
+
+Use Python 3.12. The release version must agree in all three files above. Build
+and validate both distributions before creating the GitHub release:
+
+```bash
+python -m pip install build twine packaging
+python -m build
+python -m twine check --strict dist/*
+python scripts/check_distribution.py
+```
+
+`python -m build` builds the wheel from the source archive, checking that the archive
+contains the inputs needed by the custom partner-resource packaging step. CI runs
+these packaging checks for every pull request.
+
+MultiSuSiE is installed separately with `pip install -r requirements-multisusie.txt`;
+PyPI rejects direct Git URL requirements in distribution metadata, even in extras.
+The `multisusie` extra installs the coordinator dependencies for that backend.
+
+Configure a PyPI pending Trusted Publisher for project `appfl-bio-suite`, GitHub owner
+`mfjoel01`, repository `appfl-bio-suite`, workflow `publish.yml`, environment `pypi`.
+Create the matching GitHub Actions environment. No long-lived PyPI token is needed.
+
+After release validation passes, merge the release branch, push the immutable
+`vX.Y.Z` tag, and publish a GitHub release for that tag. `.github/workflows/publish.yml`
+checks the tag against the package version, builds and validates the distributions,
+and publishes them through PyPI Trusted Publishing. A manual workflow run against
+that tag can retry a failure that occurred before upload.
+
+Verify the published version with a clean Python 3.12 install:
+
+```bash
+python -m pip install "appfl-bio-suite[gwas]==X.Y.Z"
+appfl-bio-suite --help
+appfl-bio-suite preflight --check pins
+```
+
+Do not overwrite tags or reuse a published PyPI version. Correct a released defect
+with a new version. Keep the Git tag and PyPI package version aligned across sites.

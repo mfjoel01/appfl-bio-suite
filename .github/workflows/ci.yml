@@ -101,7 +101,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -e ".[all,dev,multisusie]" -c constraints.txt
+      - run: pip install -e ".[all,dev,multisusie]" -r requirements-multisusie.txt -c constraints.txt
 
       - name: Vendor PLINK and SuSiEx
         run: |
@@ -144,3 +144,15 @@ jobs:
 
       - name: Secure pooling preserves both inference backends
         run: pytest tests/test_fine_mapping_secure_aggregation.py tests/test_fine_mapping_secure_backends.py -v
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install build twine packaging
+      - run: python -m build
+      - run: python -m twine check --strict dist/*
+      - run: python scripts/check_distribution.py

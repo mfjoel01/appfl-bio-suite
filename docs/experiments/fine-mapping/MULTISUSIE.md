@@ -107,7 +107,7 @@ The full matched-filter study remains the appropriate comparison for estimator c
 Install the optional backend on the coordinator from this checkout:
 
 ```bash
-python -m pip install '.[multisusie]'
+python -m pip install '.[multisusie]' -r requirements-multisusie.txt
 ```
 
 Set these fields in your existing federation YAML (keep your site/endpoint settings):
@@ -168,7 +168,7 @@ documentation regression checks also passed.
 Install into a coordinator environment with Python 3.12:
 
 ```bash
-python -m pip install '.[multisusie]'
+python -m pip install '.[multisusie]' -r requirements-multisusie.txt
 ```
 
 Use an existing **synthetic** simulation's `pipeline_config.yaml`. The standalone pilot

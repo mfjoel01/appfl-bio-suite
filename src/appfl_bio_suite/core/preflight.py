@@ -279,7 +279,8 @@ def _check_binaries(report: PreflightReport, experiment: str | None, federation=
             report.add(
                 "MultiSuSiE backend",
                 Level.FAIL,
-                "Install the coordinator extra appfl-bio-suite[multisusie]",
+                "Install the coordinator extra appfl-bio-suite[multisusie] and the backend "
+                "from requirements-multisusie.txt",
             )
         else:
             report.add(

@@ -8,7 +8,7 @@ partner registers. The launch configuration builder refuses sites without a UUID
 
 ```bash
 appfl-bio-suite experiment package gwas --federation local/federation.yaml \
-  --out local/onboarding --wheel dist/appfl_bio_suite-0.2.1-py3-none-any.whl
+  --out local/onboarding --wheel dist/appfl_bio_suite-0.3.0-py3-none-any.whl
 ```
 
 Build the wheel first with `python -m build`. Including `--wheel` makes the ZIP carry
