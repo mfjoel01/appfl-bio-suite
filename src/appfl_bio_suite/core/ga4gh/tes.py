@@ -404,19 +404,32 @@ class TesClient:
         poll_seconds: float = 15.0,
         timeout_seconds: float | None = None,
         on_state: Any = None,
+        max_poll_failures: int = 5,
     ) -> TesTask:
         """Poll until the task reaches a terminal state, or the timeout elapses.
 
         On timeout the task is **cancelled** before raising. A federated run that gave up
         waiting while a site kept computing would leave the partner burning an allocation
         on a result nobody will read.
+
+        A failed poll is retried up to ``max_poll_failures`` times in a row: a two-hour
+        wait should not be abandoned over one dropped connection to the service.
         """
         import time
 
         started = time.time()
         last: str | None = None
+        failures = 0
         while True:
-            task = self.get_task(task_id, view="MINIMAL")
+            try:
+                task = self.get_task(task_id, view="MINIMAL")
+            except TesError:
+                failures += 1
+                if failures >= max_poll_failures:
+                    raise
+                time.sleep(poll_seconds)
+                continue
+            failures = 0
             state = str(task.state or "UNKNOWN")
             if state != last and on_state is not None:
                 on_state(task_id, state)

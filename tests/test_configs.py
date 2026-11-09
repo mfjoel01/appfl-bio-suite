@@ -228,6 +228,18 @@ def test_an_unknown_site_reference_is_rejected():
         Federation.model_validate(data)
 
 
+def test_a_site_can_override_the_service_account():
+    """A partner with an existing endpoint maps us to their own account name."""
+    from appfl_bio_suite.core.config import Federation
+
+    data = _example_dict()
+    exp_data = data["experiments"]["flamby-heart-disease"]
+    exp_data["sites"][0]["service_account"] = "appfl-svc"
+    exp = Federation.model_validate(data).experiments["flamby-heart-disease"]
+    assert exp.service_account_for(exp.sites[0]) == "appfl-svc"
+    assert exp.service_account_for(exp.sites[1]) == exp_data["service_account"]
+
+
 def test_a_typo_in_a_key_is_rejected():
     """Unknown keys are refused, so a typo is not silently ignored.
 

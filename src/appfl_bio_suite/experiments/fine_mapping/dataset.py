@@ -447,7 +447,7 @@ def verify_against_drs(data_dir, drs_object, mode="metadata"):
         report["mode"] = "off"
         return report
 
-    contents = {entry["name"]: entry for entry in drs_object.get("contents", []) or []}
+    contents = drs_object.get("contents", []) or []
     if not contents:
         report["problems"].append(
             "the DRS object for this bundle lists no contents, so there is nothing to "
@@ -455,41 +455,51 @@ def verify_against_drs(data_dir, drs_object, mode="metadata"):
         )
         return report
 
-    present = {p.name for p in Path(data_dir).iterdir()}
     # DATA_USE.json is never part of the object: the profile describes the bundle and
     # carries its drs_uri, so it cannot be inside the checksum that names it. The
     # registrar excludes it for the same reason (core/ga4gh/drs.py), which is what keeps
     # a re-registered directory minting the same id.
-    extra = sorted(present - set(contents) - {DATA_USE_FILENAME})
-    missing = sorted(set(contents) - present)
+    _verify_members(Path(data_dir), contents, mode, report, prefix="", exclude={DATA_USE_FILENAME})
+    return report
+
+
+def _verify_members(directory, contents, mode, report, prefix, exclude=frozenset()):
+    by_name = {entry["name"]: entry for entry in contents}
+    present = {p.name for p in directory.iterdir()}
+    extra = sorted(present - set(by_name) - set(exclude))
+    missing = sorted(set(by_name) - present)
     if missing:
-        report["problems"].append(f"missing from this bundle: {', '.join(missing)}")
+        report["problems"].append(
+            f"missing from this bundle: {', '.join(prefix + m for m in missing)}"
+        )
     if extra:
         report["problems"].append(
-            f"present in this bundle but not in the DRS object: {', '.join(extra)}"
+            "present in this bundle but not in the DRS object: "
+            + ", ".join(prefix + e for e in extra)
         )
 
-    for name, entry in sorted(contents.items()):
-        path = Path(data_dir) / name
+    for name, entry in sorted(by_name.items()):
+        path = directory / name
         if not path.exists():
             continue
         if path.is_dir():
-            # Nested bundles (phenotypes/) carry their own Merkle id; verifying them
-            # would need the child object, which is not inlined. Named as skipped rather
-            # than silently passed.
-            report["skipped"].append(f"{name}/ (nested DRS bundle)")
+            if "contents" not in entry:
+                # A coordinator older than nested inlining sent only this bundle's id.
+                # Named as skipped rather than silently passed.
+                report["skipped"].append(f"{prefix}{name}/ (nested DRS bundle, members not sent)")
+                continue
+            _verify_members(path, entry["contents"], mode, report, prefix=f"{prefix}{name}/")
             continue
         if mode == "metadata" and name in _LARGE_FILES:
-            report["skipped"].append(f"{name} (mode=metadata)")
+            report["skipped"].append(f"{prefix}{name} (mode=metadata)")
             continue
         expected = entry.get("id") or ""
         actual = file_sha256(path)
         report["checked"] += 1
         if expected and actual != expected:
             report["problems"].append(
-                f"{name}: sha-256 mismatch\n    expected {expected}\n    actual   {actual}"
+                f"{prefix}{name}: sha-256 mismatch\n    expected {expected}\n    actual   {actual}"
             )
-    return report
 
 
 class SiteFineMappingDataset:

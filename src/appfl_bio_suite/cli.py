@@ -171,7 +171,7 @@ def endpoint_smoke(
     expected = {}
     for exp in fed.experiments.values():
         for entry in exp.sites:
-            expected[entry.endpoint_uuid] = exp.service_account
+            expected[entry.endpoint_uuid] = exp.service_account_for(entry)
 
     credentials = _endpoint_credentials(site_credentials, targets)
     failed = False
@@ -1074,7 +1074,7 @@ def ga4gh_drs_resolve(
         click.echo(f"    {child.name}  {child.id[:16]}...")
 
     if verify:
-        problems = verify_object(obj)
+        problems = verify_object(obj, resolve=client.get)
         click.echo("")
         click.echo("\n".join(problems) if problems else "verified: content matches")
         sys.exit(1 if problems else 0)
