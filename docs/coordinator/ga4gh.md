@@ -175,6 +175,10 @@ hash over its sorted `(name, child id)` pairs. Consequences worth knowing:
 - `reference_variants.tsv` is hard-linked into every bundle and must be identical for the
   allele harmonization to be sound. It therefore appears as **one object with three
   `file://` access methods**, which is the correct picture of that property.
+- A bundle's `checksums` entry is **not** its id. It is the value DRS 1.5 specifies — the
+  sha-256 of its top-level members' checksums, sorted and concatenated, names excluded —
+  so a conformant client can check it. The id is the stronger of the two, because it
+  also changes when members are renamed.
 
 ### Wiring it up
 

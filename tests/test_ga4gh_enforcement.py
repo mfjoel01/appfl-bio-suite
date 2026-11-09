@@ -21,6 +21,7 @@ import pytest
 from appfl_bio_suite.core.config import Federation
 from appfl_bio_suite.core.ga4gh.drs import build_registry
 from appfl_bio_suite.core.ga4gh.duo import DataUseProfile, write_profile
+from appfl_bio_suite.core.ga4gh.resolve import trim_drs_object
 from appfl_bio_suite.core.launch import build_client_configs, enforce_data_use
 from appfl_bio_suite.experiments.fine_mapping.dataset import SiteFineMappingDataset
 
@@ -110,15 +111,7 @@ def test_an_unreadable_profile_is_fatal_rather_than_ignored(tmp_path):
 
 def drs_object_for(root, site="s1"):
     registry = build_registry(root, hostname="drs.test.org")
-    obj = registry.by_name(site)
-    return {
-        "id": obj.id,
-        "name": obj.name,
-        "self_uri": obj.self_uri,
-        "size": obj.size,
-        "checksums": [c.model_dump() for c in obj.checksums],
-        "contents": [{"name": c.name, "id": c.id} for c in obj.contents or []],
-    }
+    return trim_drs_object(registry.by_name(site), registry)
 
 
 def test_a_matching_bundle_verifies(tmp_path):
@@ -179,6 +172,25 @@ def test_full_mode_checks_it(tmp_path):
         tmp_path / "s1" / "data", "s1", drs_object=obj, verify_bundles="full"
     )
     assert not any("site_genotypes.bed" in s for s in dataset.drs["skipped"])
+
+
+def test_a_modified_phenotype_is_refused(tmp_path):
+    """phenotypes/ is a nested bundle; it used to be skipped in every mode."""
+    make_bundle(tmp_path / "s1")
+    obj = drs_object_for(tmp_path)
+    (tmp_path / "s1" / "data" / "phenotypes" / "L0_arch_rep0.pheno").write_text(
+        "FID\tIID\ty\n1\tIND1\t9.9\n"
+    )
+    with pytest.raises(ValueError, match="phenotypes/L0_arch_rep0.pheno: sha-256 mismatch"):
+        SiteFineMappingDataset(tmp_path / "s1" / "data", "s1", drs_object=obj)
+
+
+def test_an_extra_phenotype_is_refused(tmp_path):
+    make_bundle(tmp_path / "s1")
+    obj = drs_object_for(tmp_path)
+    (tmp_path / "s1" / "data" / "phenotypes" / "L9_arch_rep0.pheno").write_text("x\n")
+    with pytest.raises(ValueError, match="phenotypes/L9_arch_rep0.pheno"):
+        SiteFineMappingDataset(tmp_path / "s1" / "data", "s1", drs_object=obj)
 
 
 def test_off_checks_nothing(tmp_path):

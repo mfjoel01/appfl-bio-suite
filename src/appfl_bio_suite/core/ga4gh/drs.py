@@ -52,6 +52,8 @@ from __future__ import annotations
 import hashlib
 import json
 import mimetypes
+import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -410,6 +412,17 @@ def _bundle_id(children: dict[str, str]) -> str:
     return digest.hexdigest()
 
 
+def _bundle_checksum(child_checksums: list[str]) -> str:
+    """The checksum DRS specifies for a bundle, which is not its id.
+
+    DRS 1.5 defines it as the digest of the top-level children's checksums, sorted and
+    concatenated, with names not included. A conformant client recomputes exactly that,
+    so it is what goes in ``checksums``. Names do matter here -- which file is the
+    ``.bim`` and which the ``.fam`` -- and the Merkle *id* is what covers them.
+    """
+    return hashlib.sha256("".join(sorted(child_checksums)).encode("ascii")).hexdigest()
+
+
 def register_directory(
     registry: DrsRegistry,
     directory: Path,
@@ -431,6 +444,7 @@ def register_directory(
 
     contents: list[ContentsObject] = []
     children: dict[str, str] = {}
+    child_checksums: list[str] = []
     size = 0
 
     for entry in sorted(directory.iterdir(), key=lambda p: p.name):
@@ -444,6 +458,7 @@ def register_directory(
             continue
         contents.append(ContentsObject(name=entry.name, id=child.id, drs_uri=[child.self_uri]))
         children[entry.name] = child.id
+        child_checksums.append(child.sha256 or "")
         size += child.size
 
     if not contents:
@@ -459,10 +474,7 @@ def register_directory(
         self_uri=f"drs://{access.hostname}/{bundle_id}",
         size=size,
         created_time=_now(),
-        # A bundle's checksum is its Merkle id. The spec permits any checksum type on a
-        # bundle and says nothing about how to compute one; recording it explicitly is
-        # what lets a client verify a bundle without fetching every blob.
-        checksums=[Checksum(checksum=bundle_id)],
+        checksums=[Checksum(checksum=_bundle_checksum(child_checksums))],
         description=description or None,
         aliases=list(aliases),
         contents=contents,
@@ -557,33 +569,69 @@ def registry_for_files(
     return registry
 
 
-def verify_object(obj: DrsObject, path: str | Path | None = None) -> list[str]:
+def verify_object(
+    obj: DrsObject,
+    path: str | Path | None = None,
+    resolve: Callable[[str], DrsObject] | None = None,
+) -> list[str]:
     """Re-checksum an object's local copy. Returns a list of problems, empty when clean.
 
-    A bundle is verified structurally -- every child present, every child's own checksum
-    correct, and the recomputed Merkle id equal to the recorded one. That last check is
-    what catches a file *added* to a bundle, which per-file checksums alone cannot see.
+    A bundle is verified all the way down: no member missing, no member extra, every
+    blob's bytes hashing to its id, and every nested bundle verified the same way. The
+    extra-member check is what catches a file *added* to a bundle, which per-file
+    checksums alone cannot see. A blob's id is its sha-256, so blob members need nothing
+    but the bundle record; a nested bundle needs its own record, which is what
+    ``resolve`` (an id -> object lookup, such as ``DrsClient.get``) supplies.
     """
     target = Path(path) if path is not None else obj.local_path()
-    problems: list[str] = []
     if target is None:
         return [f"{obj.id}: no file:// access method and no path given"]
     if not target.exists():
         return [f"{obj.id}: {target} does not exist"]
+    return _verify_tree(obj, target, resolve, label=obj.name or obj.id)
 
+
+def _verify_tree(
+    obj: DrsObject, target: Path, resolve: Callable[[str], DrsObject] | None, label: str
+) -> list[str]:
     if not obj.is_bundle:
         actual = file_sha256(target)
         if actual != obj.sha256:
-            problems.append(
-                f"{obj.name or obj.id}: sha-256 mismatch\n"
-                f"  expected {obj.sha256}\n  actual   {actual}"
-            )
-        return problems
+            return [f"{label}: sha-256 mismatch\n  expected {obj.sha256}\n  actual   {actual}"]
+        return []
+
+    problems: list[str] = []
+    if _bundle_id(obj.child_ids()) != obj.id:
+        problems.append(f"{label}: the record's members do not hash to its id {obj.id}")
+
+    listed = {child.name for child in obj.contents or []}
+    present = {p.name for p in target.iterdir()} - EXCLUDED_FROM_OBJECTS
+    for name in sorted(listed - present):
+        problems.append(f"{label}: missing member '{name}'")
+    for name in sorted(present - listed):
+        problems.append(f"{label}: '{name}' is present but not in the DRS object")
 
     for child in obj.contents or []:
         child_path = target / child.name
+        child_label = f"{label}/{child.name}"
         if not child_path.exists():
-            problems.append(f"{obj.name or obj.id}: missing member '{child.name}'")
+            continue
+        if child_path.is_dir():
+            if resolve is None:
+                problems.append(f"{child_label}: nested bundle, and no registry to resolve it")
+                continue
+            try:
+                child_obj = resolve(child.id)
+            except DrsError as exc:
+                problems.append(f"{child_label}: {exc}")
+                continue
+            problems.extend(_verify_tree(child_obj, child_path, resolve, child_label))
+            continue
+        actual = file_sha256(child_path)
+        if actual != child.id:
+            problems.append(
+                f"{child_label}: sha-256 mismatch\n  expected {child.id}\n  actual   {actual}"
+            )
     return problems
 
 
@@ -739,12 +787,14 @@ def serve(
                 if local is None or not local.is_file():
                     self._error(404, f"object {object_id} has no readable local copy")
                     return
-                data = local.read_bytes()
+                # Streamed: a chromosome-scale .bed read whole would be gigabytes held
+                # in memory per request.
                 self.send_response(200)
                 self.send_header("Content-Type", obj.mime_type or "application/octet-stream")
-                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Content-Length", str(local.stat().st_size))
                 self.end_headers()
-                self.wfile.write(data)
+                with open(local, "rb") as handle:
+                    shutil.copyfileobj(handle, self.wfile, _CHUNK)
                 return
 
             self._error(404, f"no route {path}")

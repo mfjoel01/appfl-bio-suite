@@ -179,15 +179,53 @@ def test_an_empty_directory_cannot_be_addressed(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+def test_a_bundle_checksum_is_the_one_drs_specifies(registry):
+    """sha-256 over the sorted, concatenated checksums of the top-level members, names
+    not included (DRS 1.5, DrsObject.checksums). Not the Merkle id, which has names."""
+    import hashlib
+
+    bundle = registry.by_name("anl")
+    members = [registry.get(c.id).sha256 for c in bundle.contents]
+    expected = hashlib.sha256("".join(sorted(members)).encode()).hexdigest()
+    assert bundle.sha256 == expected
+    assert bundle.sha256 != bundle.id
+
+
 def test_verify_is_clean_on_untouched_data(registry):
     for bundle in registry.bundles().values():
-        assert verify_object(bundle) == []
+        assert verify_object(bundle, resolve=registry.get) == []
 
 
 def test_verify_notices_a_missing_member(registry, tmp_path):
     bundle = registry.by_name("anl")
     (tmp_path / "anl" / "data" / "site_manifest.tsv").unlink()
-    assert any("missing member" in p for p in verify_object(bundle))
+    assert any("missing member" in p for p in verify_object(bundle, resolve=registry.get))
+
+
+def test_verify_of_a_bundle_checks_its_bytes(registry, tmp_path):
+    """It used to check only that members existed, and report the bundle verified."""
+    bundle = registry.by_name("anl")
+    (tmp_path / "anl" / "data" / "site_manifest.tsv").write_text("tampered\n")
+    problems = verify_object(bundle, resolve=registry.get)
+    assert any("site_manifest.tsv: sha-256 mismatch" in p for p in problems)
+
+
+def test_verify_of_a_bundle_notices_an_extra_file(registry, tmp_path):
+    bundle = registry.by_name("anl")
+    (tmp_path / "anl" / "data" / "leftover.tsv").write_text("from another run\n")
+    assert any("not in the DRS object" in p for p in verify_object(bundle, resolve=registry.get))
+
+
+def test_verify_of_a_bundle_descends_into_nested_bundles(registry, tmp_path):
+    bundle = registry.by_name("anl")
+    (tmp_path / "anl" / "data" / "phenotypes" / "L0_a_rep0.pheno").write_text("tampered\n")
+    problems = verify_object(bundle, resolve=registry.get)
+    assert any("phenotypes/L0_a_rep0.pheno: sha-256 mismatch" in p for p in problems)
+
+
+def test_verify_without_a_registry_says_what_it_could_not_check(registry):
+    problems = verify_object(registry.by_name("anl"))
+    assert problems == ["anl/phenotypes: nested bundle, and no registry to resolve it"]
 
 
 def test_verify_notices_a_corrupted_blob(registry, tmp_path):

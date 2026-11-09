@@ -32,6 +32,7 @@ __all__ = [
     "resolve_data_use",
     "resolve_drs_object",
     "resolve_tool",
+    "trim_drs_object",
     "load_registry",
     "run_provenance",
 ]
@@ -188,7 +189,11 @@ def resolve_drs_object(federation, entry, registry=None) -> dict[str, Any] | Non
             ) from exc
     if registry is None:
         return None
-    obj = registry.resolve(entry.drs_uri)
+    return trim_drs_object(registry.resolve(entry.drs_uri), registry)
+
+
+def trim_drs_object(obj, registry) -> dict[str, Any]:
+    """The part of a DRS object a worker can use: identity and members, no access methods."""
     return {
         "id": obj.id,
         "name": obj.name,
@@ -197,8 +202,24 @@ def resolve_drs_object(federation, entry, registry=None) -> dict[str, Any] | Non
         "checksums": [c.model_dump() for c in obj.checksums],
         # Members, by name and content id. This is the whole of what a worker verifies
         # against; access methods are deliberately dropped (see the module docstring).
-        "contents": [{"name": child.name, "id": child.id} for child in (obj.contents or [])],
+        "contents": _trimmed_contents(obj, registry),
     }
+
+
+def _trimmed_contents(obj, registry) -> list[dict[str, Any]]:
+    """A bundle's members, with nested bundles' members inlined beneath them.
+
+    The worker cannot resolve a nested bundle's id itself, so without its members inlined
+    a ``phenotypes/`` subtree would be a directory nobody verifies.
+    """
+    members = []
+    for child in obj.contents or []:
+        entry: dict[str, Any] = {"name": child.name, "id": child.id}
+        nested = registry.objects.get(child.id)
+        if nested is not None and nested.is_bundle:
+            entry["contents"] = _trimmed_contents(nested, registry)
+        members.append(entry)
+    return members
 
 
 def resolve_tool(federation, experiment: str, verify: bool = True) -> tuple[dict | None, list[str]]:

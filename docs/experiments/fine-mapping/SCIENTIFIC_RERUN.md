@@ -307,7 +307,8 @@ draw 1 (5 columns, largest 20,339): **13.3 pp apart (12.3–14.3) in ANL's favou
 At the localization stage it reverses. Restricting to the **4,987** instances where both
 arms returned a set — which removes the differential-discovery selection that makes a
 marginal resolution comparison unreadable — the diverse arm's best credible set is
-**2.16 variants smaller (95% CI 1.75–2.58)**, 8.50 against 11.05, with higher mean purity
+**2.16 variants smaller (95% CI 1.75–2.58)**, 7.52 against 9.68 over the 4,684 pairs in
+which both caught a causal variant (best set = the smallest one holding it), with higher mean purity
 (0.963 against 0.954) and higher causal PIP (0.583 against 0.530). Capture rate within
 that subset is essentially equal (0.965 against 0.970), so this is sharper localization of
 the same signals, not a different set of them. That is the canonical cross-ancestry

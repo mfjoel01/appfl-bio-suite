@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -84,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from omegaconf import OmegaConf
 
-    from appfl_bio_suite.core.ga4gh.tes import TesClient, build_site_task, write_task
+    from appfl_bio_suite.core.ga4gh.tes import TesClient, TesError, build_site_task, write_task
     from appfl_bio_suite.core.watch import RunWatcher
 
     server_config = OmegaConf.load(args.server_config)
@@ -173,33 +174,75 @@ def main(argv: list[str] | None = None) -> int:
     poll = float(tes_settings.get("poll_seconds", 15.0))
     timeout = float(tes_settings.get("timeout_seconds", 7200.0))
     submitted: dict[str, tuple[TesClient, str]] = {}
+    lock = threading.Lock()
+    abort = threading.Event()
+
+    def cancel_others(reason: str) -> None:
+        # A single-round aggregate needs every site, so once one has failed the others'
+        # results will never be read. Leaving their tasks running would leave partners
+        # burning allocations on them -- the same reason `TesClient.wait` cancels on
+        # timeout.
+        with lock:
+            if abort.is_set():
+                return
+            abort.set()
+            pending = list(submitted.items())
+        print(f"\n{reason}; cancelling the other sites' tasks.", file=sys.stderr)
+        for other_id, (other_client, other_task) in pending:
+            try:
+                other_client.cancel_task(other_task)
+            except TesError as exc:
+                print(f"{other_id}: could not cancel {other_task}: {exc}", file=sys.stderr)
 
     def run_one(plan):
         client_id, service_url, outputs_url, task = plan
+        if abort.is_set():
+            return client_id, outputs_url, None, "not submitted: another site failed first"
         client = TesClient(service_url)
-        task_id = client.create_task(task)
-        submitted[client_id] = (client, task_id)
+        try:
+            task_id = client.create_task(task)
+        except TesError as exc:
+            cancel_others(f"{client_id}: submission failed")
+            return client_id, outputs_url, None, str(exc)
+        with lock:
+            submitted[client_id] = (client, task_id)
+            late = abort.is_set()
         print(f"{client_id}: submitted {task_id} to {service_url}", file=sys.stderr)
+        if late:
+            # Submitted while another site was failing: cancel_others had already
+            # taken its snapshot of `submitted`, so this one is cancelled here.
+            try:
+                client.cancel_task(task_id)
+            except TesError:
+                pass
 
         def on_state(_id, state):
             print(f"{client_id}: {state}", file=sys.stderr)
 
-        finished = client.wait(
-            task_id, poll_seconds=poll, timeout_seconds=timeout, on_state=on_state
-        )
-        return client_id, outputs_url, finished
+        try:
+            finished = client.wait(
+                task_id, poll_seconds=poll, timeout_seconds=timeout, on_state=on_state
+            )
+        except TesError as exc:
+            cancel_others(f"{client_id}: {exc}")
+            return client_id, outputs_url, None, str(exc)
+        if str(finished.state) != "COMPLETE":
+            cancel_others(f"{client_id}: {finished.state}")
+        return client_id, outputs_url, finished, None
 
     # Concurrently, because sites are independent and a serial wait would make the run as
-    # long as the sum of the sites rather than the slowest one. Cancellation on failure
-    # is handled below rather than here: a site that fails should not take down the
-    # others' tasks silently.
-    results = []
+    # long as the sum of the sites rather than the slowest one.
     with ThreadPoolExecutor(max_workers=max(1, len(plans))) as pool:
-        for outcome in pool.map(run_one, plans):
-            results.append(outcome)
+        outcomes = list(pool.map(run_one, plans))
+
+    for client_id, _, _, error in outcomes:
+        if error:
+            print(f"\n{client_id}: {error}", file=sys.stderr)
+    results = [(cid, url, task) for cid, url, task, error in outcomes if task is not None]
+    errored = any(error for *_, error in outcomes)
 
     failed = [(cid, task) for cid, _, task in results if str(task.state) != "COMPLETE"]
-    if failed:
+    if failed or errored:
         for client_id, task in failed:
             print(f"\n{client_id}: {task.state}", file=sys.stderr)
             for entry in task.logs or []:

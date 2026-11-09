@@ -360,6 +360,12 @@ class ExperimentSite(_Strict):
     endpoint_uuid: str | None = None
     output_dir: str
 
+    # The local account this site's endpoint maps the coordinator to, when it is not the
+    # experiment's `service_account`. A partner who already ran a general-purpose endpoint
+    # before joining this experiment has a mapping to their own account name; without
+    # this, every smoke test against them warns that identity mapping is not working.
+    service_account: str | None = None
+
     # FLamby
     center: int | None = None
     expected_train_samples: int | None = None
@@ -665,6 +671,10 @@ class Experiment(_Strict):
     @property
     def site_count(self) -> int:
         return len(self.sites)
+
+    def service_account_for(self, entry: ExperimentSite) -> str:
+        """The local account `entry`'s endpoint should run the coordinator's tasks as."""
+        return entry.service_account or self.service_account
 
 
 class Federation(_Strict):

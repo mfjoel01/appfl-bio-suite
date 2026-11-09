@@ -117,7 +117,7 @@ def render_context(federation: Federation, experiment: str, site_key: str) -> di
         # The full pip requirement, resolved here rather than assembled in the template.
         # A partner copy-pastes this line; it must not be something they compose.
         "install_spec": install_spec(",".join(spec.partner_extras)),
-        "service_account": exp.service_account,
+        "service_account": exp.service_account_for(entry),
         "endpoint_name": exp.endpoint_name,
         "conda_env": exp.conda_env,
         # -- this partner -------------------------------------------------

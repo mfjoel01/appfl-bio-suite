@@ -275,13 +275,13 @@ class _StubTES(BaseHTTPRequestHandler):
         if task is None:
             self._send(404, {"message": "no such task"})
             return
-        index = min(task["polls"], len(_StubTES.sequence) - 1)
+        index = min(task["polls"], len(task["sequence"]) - 1)
         task["polls"] += 1
         self._send(
             200,
             {
                 "id": task_id,
-                "state": _StubTES.sequence[index],
+                "state": "CANCELED" if task["canceled"] else task["sequence"][index],
                 "executors": task["executors"],
                 "logs": [],
             },
@@ -291,22 +291,35 @@ class _StubTES(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(length) or b"{}")
         if self.path.endswith(":cancel"):
+            task_id = self.path.rsplit("/", 1)[-1].removesuffix(":cancel")
+            if task_id in _StubTES.tasks:
+                _StubTES.tasks[task_id]["canceled"] = True
             self._send(200, {})
             return
         task_id = f"task-{len(_StubTES.tasks) + 1}"
-        _StubTES.tasks[task_id] = {"polls": 0, "executors": body.get("executors", [])}
+        _StubTES.tasks[task_id] = {
+            "polls": 0,
+            "executors": body.get("executors", []),
+            "sequence": self.sequence,
+            "canceled": False,
+        }
         self._send(200, {"id": task_id})
 
     def log_message(self, *args):
         return
 
 
+def _start(handler):
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd, f"http://127.0.0.1:{httpd.server_address[1]}"
+
+
 @pytest.fixture
 def tes_service():
     _StubTES.tasks = {}
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), _StubTES)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{httpd.server_address[1]}"
+    httpd, url = _start(_StubTES)
+    yield url
     httpd.shutdown()
 
 
@@ -332,6 +345,85 @@ def test_a_wait_that_times_out_cancels_the_task(tes_service, monkeypatch):
     task_id = client.create_task(a_task())
     with pytest.raises(TesError, match="still RUNNING"):
         client.wait(task_id, poll_seconds=0, timeout_seconds=-1)
+
+
+def test_a_dropped_poll_is_retried_rather_than_abandoning_the_wait(tes_service, monkeypatch):
+    client = TesClient(tes_service)
+    task_id = client.create_task(a_task())
+    real_get = client.get_task
+    calls = {"n": 0}
+
+    def flaky(task_id, view="MINIMAL"):
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise TesError("connection reset")
+        return real_get(task_id, view=view)
+
+    monkeypatch.setattr(client, "get_task", flaky)
+    assert client.wait(task_id, poll_seconds=0).state == "COMPLETE"
+
+
+def test_one_failed_site_cancels_the_others(tmp_path):
+    """A single-round aggregate needs every site; once one fails, the rest are waste."""
+    import time
+
+    from omegaconf import OmegaConf
+
+    from appfl_bio_suite.core.drivers import tes_driver
+
+    class Running(_StubTES):
+        sequence = ["RUNNING"]
+
+    class Failing(_StubTES):
+        sequence = ["RUNNING", "EXECUTOR_ERROR"]
+
+    _StubTES.tasks = {}
+    running, running_url = _start(Running)
+    failing, failing_url = _start(Failing)
+    site = {"drs_uri": "drs://drs.test.org/abc", "outputs_url": f"file://{tmp_path}/out"}
+    server = {
+        "server_configs": {
+            "aggregator_kwargs": {
+                "output_dir": str(tmp_path / "out"),
+                "ga4gh": {
+                    "tool": {"id": "t", "version": "1", "image": "example/img:1"},
+                    "tes": {
+                        "poll_seconds": 0.05,
+                        "timeout_seconds": 60,
+                        "sites": {
+                            "a": {**site, "url": running_url},
+                            "b": {**site, "url": failing_url},
+                        },
+                    },
+                },
+            }
+        },
+        "client_configs": {"train_configs": {}},
+    }
+    OmegaConf.save(OmegaConf.create(server), tmp_path / "server.yaml")
+    OmegaConf.save(
+        OmegaConf.create({"clients": [{"client_id": "a"}, {"client_id": "b"}]}),
+        tmp_path / "clients.yaml",
+    )
+    try:
+        started = time.time()
+        code = tes_driver.main(
+            [
+                "--server-config",
+                str(tmp_path / "server.yaml"),
+                "--client-config",
+                str(tmp_path / "clients.yaml"),
+            ]
+        )
+        elapsed = time.time() - started
+    finally:
+        running.shutdown()
+        failing.shutdown()
+
+    assert code == 1
+    still_running = [t for t in _StubTES.tasks.values() if t["sequence"] == ["RUNNING"]]
+    assert len(still_running) == 1 and still_running[0]["canceled"]
+    assert elapsed < 30, "the running site was waited out instead of cancelled"
 
 
 def test_an_unreachable_service_names_the_setting():
