@@ -1,0 +1,16 @@
+#!/bin/bash
+# Submit with an explicit allocation, resource request, FM_ROOT and FM_PYTHON.
+# Frozen source and inputs are checked before every arm; no original output is written.
+set -euo pipefail
+: "${FM_ROOT:?}" "${FM_PYTHON:?}"
+export PYTHONPATH="${FM_ROOT}/code/src"
+export OPENBLAS_NUM_THREADS=8 OMP_NUM_THREADS=8 MKL_NUM_THREADS=8
+export NUMBA_NUM_THREADS=8
+cd "${FM_ROOT}"
+exec > "${FM_ROOT}/logs/comparison.${PBS_JOBID}.log" 2>&1
+for index in 0 1 2; do
+    "${FM_PYTHON}" -m appfl_bio_suite.experiments.fine_mapping.multisusie_batch run \
+        --root "${FM_ROOT}" --index "${index}"
+done
+"${FM_PYTHON}" -m appfl_bio_suite.experiments.fine_mapping.multisusie_batch finish \
+    --root "${FM_ROOT}"

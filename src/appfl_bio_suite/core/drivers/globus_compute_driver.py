@@ -29,6 +29,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--server-config", required=True)
     parser.add_argument("--client-config", required=True)
     parser.add_argument(
+        "--site-credentials",
+        default=os.environ.get("APPFL_BIO_SUITE_GLOBUS_CREDENTIALS"),
+        help="Coordinator-only JSON manifest mapping endpoints to site service accounts.",
+    )
+    parser.add_argument(
         "--get-sample-size",
         action="store_true",
         help="Ask each client its sample count first. Required for "
@@ -55,6 +60,16 @@ def main(argv: list[str] | None = None) -> int:
 
     server_config = OmegaConf.load(args.server_config)
     client_configs = OmegaConf.load(args.client_config)["clients"]
+    credentials = None
+    if args.site_credentials:
+        from appfl_bio_suite.core.site_credentials import load_site_credentials
+
+        try:
+            credentials = load_site_credentials(
+                args.site_credentials, [c["endpoint_id"] for c in client_configs]
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
 
     server_agent = ServerAgent(server_agent_config=server_config)
     log = server_agent.logger
@@ -79,10 +94,18 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        communicator = GlobusComputeServerCommunicator(
+        communicator_factory = GlobusComputeServerCommunicator
+        credential_args = {}
+        if credentials is not None:
+            from appfl_bio_suite.core.site_credentials import site_communicator
+
+            communicator_factory = site_communicator
+            credential_args["credentials"] = credentials
+        communicator = communicator_factory(
             server_agent_config=server_agent.server_agent_config,
             client_agent_configs=client_configs,
             logger=log,
+            **credential_args,
         )
     except Exception as exc:
         from appfl_bio_suite.core.endpoint import explain_submit_failure

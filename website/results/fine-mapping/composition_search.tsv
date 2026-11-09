@@ -1,0 +1,21 @@
+Rank	Candidate	Cohort of 50,000	Power	Yield, PIP > 0.95	Coverage	False discoveries	Outcome
+1	solo_covenant	Covenant 47,500 AFR · 1,500 EUR · 1,000 CSA	77.2%	26.0%	96.5%	1.5%	selected
+2	afr_to_mbzuai_afr_1000	Covenant 46,500 AFR · 1,500 EUR · 1,000 CSA; MBZUAI 1,000 AFR	76.0%	25.6%	96.4%	1.8%	
+3	afr_to_anl_afr_1000	Covenant 46,500 AFR · 1,500 EUR · 1,000 CSA; ANL 1,000 AFR	76.0%	25.6%	96.0%	1.7%	
+4	afr_to_anl_amr_1000	Covenant 46,500 AFR · 1,500 EUR · 1,000 CSA; ANL 1,000 AMR	75.8%	25.9%	96.0%	1.8%	
+5	afr_to_mbzuai_mid_1000	Covenant 46,500 AFR · 1,500 EUR · 1,000 CSA; MBZUAI 1,000 MID	75.6%	25.8%	95.6%	2.3%	
+6	eur_to_anl_afr_500	Covenant 47,500 AFR · 1,000 EUR · 1,000 CSA; ANL 500 AFR	75.6%	25.5%	96.2%	1.9%	
+7	csa_to_mbzuai_csa_1000	Covenant 47,500 AFR · 1,500 EUR; MBZUAI 1,000 CSA	75.5%	25.7%	96.3%	1.7%	
+8	afr_to_mbzuai_afr_2500	Covenant 45,000 AFR · 1,500 EUR · 1,000 CSA; MBZUAI 2,500 AFR	75.3%	25.7%	96.8%	1.7%	
+9	afr_to_anl_csa_1000	Covenant 46,500 AFR · 1,500 EUR · 1,000 CSA; ANL 1,000 CSA	75.1%	25.6%	96.2%	2.3%	
+10	afr_to_mbzuai_csa_1000	Covenant 46,500 AFR · 1,500 EUR · 1,000 CSA; MBZUAI 1,000 CSA	75.0%	25.4%	95.8%	2.2%	
+11	csa_to_anl_afr_1000	Covenant 47,500 AFR · 1,500 EUR; ANL 1,000 AFR	75.0%	25.4%	96.5%	1.7%	
+12	afr_to_anl_afr_2500	Covenant 45,000 AFR · 1,500 EUR · 1,000 CSA; ANL 2,500 AFR	75.0%	25.5%	96.5%	1.5%	
+13	afr_to_anl_eur_500	Covenant 47,000 AFR · 1,500 EUR · 1,000 CSA; ANL 500 EUR	75.0%	24.8%	96.1%	2.2%	
+14	afr_to_anl_eur_1000	Covenant 46,500 AFR · 1,500 EUR · 1,000 CSA; ANL 1,000 EUR	74.2%	24.8%	96.3%	2.1%	
+15	three_sites_eur500_mid1000	Covenant 46,000 AFR · 1,500 EUR · 1,000 CSA; ANL 500 EUR; MBZUAI 1,000 MID	73.6%	24.7%	95.5%	2.9%	
+16	afr_to_anl_eur_2500	Covenant 45,000 AFR · 1,500 EUR · 1,000 CSA; ANL 2,500 EUR	73.3%	24.8%	96.2%	2.2%	
+17	csa_to_anl_eur_1000	Covenant 47,500 AFR · 1,500 EUR; ANL 1,000 EUR	73.0%	24.1%	96.4%	1.8%	
+18	previous_winner_afr45_eur5	Covenant 45,000 AFR · 1,500 EUR; ANL 3,500 EUR	71.8%	23.8%	96.3%	2.0%	
+19	solo_anl	ANL 30,000 EUR · 7,500 AFR · 7,500 AMR · 2,500 EAS · 2,500 CSA	61.6%	18.5%	94.4%	3.7%	
+20	solo_mbzuai	MBZUAI 25,000 MID · 15,000 CSA · 5,000 AFR · 5,000 EUR	61.4%	22.6%	96.4%	2.0%	

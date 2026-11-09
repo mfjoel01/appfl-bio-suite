@@ -395,6 +395,20 @@ def test_stratum_rollup_keeps_heritability_out_of_the_rg_marginal():
         assert "h2_target" in tail, f"{name} rollup pools h2 inside the rg marginal"
 
 
+def test_difference_maps_draw_zero_as_neutral_and_the_two_signs_apart():
+    """eda4's r-squared difference panels once mapped zero to saturated red, so two sites
+    in agreement read as the strongest disagreement on the page."""
+    import matplotlib.colors as mcolors
+
+    from appfl_bio_suite.experiments.fine_mapping.figures import figstyle as fs
+
+    cmap = fs.diverging_cmap()
+    # Within one step of the 256-entry lookup table, which has no exact centre.
+    for at, stop in ((0.0, "div-neg-3"), (0.5, "div-mid"), (1.0, "div-pos-3")):
+        expected = mcolors.to_rgb(fs.brand.COLORS[stop])
+        assert np.allclose(cmap(at)[:3], expected, atol=2 / 255), (at, stop)
+
+
 def test_every_emitted_participation_arm_has_a_reader_facing_label():
     """An arm missing from ARM_LABEL is drawn with its raw identifier next to the other
     arms' prose, which is how `federation_50k_seed2` reached a published figure."""

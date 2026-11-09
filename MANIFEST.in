@@ -1,0 +1,3 @@
+recursive-include docs/partner *.md
+recursive-include partners/templates *.j2 *.py
+include constraints.txt

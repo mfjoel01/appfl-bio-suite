@@ -1,6 +1,6 @@
 # Part 2 — Federated fine-mapping: placing your data
 
-Assumes [Part 1](../endpoint-setup.md) is done and your endpoint is running.
+Assumes Part 1 (`1-endpoint-setup.md`, beside this file) is done and your endpoint is running.
 
 ---
 
@@ -18,14 +18,9 @@ results combinable.
 **What leaves your cluster:** sums and sums of products over your own individuals — a
 matrix of variant-by-variant co-occurrence counts, per-variant totals, and a handful of
 scalars, for each region and each ancestry group you hold. Genotypes and phenotypes never
-leave as individual records. Aggregate statistics can still reveal information; the site
-stage runs on your machine and inference runs at the coordinator.
-
-**Optional secure aggregation:** when configured, numeric moments leave as masked integer
-tensors and the coordinator recovers only their pooled sums. Metadata and sample counts
-remain visible. Each partner must provision private pairwise keys and authorize the fixed
-roster/run in its worker environment; see the
-[secure aggregation setup](../../experiments/fine-mapping/SECURE_AGGREGATION.md).
+leave, and neither does anything about any individual. Your site computes those summaries locally. The coordinator combines them and
+fits either SuSiEx or MultiSuSiE; that backend choice does not change your payload
+or require additional partner packages.
 
 **The payload is larger than you may expect** — hundreds of megabytes rather than a few,
 because the statistic being combined is a variant-by-variant matrix rather than one number
@@ -229,3 +224,11 @@ It reads a genomic region out of your genotype file and forms matrix products ov
 cohort, once per region. Long is normal; hours is worth telling us about.
 
 Contact: {{ coordinator_contact }}
+
+## Optional secure aggregation
+
+The coordinator can enable fixed-roster masked sums for either SuSiEx or MultiSuSiE.
+All sites must return matching ancestry/variant blocks. Provision the worker-local
+`APPFL_FINEMAP_SECAGG_KEYS` authorization file and use fresh authorization for every
+launch/retry; never send keys to the coordinator. See the
+[secure aggregation guide](../../experiments/fine-mapping/SECURE_AGGREGATION.md).

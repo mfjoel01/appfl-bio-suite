@@ -94,10 +94,21 @@ def endpoint() -> None:
 
 
 @endpoint.command("status")
+@click.option(
+    "--site-credentials",
+    type=click.Path(path_type=Path, exists=True),
+    envvar="APPFL_BIO_SUITE_GLOBUS_CREDENTIALS",
+    help="Experimental: coordinator-only JSON credential routing manifest.",
+)
 @click.argument("site", required=False)
 @click.option("--experiment", type=click.Choice(experiment_names()), default=None)
 @click.option("--federation", "federation_path", default=None, help=_FEDERATION_HELP)
-def endpoint_status(site: str | None, experiment: str | None, federation_path: str | None) -> None:
+def endpoint_status(
+    site: str | None,
+    experiment: str | None,
+    federation_path: str | None,
+    site_credentials: Path | None,
+) -> None:
     """Report whether endpoints are online. SITE may be a site id or a client id.
 
     The cloud status is authoritative. Local `globus-compute-endpoint list` reads a
@@ -111,20 +122,32 @@ def endpoint_status(site: str | None, experiment: str | None, federation_path: s
         raise click.ClickException("no endpoints matched. Check --experiment and SITE.")
 
     any_down = False
+    credentials = _endpoint_credentials(site_credentials, targets)
     for label, uuid in targets:
-        status = get_status(uuid, label=label)
+        kwargs = {"client": credentials[uuid].client()} if credentials else {}
+        status = get_status(uuid, label=label, **kwargs)
         click.echo(status.render())
         any_down |= not status.online
     sys.exit(1 if any_down else 0)
 
 
 @endpoint.command("smoke")
+@click.option(
+    "--site-credentials",
+    type=click.Path(path_type=Path, exists=True),
+    envvar="APPFL_BIO_SUITE_GLOBUS_CREDENTIALS",
+    help="Experimental: coordinator-only JSON credential routing manifest.",
+)
 @click.argument("site", required=False)
 @click.option("--experiment", type=click.Choice(experiment_names()), default=None)
 @click.option("--timeout", default=300.0, show_default=True, help="Seconds to wait.")
 @click.option("--federation", "federation_path", default=None, help=_FEDERATION_HELP)
 def endpoint_smoke(
-    site: str | None, experiment: str | None, timeout: float, federation_path: str | None
+    site: str | None,
+    experiment: str | None,
+    timeout: float,
+    federation_path: str | None,
+    site_credentials: Path | None,
 ) -> None:
     """Round-trip a trivial task through an endpoint and report where it ran.
 
@@ -132,9 +155,9 @@ def endpoint_smoke(
     the scheduler, the environment, and the return path -- every one of which has failed
     independently while the endpoint reported 'online'.
 
-    The 'user' in the result is the load-bearing field: on a partner's multi-user
-    endpoint it must be the experiment's service account. If it is the account that
-    started the endpoint, identity mapping was skipped.
+    With --site-credentials, the returned user must match the manifest's expected_user;
+    a mismatch fails the check. On a multi-user endpoint, compare it with the
+    experiment's local service account to verify identity mapping.
 
     Runs no experiment code and touches no data, so it is safe at any time.
     """
@@ -150,16 +173,21 @@ def endpoint_smoke(
         for entry in exp.sites:
             expected[entry.endpoint_uuid] = exp.service_account
 
+    credentials = _endpoint_credentials(site_credentials, targets)
     failed = False
     for label, uuid in targets:
         click.echo(f"submitting to {label} ({uuid}) ...")
-        result = smoke_test(uuid, label=label, timeout=timeout)
+        kwargs = {"client": credentials[uuid].client()} if credentials else {}
+        result = smoke_test(uuid, label=label, timeout=timeout, **kwargs)
         click.echo(result.render())
 
         if result.ok:
-            want = expected.get(uuid)
+            want = credentials[uuid].expected_user if credentials else expected.get(uuid)
             got = (result.payload or {}).get("user")
-            if want and got and got != want:
+            if credentials and got != want:
+                click.echo(f"      FAIL: expected local user '{want}', received '{got}'.")
+                failed = True
+            elif want and got and got != want:
                 click.echo(
                     f"      WARNING: ran as '{got}', but this experiment's service\n"
                     f"      account is '{want}'. If this is a multi-user endpoint, the\n"
@@ -169,6 +197,17 @@ def endpoint_smoke(
         failed |= not result.ok
         click.echo("")
     sys.exit(1 if failed else 0)
+
+
+def _endpoint_credentials(path, targets):
+    if not path:
+        return {}
+    from appfl_bio_suite.core.site_credentials import load_site_credentials
+
+    try:
+        return load_site_credentials(path, [uuid for _, uuid in targets])
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 def _resolve_targets(fed, experiment: str | None, site: str | None) -> list[tuple[str, str]]:
@@ -264,6 +303,12 @@ def identity_validate(
 
 
 @main.command("run")
+@click.option(
+    "--site-credentials",
+    type=click.Path(path_type=Path, exists=True),
+    envvar="APPFL_BIO_SUITE_GLOBUS_CREDENTIALS",
+    help="Experimental: coordinator-only credential manifest for single-user endpoints.",
+)
 @click.argument("experiment", type=click.Choice(experiment_names()))
 @click.option(
     "--config",
@@ -300,6 +345,18 @@ def identity_validate(
     default=None,
     help="Loopback only: the --out directory `simulate` wrote per-site data to.",
 )
+@click.option(
+    "--backend",
+    type=click.Choice(["susiex", "multisusie"]),
+    default=None,
+    help="Fine-mapping only: override the coordinator inference backend.",
+)
+@click.option(
+    "--results-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Fine-mapping only: write results to a fresh directory.",
+)
 @click.option("--federation", "federation_path", default=None, help=_FEDERATION_HELP)
 def run_cmd(
     experiment: str,
@@ -310,6 +367,9 @@ def run_cmd(
     watch: bool,
     data_root: Path | None,
     federation_path: str | None,
+    backend: str | None,
+    results_dir: Path | None,
+    site_credentials: Path | None,
 ) -> None:
     """Run an experiment.
 
@@ -331,6 +391,32 @@ def run_cmd(
             f"'{experiment}' is planned but not implemented. "
             f"See docs/experiments/{experiment}/ABOUT.md."
         )
+
+    if experiment != "fine-mapping" and (backend is not None or results_dir is not None):
+        raise click.UsageError("--backend and --results-dir apply only to fine-mapping")
+
+    if get_spec(experiment).serial_runner:
+        if site_credentials is not None:
+            raise click.ClickException(
+                "Site credentials apply to federated Globus Compute runs, not a serial simulation."
+            )
+        import importlib
+
+        runner = importlib.import_module(get_spec(experiment).serial_runner)
+        try:
+            result = runner.run(
+                variant=variant,
+                driver=driver,
+                out_dir=out_dir,
+                dry_run=dry_run,
+                watch=watch,
+                data_root=data_root,
+                federation_path=federation_path,
+            )
+        except (ValueError, OSError) as exc:
+            raise click.ClickException(str(exc)) from exc
+        click.echo(str(result))
+        return
 
     from appfl_bio_suite.core.launch import launch
     from appfl_bio_suite.core.loopback import localize_for_loopback, loopback_federation
@@ -354,15 +440,24 @@ def run_cmd(
             "drop --data-root."
         )
 
-    code = launch(
-        federation=fed,
-        experiment=experiment,
-        variant=variant,
-        out_dir=out_dir,
-        dry_run=dry_run,
-        driver=driver,
-        watch=watch,
-    )
+    if backend is not None:
+        fed.experiment(experiment).fine_mapping_backend = backend
+    if results_dir is not None:
+        fed.experiment(experiment).fine_mapping_output_dir = str(results_dir.resolve())
+
+    try:
+        code = launch(
+            federation=fed,
+            experiment=experiment,
+            variant=variant,
+            out_dir=out_dir,
+            dry_run=dry_run,
+            driver=driver,
+            watch=watch,
+            site_credentials=site_credentials,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
     sys.exit(code)
 
 
@@ -726,6 +821,10 @@ def partner_bundle_cmd(
     """
     from appfl_bio_suite.core.partner import generate_bundle, unresolved_fields
 
+    if get_spec(experiment).serial_runner:
+        raise click.ClickException(
+            f"'{experiment}' is a serial simulation; partner bundles are unavailable"
+        )
     fed = _load(federation_path)
     destination = generate_bundle(fed, experiment, site, out_dir)
     click.echo(f"\nBundle written to: {destination}")
@@ -1306,10 +1405,14 @@ def experiments_cmd() -> None:
     for name, spec in REGISTRY.items():
         state = "implemented" if spec.implemented else "PLANNED, not implemented"
         sim = "generates its own data" if spec.has_simulation else "partners obtain the data"
+        # A serial experiment has no partner side: what it needs is what the coordinator runs.
+        extras = spec.coordinator_extras if spec.serial_runner else spec.partner_extras
+        if spec.serial_runner:
+            state += ", single-machine simulation"
         click.echo(f"\n{name}")
         click.echo(f"  {spec.title}")
         click.echo(f"  status: {state}   |   data: {sim}")
-        click.echo(f"  install: pip install '{install_spec(','.join(spec.partner_extras))}'")
+        click.echo(f"  install: pip install '{install_spec(','.join(extras))}'")
         for line in _wrap(spec.summary, 74):
             click.echo(f"  {line}")
 
@@ -1318,6 +1421,14 @@ def _wrap(text: str, width: int) -> list[str]:
     import textwrap
 
     return textwrap.wrap(text, width=width)
+
+
+from appfl_bio_suite.core.join import join  # noqa: E402
+from appfl_bio_suite.core.onboarding_cli import experiment, site  # noqa: E402
+
+main.add_command(join)
+main.add_command(site)
+main.add_command(experiment)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,13 @@
+seed: 42
+samples: 240
+cpgs: 512
+classes: 3
+panel_size: 512
+min_class: 20
+rounds: 3
+local_epochs: 1
+hidden: 64
+bottleneck: 32
+coverage_counts: [16, 64, 128, 256, 512]
+device: cpu
+threads: 1

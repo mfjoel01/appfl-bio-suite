@@ -9,6 +9,15 @@ rather than a judgment call.
 
 ## I am setting up a federation
 
+**Experimental alternative:** [Single-user service-account trial](coordinator/service-account-trial.md)
+and [design evaluation](coordinator/endpoint-sharing-evaluation.md). This opt-in prototype
+avoids a privileged endpoint manager, but remains pending cross-machine and scheduler
+validation. The guides below describe the established onboarding flow.
+
+For portable per-partner ZIPs and guided setup, see
+[coordinator/onboarding.md](coordinator/onboarding.md). This flow currently supports MEP;
+the single-user trial above remains separate.
+
 Read in this order:
 
 1. **[coordinator/new-federation.md](coordinator/new-federation.md)** — start here. Clone
@@ -31,8 +40,11 @@ Read in this order:
 
 ## I am a partner site
 
-You should have received a **generated bundle** containing your two documents with every
-value already filled in. Use those, not the templates here — the templates contain
+For the guided ZIP workflow, start with [partner/onboarding.md](partner/onboarding.md)
+and `appfl-bio-suite join partner.zip`. You may prepare your local YAML before joining.
+
+You should have received a **generated bundle** containing setup and experiment documents
+with coordinator values already filled in. Use those, not the templates here — the templates contain
 unrendered placeholders.
 
 If you did not receive a bundle, ask the coordinator to run
@@ -42,6 +54,13 @@ The sources live in [partner/](partner/): Part 1 is endpoint setup, identical fo
 experiment; Part 2 is what differs for yours.
 
 ## I want to understand or reproduce an experiment
+
+For the completed fine-mapping extension, see the
+[MultiSuSiE pipeline](experiments/fine-mapping/MULTISUSIE.md),
+[matched-filter comparison results](experiments/fine-mapping/MATCHED_RESULTS.md), and
+[artifact/archive guide](experiments/fine-mapping/MULTISUSIE_ARTIFACTS.md), and
+[comparison figures](experiments/fine-mapping/COMPARISON_FIGURES.md).
+
 
 Each experiment has the same four documents, always:
 
@@ -57,6 +76,9 @@ Each experiment has the same four documents, always:
 - [experiments/fine-mapping/](experiments/fine-mapping/) — federated cross-ancestry
   fine-mapping. Also carries [reference/](experiments/fine-mapping/reference/), the
   derivation and design notes it was ported with.
+- [experiments/methylation/](experiments/methylation/) — **work in
+  progress**: methylation subtype classification, simulated on one machine for now. Its
+  partner document says so, and `partner-bundle` refuses it.
 
 Uniform on purpose: no experiment gets a special extra document, and none is omitted. A
 missing one is a test failure.

@@ -1,0 +1,10 @@
+#!/bin/bash
+set -euo pipefail
+: "${FM_ROOT:?}" "${FM_PYTHON:?}" "${FM_STAGE:?}"
+export PYTHONPATH="${FM_ROOT}/code/src"
+export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMBA_NUM_THREADS=1
+exec > "${FM_ROOT}/logs/${FM_STAGE}.${PBS_JOBID}.log" 2>&1
+args=()
+if [[ -n "${FM_INDICES:-}" ]]; then args+=(--indices "$FM_INDICES"); fi
+"${FM_PYTHON}" -m appfl_bio_suite.experiments.fine_mapping.matched_comparison "$FM_STAGE" \
+ --root "$FM_ROOT" --index "${PBS_ARRAY_INDEX:-0}" --workers "${FM_WORKERS:-8}" "${args[@]}"

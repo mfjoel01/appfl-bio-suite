@@ -10,11 +10,19 @@ Three things you can run, in increasing order of what they need.
 | **Centralized baseline** | a data package | the reference fit, all data in one place |
 | **Federated** | a data package, or partners | the same fit, computed without pooling |
 
-For optional masking of site-level moments, see [secure aggregation](SECURE_AGGREGATION.md).
-It requires a fixed roster, matching ancestry/variant blocks, and worker-local pairwise keys.
+This runbook describes the default SuSiEx workflow. For the optional coordinator
+backend, use the [MultiSuSiE guide](MULTISUSIE.md). Its full pipeline and
+[matched-filter comparison](MATCHED_COMPARISON.md) are complete; see
+[results](MATCHED_RESULTS.md) and [archived artifacts](MULTISUSIE_ARTIFACTS.md).
+For either remote APPFL or local coordinator inference, set
+`experiments.fine-mapping.fine_mapping_backend` to `susiex` (default) or `multisusie`.
+The same choice can be overridden per run with `--backend susiex|multisusie`;
+use `--results-dir` to keep the two runs separate.
+See [MultiSuSiE configuration and outputs](MULTISUSIE.md#select-multisusie-for-an-appfl-federation).
 
-For the selectable SuSiEx and MultiSuSiE inference engines, installation and their
-output semantics, see [fine-mapping backends](BACKENDS.md).
+For optional masking of site moments with either inference backend, see
+[secure aggregation](SECURE_AGGREGATION.md). It requires a fixed roster, matching
+ancestry/variant blocks, and worker-local pairwise keys.
 
 ## 1. Make a data package
 
@@ -172,3 +180,8 @@ Full index and the mapping onto the SuSiEx paper's own figures:
 | federated ≠ centralized | first check the run log for variants dropped as *not fully observed* — Corollary 1 assumes both paths see the same variant list |
 | a site's uplink is huge | it is O(M²) per ancestry; shard by locus |
 | DRS mismatch | the site ran on a different bundle than the one cut for it — re-cut and re-dispatch |
+
+## Render the completed estimator comparison
+
+See [COMPARISON_FIGURES.md](COMPARISON_FIGURES.md) for the checked numerical inputs,
+reproduction command, offline report and PNG/PDF/SVG exports in the primary checkout.

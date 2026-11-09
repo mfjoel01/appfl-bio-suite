@@ -1,5 +1,10 @@
 # Standing up your own federation
 
+> **Experimental alternative:** A [single-user service-account prototype](service-account-trial.md)
+> is available for controlled testing where privileged multi-user setup is a blocker.
+> It is not the onboarding default. Dashboard provisioning, partner bundles for this
+> mode, and the Hyperstack–Argonne acceptance run remain unfinished.
+
 **Start here.** This takes you from a clone to a running federated experiment across
 institutions you recruit yourself. It assumes no prior contact with anyone involved in
 building this suite.
@@ -80,8 +85,8 @@ appfl-bio-suite preflight --check pins
 Everything must pass. If it does not, fix it now — version skew does not fail at install
 time, it fails as a deserialization error partway into a run on someone else's cluster.
 
-**If you are running fine-mapping**, it also needs two C++ binaries that pip cannot
-provide. Once, with network access:
+**For the default SuSiEx fine-mapping backend and simulation preparation**, install
+the C++ binaries that pip cannot provide. Once, with network access:
 
 ```bash
 scripts/fine-mapping/install_plink.sh      # PLINK 1.9 -> vendor/bin/
@@ -89,7 +94,11 @@ scripts/fine-mapping/install_susiex.sh     # SuSiEx    -> vendor/bin/
 ```
 
 Both are coordinator-side only; no partner is asked to install either.
-`appfl-bio-suite preflight --experiment fine-mapping` checks for them.
+`appfl-bio-suite preflight --experiment fine-mapping` checks for them by default.
+For MultiSuSiE inference, install `.[multisusie]` on the coordinator and set
+`experiments.fine-mapping.fine_mapping_backend: multisusie` in your federation YAML.
+Preflight then checks that Python backend instead. Both backends consume the same
+partner payloads; see the [MultiSuSiE setup guide](../experiments/fine-mapping/MULTISUSIE.md).
 
 ## Step 2 — Prove the install works, before involving anyone
 
@@ -114,6 +123,15 @@ Every implemented experiment has the same pair of commands. For fine-mapping:
 ```bash
 appfl-bio-suite simulate fine-mapping --scenario ci-tiny --out /tmp/fm-ci
 appfl-bio-suite run fine-mapping --config loopback --driver serial --data-root /tmp/fm-ci
+```
+
+Federated methylation, still a work in progress, has the same pair. For now that pair is
+the whole experiment: it simulates all of its sites on this machine and has no partner
+side, so nothing later in this guide applies to it.
+
+```bash
+appfl-bio-suite simulate methylation --scenario ci-tiny --out /tmp/meth-ci
+appfl-bio-suite run methylation --config loopback --driver serial --data-root /tmp/meth-ci
 ```
 
 Do this first. Every hour spent debugging your own environment while a partner waits is an

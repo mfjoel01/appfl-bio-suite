@@ -189,10 +189,19 @@ def participations(
     return out
 
 
+def _drawn_sites(federation: Federation, active: dict[str, list[Participation]]) -> list[Site]:
+    """Every site the map draws: the participating ones, and always the coordinator's.
+
+    The coordinator's site is drawn even when it trains in nothing (or nothing in the
+    selected experiment): it is where every other marker's line ends, in every view.
+    """
+    return [s for s in federation.sites if s.id in active or s.id == federation.coordinator.site]
+
+
 def unplaced_sites(federation: Federation, experiment: str | None = None) -> list[Site]:
-    """Participating sites with no coordinates. They cannot be drawn."""
-    active = participations(federation, experiment)
-    return [s for s in federation.sites if s.id in active and s.location is None]
+    """Drawn sites with no coordinates. They cannot be placed on the map."""
+    drawn = _drawn_sites(federation, participations(federation, experiment))
+    return [s for s in drawn if s.location is None]
 
 
 def unplaced_report(federation: Federation, experiment: str | None = None) -> str:
@@ -256,7 +265,9 @@ def _site_client(
     """
     client: dict[str, Any] = {
         "client_id": site.id,
-        "num_samples": sum(p.samples or 0 for p in parts),
+        # None, not 0, for a site that is drawn without participating (the coordinator's
+        # own, when it only dispatches): it declared nothing, which is not zero samples.
+        "num_samples": sum(p.samples or 0 for p in parts) if parts else None,
         "status": status,
         "lat": site.location.lat if site.location else None,
         "lng": site.location.lng if site.location else None,
@@ -289,24 +300,25 @@ def _site_client(
 
 
 def _server_block(federation: Federation) -> dict[str, Any]:
-    """The coordinator, as hivewatch's server metadata. Drawn as the hub."""
+    """The coordinator, as hivewatch's server metadata.
+
+    Everything here is read from the coordinator's site. ``site`` is how the viewer
+    knows which marker is the coordinator's; the coordinates are what hivewatch draws
+    every line to, and are that marker's own, so the lines meet at it.
+    """
     coordinator = federation.coordinator
-    server: dict[str, Any] = {
+    site = federation.coordinator_site
+    location = site.location if site else None
+    return {
         "protocol": _PROTOCOL,
-        "org": coordinator.organization or "Coordinator",
-        "country": None,
-        "city": None,
-        "lat": None,
-        "lng": None,
+        "org": coordinator.organization or (site.name if site else "Coordinator"),
+        "site": site.id if site else None,
+        "institution": site.name if site else None,
+        "country": site.country if site else None,
+        "city": location.city if location else None,
+        "lat": location.lat if location else None,
+        "lng": location.lng if location else None,
     }
-    if coordinator.location is not None:
-        server["lat"] = coordinator.location.lat
-        server["lng"] = coordinator.location.lng
-        server["city"] = coordinator.location.city
-    # The coordinator has no `country` field of its own -- it is not a `Site`. If they
-    # also train, their endpoint is declared and the country is unknown either way, so
-    # this is left unset rather than guessed.
-    return server
 
 
 def build_network_events(
@@ -344,12 +356,11 @@ def build_network_events(
     clients = [
         _site_client(
             site,
-            active[site.id],
+            active.get(site.id, []),
             status=statuses.get(site.id, "active"),
             include_endpoint_uuids=include_endpoint_uuids,
         )
-        for site in federation.sites
-        if site.id in active
+        for site in _drawn_sites(federation, active)
     ]
 
     scope = experiment or ", ".join(sorted({p.experiment for ps in active.values() for p in ps}))

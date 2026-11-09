@@ -15,7 +15,7 @@ preserve the moment protocol's precision or hide large moments. A regression pro
 An `appfl`/`appfl-native` protocol request fails explicitly rather than silently
 falling back or claiming native protection. The integer pairwise protocol remains in use.
 
-Both [SuSiEx and MultiSuSiE](BACKENDS.md) run downstream of the same secure pooling
+Both [SuSiEx and MultiSuSiE](MULTISUSIE.md) run downstream of the same secure pooling
 step; the key setup and transport requirements are identical for both backends.
 
 ## Scope and threat model
@@ -108,7 +108,7 @@ or any scaled magnitude at least `2**62 / number_of_sites`, preventing overflow 
 honest aggregate. Each pooled element's quantization error is at most
 `number_of_sites / (2 * 2**20)`, apart from final float64 rounding. Integer genotype
 moments and counts remain exact within the supported range. Phenotype moments can change
-slightly; bit-identical SuSiEx results or identical threshold decisions are not guaranteed.
+slightly; bit-identical SuSiEx or MultiSuSiE results or identical threshold decisions are not guaranteed.
 `uplink_gram_dtype` does not reduce the masked wire size: every masked element is 8 bytes.
 
 HMAC-SHA256 derives domain-separated pair keys from the run, roster and layout; SHAKE256
@@ -124,5 +124,6 @@ shipped trainer and decoder, launch wiring, retry prevention, and failure cases.
 
 ```bash
 PYTHONPATH=src python -m pytest tests/test_fine_mapping_secure_aggregation.py \
-  tests/test_fine_mapping_shipped_parity.py tests/test_launch_and_loopback.py
+  tests/test_fine_mapping_shipped_parity.py tests/test_launch_and_loopback.py \
+  tests/test_fine_mapping_secure_backends.py
 ```

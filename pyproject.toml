@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "appfl-bio-suite"
-version = "0.2.0"
+version = "0.2.1"
 description = "Cross-silo federated learning experiments in computational biology, built on APPFL and Globus Compute"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -18,6 +18,7 @@ keywords = [
     "fine-mapping",
     "susiex",
     "flamby",
+    "dna-methylation",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -61,9 +62,15 @@ Documentation = "https://github.com/mfjoel01/appfl-bio-suite/tree/main/docs"
 # a dependency resolver touching it can move your pinned packages. It is installed from a
 # GitHub checkout by a documented procedure that bypasses setup.py entirely.
 # See docs/partner/experiments/flamby-heart-disease.md.
+#
+# Because setup.py never runs, FLamby's own requirements are never installed either, so
+# everything its import chain needs that appfl does not already bring is listed here.
+# `flamby.utils` -- imported by every dataset and by download.py -- imports tqdm at module
+# scope; without it a partner's download fails with `No module named 'tqdm'`.
 flamby = [
     "pandas==2.2.2",
     "scikit-learn==1.7.2",
+    "tqdm==4.67.1",
     "wget",
 ]
 
@@ -74,10 +81,6 @@ gwas = [
     "scipy==1.16.2",
     "scikit-learn==1.7.2",
     "pandas-plink==2.3.2",
-    # Declared, though scikit-learn already pulls it in: the simulation pins BLAS to one
-    # thread around the polygenic-score accumulation, because the reduction order -- and
-    # therefore the published numbers -- otherwise depends on the machine's core count.
-    "threadpoolctl==3.6.0",
 ]
 # NOTE: no matplotlib. The shipped trainer computes and returns summary statistics; it
 # does not plot. Plotting happens on the coordinator, which receives per-variant effect
@@ -132,10 +135,19 @@ finemapping-sim = [
     "Jinja2>=3.1,<4",
 ]
 
-# Optional coordinator backend, pinned to an upstream revision for reproducibility.
-finemapping-multisusie = [
+# Experimental coordinator backend; workers keep the existing finemapping extra.
+multisusie = [
     "appfl-bio-suite[finemapping-sim]",
-    "MultiSuSiE @ git+https://github.com/jordanero/MultiSuSiE.git@a89e091d45297d983118438f116c3eb5bc1219ed",
+    "MultiSuSiE @ git+https://github.com/jordanero/MultiSuSiE.git@10351ebbbc0ed4c891c455000eb6ec7800d0b717",
+]
+
+# COORDINATOR-ONLY, and for now everything the methylation experiment needs. It is a
+# work in progress that simulates every site in one process, so there is no partner
+# extra yet. scikit-learn computes its metrics and the figures' PCA; matplotlib draws
+# the figures. torch and APPFL come from the base dependencies.
+methylation = [
+    "scikit-learn==1.7.2",
+    "matplotlib==3.10.6",
 ]
 
 # COORDINATOR-ONLY. The federation network map.
@@ -175,6 +187,7 @@ all = [
     "appfl-bio-suite[finemapping]",
     "appfl-bio-suite[finemapping-sim]",
     "appfl-bio-suite[watch]",
+    "appfl-bio-suite[methylation]",
 ]
 
 [project.scripts]

@@ -18,12 +18,14 @@ from __future__ import annotations
 
 import os
 import re
+import warnings
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from appfl_bio_suite.core.experiments import experiment_names
 from appfl_bio_suite.core.ga4gh.duo import DataUseRequest
 from appfl_bio_suite.core.ga4gh.trs import ToolPin
 
@@ -50,7 +52,7 @@ SCHEMA_VERSION = 1
 
 # Canonical experiment identifiers. Directory names under docs/experiments/ and
 # docs/partner/experiments/ must match these, which tests assert.
-EXPERIMENT_NAMES = ("flamby-heart-disease", "gwas", "fine-mapping")
+EXPERIMENT_NAMES = tuple(experiment_names())
 
 # Where load_federation() looks, in order. The real config lives in local/ because it
 # carries live endpoint UUIDs; see local/README.md.
@@ -60,6 +62,10 @@ _SEARCH_PATH = (
 )
 
 _ENV_VAR = "APPFL_BIO_SUITE_FEDERATION"
+
+# How close an older config's `coordinator.location` must be to a site to name it: about
+# 1 km, so two pins on one campus agree and neighbouring institutions do not.
+_SAME_PLACE_DEGREES = 0.01
 
 _UUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
@@ -224,9 +230,12 @@ class Coordinator(_Strict):
     identity_id: str | None = None
     organization: str | None = None
     contact: str | None = None
-    # Where the driver runs. Drawn as the hub of the network map; every partner marker
-    # is joined back to it. Optional -- omitting it costs the map its centre, nothing else.
-    location: Location | None = None
+    # The coordinator's own institution, by its id under `sites:`. The coordinator is
+    # always a site -- it has a name, a country and a location like any other -- so it is
+    # declared as one rather than given a second, parallel location of its own. The
+    # network map marks that site as the coordinator and joins every other marker back
+    # to it. Optional -- omitting it costs the map its centre, nothing else.
+    site: str | None = None
     endpoint: CoordinatorEndpoint | None = None
     host_check: str | None = None
     host_check_enforce: bool = False
@@ -348,7 +357,7 @@ class ExperimentSite(_Strict):
 
     site: str
     client_id: str
-    endpoint_uuid: str
+    endpoint_uuid: str | None = None
     output_dir: str
 
     # FLamby
@@ -384,8 +393,8 @@ class ExperimentSite(_Strict):
 
     @field_validator("endpoint_uuid")
     @classmethod
-    def _uuid_shape(cls, value: str) -> str:
-        return _require_uuid(value, "endpoint_uuid")
+    def _uuid_shape(cls, value: str | None) -> str | None:
+        return _require_uuid(value, "endpoint_uuid") if value is not None else None
 
     @field_validator("output_dir", "data_dir")
     @classmethod
@@ -540,6 +549,15 @@ class Experiment(_Strict):
     enabled: bool = True
     service_account: str
     endpoint_name: str
+
+    # The conda environment partners create in Part 1 of their setup guide and their
+    # endpoint's worker_init activates by name. Per-experiment for the same reason as the
+    # two fields above: a site already hosting an earlier experiment's endpoint has an
+    # environment by the default name, and a fresh setup would either collide with it or
+    # silently install over the environment that endpoint still runs in. Rendered into a
+    # shell command, so restricted to what conda accepts in a name.
+    conda_env: str = Field(default="appfl_env", pattern=r"^[A-Za-z0-9._-]+$")
+
     sites: list[ExperimentSite] = Field(default_factory=list)
 
     # FLamby
@@ -579,9 +597,11 @@ class Experiment(_Strict):
     # Coordinator-side. The ground-truth causal variants, for scoring a simulated run;
     # a real federation has no such file and leaves this unset.
     causal_manifest: str | None = None
-    fine_mapping_backend: Literal["susiex", "multisusie"] | None = None
-    multisusie_rho: float | None = Field(default=None, ge=0, lt=1)
-    multisusie_min_abs_corr: float | None = Field(default=None, ge=0, le=1)
+    fine_mapping_output_dir: str | None = None
+    fine_mapping_backend: Literal["susiex", "multisusie"] = "susiex"
+    multisusie_rho: float = Field(default=0.75, ge=0, lt=1)
+    multisusie_min_abs_corr: float = Field(default=0.0, ge=0, le=1)
+    multisusie_min_mac: float = Field(default=0.0, ge=0)
     susiex_binary: str | None = None
     credible_set_level: float | None = None
     pval_thresh: float | None = None
@@ -673,6 +693,57 @@ class Federation(_Strict):
             )
         return value
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coordinator_location_names_its_site(cls, data: Any) -> Any:
+        """Load a config written before `coordinator.site` existed.
+
+        Those placed the coordinator with a `location` of its own, almost always a copy of
+        its institution's entry under `sites:` -- the same fact written twice. So it is read
+        as naming that site, and an existing config keeps loading unchanged, on this build
+        and on any older one. Refusing it instead would fail a run over a field only the
+        map reads.
+
+        "At" is within ~1 km, not exact equality: two hand-placed pins for one campus
+        rarely agree to the fourth decimal. A location with no site at it, or several,
+        names nothing; it is dropped with a warning and the map has no coordinator, which
+        is what leaving out `coordinator.site` costs anyway.
+        """
+        if not isinstance(data, dict):
+            return data
+        coordinator = data.get("coordinator")
+        if not isinstance(coordinator, dict) or "location" not in coordinator:
+            return data
+        coordinator = dict(coordinator)
+        location = coordinator.pop("location")
+        data = {**data, "coordinator": coordinator}
+        if "site" in coordinator:
+            # Both given: `site` is the declaration, the location only a stale copy of it.
+            return data
+
+        def near(site: Any) -> bool:
+            here = site.get("location") if isinstance(site, dict) else None
+            try:
+                return (
+                    abs(float(here["lat"]) - float(location["lat"])) <= _SAME_PLACE_DEGREES
+                    and abs(float(here["lng"]) - float(location["lng"])) <= _SAME_PLACE_DEGREES
+                )
+            except (KeyError, TypeError, ValueError):
+                return False
+
+        nearby = [site["id"] for site in data.get("sites") or [] if near(site)]
+        if len(nearby) == 1:
+            coordinator["site"] = nearby[0]
+        elif location is not None:
+            found = f"sites {', '.join(map(str, nearby))} are" if nearby else "no site is"
+            warnings.warn(
+                f"coordinator.location ignored: {found} at those coordinates, so it names no "
+                "site. The coordinator is drawn as its own institution's site -- declare it "
+                "under `sites:` and set `coordinator.site: <site id>`.",
+                stacklevel=2,
+            )
+        return data
+
     @model_validator(mode="after")
     def _cross_reference(self) -> Federation:
         by_id = {s.id: s for s in self.sites}
@@ -683,6 +754,13 @@ class Federation(_Strict):
             declared = [s.id for s in self.sites]
             dupes = sorted({sid for sid in declared if declared.count(sid) > 1})
             raise ValueError(f"duplicate site id(s): {dupes}")
+
+        if self.coordinator.site is not None and self.coordinator.site not in by_id:
+            raise ValueError(
+                f"coordinator.site '{self.coordinator.site}' is not in the top-level "
+                f"`sites` list (have: {', '.join(sorted(by_id)) or 'none'}). The "
+                "coordinator's institution is declared there like any other site."
+            )
 
         for exp_name, experiment in self.experiments.items():
             if exp_name not in EXPERIMENT_NAMES:
@@ -702,6 +780,11 @@ class Federation(_Strict):
         return self
 
     # -- lookups ------------------------------------------------------------
+
+    @property
+    def coordinator_site(self) -> Site | None:
+        """The site the coordinator belongs to, when `coordinator.site` names one."""
+        return self.site(self.coordinator.site) if self.coordinator.site else None
 
     def experiment(self, name: str) -> Experiment:
         """Get one experiment, with a message that lists the alternatives."""

@@ -12,6 +12,7 @@
 
   const toggle = document.getElementById('theme-toggle');
   const frame = document.getElementById('map-frame');
+  const viewerLinks = document.querySelectorAll('a[data-viewer-link]');
 
   /* The embedded viewer is same-origin and its globe already watches <html data-theme>
      for the sake of its own theme button, so following it is one attribute write -- no
@@ -26,6 +27,16 @@
     }
   }
 
+  /* A viewer opened in its own tab has only its URL to go on, and without a theme there
+     it starts dark whatever this page shows. */
+  function applyToLinks(theme) {
+    for (const link of viewerLinks) {
+      const url = new URL(link.href);
+      url.searchParams.set('theme', theme);
+      link.href = url.href;
+    }
+  }
+
   function setTheme(theme, remember) {
     root.dataset.theme = theme;
     if (toggle) {
@@ -35,6 +46,7 @@
       toggle.setAttribute('aria-pressed', String(theme === 'light'));
     }
     applyToFrame(theme);
+    applyToLinks(theme);
     if (remember) {
       try { localStorage.setItem(STORE_KEY, theme); } catch (error) { /* private mode */ }
     }

@@ -268,27 +268,30 @@ def _check_binaries(report: PreflightReport, experiment: str | None, federation=
     """
     from appfl_bio_suite.core.experiments import REGISTRY
 
-    targeted = bool(experiment and experiment in REGISTRY)
-    specs = [REGISTRY[experiment]] if targeted else [s for s in REGISTRY.values() if s.implemented]
-    wanted = {name: spec.name for spec in specs for name in spec.required_binaries}
     if (
         experiment == "fine-mapping"
         and federation is not None
         and federation.experiment(experiment).fine_mapping_backend == "multisusie"
     ):
-        from appfl_bio_suite.experiments.fine_mapping.multisusie_backend import require_multisusie
-
         try:
-            require_multisusie()
-        except ImportError as exc:
-            report.add("MultiSuSiE backend", Level.FAIL, str(exc))
+            from MultiSuSiE.susiepy_ss import susie_multi_ss  # noqa: F401
+        except ImportError:
+            report.add(
+                "MultiSuSiE backend",
+                Level.FAIL,
+                "Install the coordinator extra appfl-bio-suite[multisusie]",
+            )
         else:
             report.add(
                 "MultiSuSiE backend",
                 Level.OK,
-                "Python backend importable; no inference binaries needed",
+                "Python backend available; SuSiEx/PLINK not required for this run",
             )
         return
+
+    targeted = bool(experiment and experiment in REGISTRY)
+    specs = [REGISTRY[experiment]] if targeted else [s for s in REGISTRY.values() if s.implemented]
+    wanted = {name: spec.name for spec in specs for name in spec.required_binaries}
     if not wanted:
         report.add("external binaries", Level.SKIP, "no experiment here needs one")
         return
@@ -406,6 +409,17 @@ def _installed_versions() -> dict[str, str]:
     return out
 
 
+def _satisfies_pin(installed: str, pinned: str) -> bool:
+    """Whether ``installed`` satisfies ``==pinned``, the way pip decides it.
+
+    PEP 440 ignores a local version label when the pin carries none, so ``2.8.0+cpu``
+    satisfies ``torch==2.8.0``. That build is what partners are told to install -- every
+    experiment runs on CPU, and the default build brings 3 GB of CUDA libraries with it
+    -- and comparing strings reported it as a skew.
+    """
+    return installed == pinned or ("+" not in pinned and installed.split("+", 1)[0] == pinned)
+
+
 def _check_pins(report: PreflightReport, constraints: Path | None) -> None:
     if constraints is None or not constraints.is_file():
         report.add(
@@ -426,7 +440,7 @@ def _check_pins(report: PreflightReport, constraints: Path | None) -> None:
             # extras are legitimately not all installed.
             if name in FEDERATION_CRITICAL:
                 missing.append(name)
-        elif have != want:
+        elif not _satisfies_pin(have, want):
             mismatched.append(f"{name}: pinned {want}, installed {have}")
 
     if not mismatched and not missing:

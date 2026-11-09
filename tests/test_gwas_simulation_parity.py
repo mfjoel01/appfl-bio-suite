@@ -113,11 +113,10 @@ def test_port_matches_committed_golden(ported_run: Path, golden: dict, key: str)
         "default_rng -- a different algorithm producing a different split.\n"
         "  2. ndarray.std() (ddof=0) replaced with pandas .std() (ddof=1).\n"
         "  3. The PGS chunk size changed, altering float accumulation order.\n"
-        "  4. The BLAS thread pin around the accumulation in _compute_pgs was removed. "
-        "Only the PGS-derived files fail in that case -- pgs_scores, phenotypes_* and "
-        "the summaries -- while covariates and genotypes pass, and it reproduces only "
-        "on machines with enough cores. test_pgs_accumulation_does_not_follow_the_"
-        "machine is the direct check.\n"
+        "  4. The chunk product in _compute_pgs was reordered or handed back to BLAS "
+        "(@, np.dot, np.einsum). Only the PGS-derived files fail in that case -- "
+        "pgs_scores, phenotypes_* and the summaries -- while covariates and genotypes "
+        "pass. test_pgs_is_the_reference_blas_product is the direct check.\n"
         "  5. The groupby/join/filter order in _prep_pgs changed.\n"
         "\n"
         "If none of those changed, compare this environment against constraints.txt "
@@ -165,35 +164,64 @@ def test_port_matches_freshly_run_legacy(tmp_path, golden):
     )
 
 
-def test_pgs_accumulation_does_not_follow_the_machine(golden):
-    """The polygenic score must not depend on how many cores the machine has.
+def _reference_pgs(pgs_df: pd.DataFrame, dosage: np.ndarray, chunk_size: int) -> np.ndarray:
+    """What _compute_pgs must compute, in plain Python floats, one operation per term.
 
-    ``_compute_pgs`` sums each chunk with a BLAS matrix-vector product. Given eight or
-    more threads OpenBLAS splits that reduction and adds the partial sums in a different
-    order, which moves the low-order bits of every score and, through them, every
-    phenotype and summary file downstream. Nothing raises; the outputs are simply not
-    the published ones.
+    Deliberately literal, so the order of operations is not open to interpretation.
+    Python floats are IEEE-754 doubles and round exactly as numpy's do.
+    """
+    n_samples, n_variants = dosage.shape
+    flip = list(pgs_df["effect_allele"] == pgs_df["A1"])
+    weights = [float(w) for w in pgs_df["effect_weight"]]
 
-    Not hypothetical: this is what made the committed golden file stop matching on a
-    larger runner while every line of the pipeline was unchanged. phenotypes.py pins the
-    accumulation to one BLAS thread, and this holds it to that.
+    columns = []
+    for j in range(n_variants):
+        column = [float(d) for d in dosage[:, j]]
+        if flip[j]:
+            column = [2.0 - d for d in column]
+        observed = [d for d in column if d == d]  # NaN is the one value unequal to itself
+        mean = sum(observed) / len(observed)
+        columns.append([d if d == d else mean for d in column])
 
-    Eight is the threshold measured for a chunk this wide, so the comparison is made
-    there rather than at the machine's core count -- that way the test still exercises
-    the split on a small runner, where asking for the core count would ask for two.
+    scores = [0.0] * n_samples
+    for start in range(0, n_variants, chunk_size):
+        # One chunk's product, as the reference BLAS defines DGEMV: from zero, a variant at
+        # a time, one multiplication and one addition per term.
+        product = [0.0] * n_samples
+        for j in range(start, min(start + chunk_size, n_variants)):
+            for i in range(n_samples):
+                product[i] = product[i] + columns[j][i] * weights[j]
+        for i in range(n_samples):
+            scores[i] = scores[i] + product[i]
+    return np.array(scores)
+
+
+def test_pgs_is_the_reference_blas_product(golden):
+    """The polygenic score must not depend on the machine computing it.
+
+    ``_compute_pgs`` used to hand each chunk to BLAS as ``chunk @ w``. OpenBLAS picks its
+    kernel by CPU model and its split by thread count, and each rounds the low-order bits
+    differently, so every score -- and through them every phenotype and summary file --
+    followed the machine. Pinning BLAS to one thread fixed the thread count and left the
+    CPU model: CI passed on hosts whose kernel matched the one the golden file was first
+    captured with, and failed on the rest.
+
+    So _compute_pgs now computes the product itself, in the reference-BLAS order, and is
+    held here to that arithmetic written out term by term. Handing the product back to
+    BLAS fails this on any modern CPU. A chunk size of 7 also exercises what the golden
+    run cannot: its scores fit in one chunk, while here each partial product restarts
+    from zero 43 times.
     """
     import xarray as xr
-    from threadpoolctl import threadpool_limits
 
     from appfl_bio_suite.experiments.gwas.simulation.phenotypes import _compute_pgs
-    from appfl_bio_suite.experiments.gwas.simulation.schema import PhenotypeParams
 
     fixture = golden["fixture"]
     n_samples, n_variants = fixture["n_samples"], fixture["n_variants"]
 
     # Dosages and weights shaped like the real pipeline's, including the missingness
-    # that sends _compute_pgs through its mean-imputation path. The chunk size is the
-    # production default, because chunk width is what decides whether BLAS splits at all.
+    # that sends _compute_pgs through its mean-imputation path, and effect alleles on both
+    # strands so the dosage flip runs too.
     rng = np.random.default_rng(fixture["seed"])
     dosage = rng.integers(0, 3, size=(n_samples, n_variants)).astype(np.float64)
     dosage[rng.random(dosage.shape) < 0.01] = np.nan
@@ -209,16 +237,12 @@ def test_pgs_accumulation_does_not_follow_the_machine(golden):
         }
     )
     snp_to_pos = {snp: i for i, snp in enumerate(snps)}
-    chunk_size = PhenotypeParams().pgs_chunk_size
 
-    with threadpool_limits(limits=1, user_api="blas"):
-        serial = _compute_pgs(pgs_df, G, snp_to_pos, chunk_size)
-    with threadpool_limits(limits=8, user_api="blas"):
-        parallel = _compute_pgs(pgs_df, G, snp_to_pos, chunk_size)
-
-    assert np.array_equal(serial, parallel), (
-        "the polygenic score changed when BLAS was allowed 8 threads instead of 1. "
-        "phenotypes.py is supposed to pin that accumulation to a single thread; if that "
-        "pin was removed, these numbers now depend on the machine and the committed "
-        "golden file will fail wherever the core count differs."
-    )
+    for chunk_size in (7, 2000):
+        got = _compute_pgs(pgs_df, G, snp_to_pos, chunk_size)
+        want = _reference_pgs(pgs_df, dosage, chunk_size)
+        assert got.tobytes() == want.tobytes(), (
+            f"at chunk size {chunk_size}, _compute_pgs no longer computes the reference-BLAS "
+            "product. If it hands the product to BLAS again, every score follows the CPU "
+            "and the committed golden file fails wherever the kernel differs."
+        )

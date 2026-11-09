@@ -4,9 +4,14 @@
 #     scripts/build_site.sh [OUTDIR]          # default: _site
 #
 # The pages in website/ are hand-written. The network-map preview under OUTDIR/map is
-# exported here, from website/demo-federation.yaml -- twenty invented institutions,
-# never local/federation.yaml, which names real partners and carries their contacts.
+# exported here, from website/federation.yaml and website/partners.json -- the real
+# partners, reduced to institution, location and stage -- never local/federation.yaml,
+# which carries partner contacts and endpoint identifiers.
 # check_site_preview.py enforces that rather than trusting this comment.
+#
+# The viewer's Results tab shows the files website/partners.json selects. The
+# fine-mapping ones in website/results/ are built from local runs, which CI does not
+# have, so they are committed; scripts/fine-mapping/site_results.py rebuilds them.
 #
 # .github/workflows/pages.yml runs this script, so previewing locally exercises the same
 # assembly that deploys:
@@ -35,10 +40,14 @@ rm -rf "$out"
 mkdir -p "$out"
 
 cp -R website/. "$out"/
+# The map inputs are published through the export, reduced; not as raw files. That
+# includes results/: the export embeds the files partners.json selects into the map.
+rm -rf "$out"/federation.yaml "$out"/partners.json "$out"/results
 cp src/appfl_bio_suite/core/watch_assets/suite-logo.png "$out"/assets/suite-logo.png
 
 "$cli" watch export \
-  --federation website/demo-federation.yaml \
+  --federation website/federation.yaml \
+  --catalog website/partners.json \
   --out "$out/map" \
   --title "APPFL Bio Suite federation network" >/dev/null
 
@@ -48,4 +57,4 @@ touch "$out/.nojekyll"
 
 "$python" scripts/check_site_preview.py "$out/map/network.map.json"
 
-echo "site: $root/$out"
+echo "site: $(cd "$out" && pwd)"

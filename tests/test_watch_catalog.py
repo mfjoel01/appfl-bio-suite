@@ -40,7 +40,7 @@ def catalog(tmp_path):
                 "title": "Reference study",
                 "artifacts": [
                     {"title": "Scores", "path": "measurements.tsv"},
-                    {"title": "Report", "path": "report.html"},
+                    {"title": "Report", "path": "report.html", "wide": True},
                 ],
             }
         ],
@@ -76,6 +76,8 @@ def test_export_embeds_selected_results_and_preserves_full_download(catalog, tmp
         == (path.parent / "measurements.tsv").read_bytes()
     )
     assert report["kind"] == "report"
+    # Only an explicit wide is published; every other artifact keeps the grid's width.
+    assert report["wide"] is True and "wide" not in table
     _, live = write_network_run(federation, tmp_path / "runs", catalog_path=path)
     assert json.loads(live.read_text())["results"] == metadata["results"]
 
@@ -104,6 +106,7 @@ def test_matching_partner_retains_federation_identity_and_samples(catalog, tmp_p
         lambda raw: raw["partners"].append(raw["partners"][0]),
         lambda raw: raw["partners"][0].update(source_url="javascript:alert(1)"),
         lambda raw: raw["results"][0]["artifacts"][0].update(path="missing.tsv"),
+        lambda raw: raw["results"][0]["artifacts"][0].update(wide="yes"),
     ],
 )
 def test_invalid_catalogue_fails_before_writing_export(catalog, tmp_path, change):

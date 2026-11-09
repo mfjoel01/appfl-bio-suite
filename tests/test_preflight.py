@@ -104,3 +104,26 @@ def test_shadowed_duplicate_reports_the_version_that_will_be_imported(monkeypatc
     )
 
     assert _installed_versions()["numpy"] == "1.26.4"
+
+
+def test_cpu_build_of_a_pinned_package_satisfies_the_pin(monkeypatch, tmp_path):
+    """torch 2.8.0+cpu satisfies torch==2.8.0, as pip itself decides.
+
+    Partners install the CPU build -- every experiment runs on CPU, and the default build
+    downloads 3 GB of CUDA libraries -- so a pin check comparing version strings would
+    fail every one of them over a difference pip does not consider one.
+    """
+    from appfl_bio_suite.core import preflight
+
+    constraints = tmp_path / "constraints.txt"
+    constraints.write_text("torch==2.8.0\n", encoding="utf-8")
+
+    def check(installed):
+        monkeypatch.setattr(preflight, "_installed_versions", lambda: {"torch": installed})
+        report = preflight.PreflightReport()
+        preflight._check_pins(report, constraints)
+        return report
+
+    assert check("2.8.0+cpu").ok
+    assert check("2.8.0").ok
+    assert not check("2.9.0+cpu").ok, "a different release must still be a skew"

@@ -2,8 +2,8 @@
 
 Single-round aggregate federated learning. Each site computes raw second-moment
 aggregates over its own individuals at a locus and returns only those; the coordinator
-sums them, standardizes once against the pooled moments, and runs SuSiEx or MultiSuSiE.
-Genotypes and phenotypes never leave the site they originate from.
+sums them, standardizes once against the pooled moments, and runs SuSiEx. Genotypes and
+phenotypes never leave the site they originate from.
 
 The claim this experiment makes is stronger than the GWAS experiment's. Inverse-variance
 meta-analysis *approximates* a pooled analysis under an assumption about the sites. This

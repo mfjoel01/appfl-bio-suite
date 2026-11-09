@@ -117,7 +117,7 @@ def _client():
     return Client()
 
 
-def get_status(uuid: str, label: str = "") -> EndpointStatus:
+def get_status(uuid: str, label: str = "", *, client=None) -> EndpointStatus:
     """Ask the Globus Compute service whether an endpoint is online.
 
     The cloud status is authoritative. Local ``globus-compute-endpoint list`` reads a
@@ -125,7 +125,7 @@ def get_status(uuid: str, label: str = "") -> EndpointStatus:
     so it can report an endpoint as running when it is not, and vice versa.
     """
     try:
-        raw = _client().get_endpoint_status(uuid)
+        raw = (client if client is not None else _client()).get_endpoint_status(uuid)
         return EndpointStatus(uuid=uuid, label=label or uuid, status=raw.get("status", "?"))
     except Exception as exc:
         return EndpointStatus(
@@ -133,7 +133,9 @@ def get_status(uuid: str, label: str = "") -> EndpointStatus:
         )
 
 
-def smoke_test(uuid: str, label: str = "", timeout: float = DEFAULT_TIMEOUT) -> SmokeResult:
+def smoke_test(
+    uuid: str, label: str = "", timeout: float = DEFAULT_TIMEOUT, *, client=None
+) -> SmokeResult:
     """Submit a trivial task and wait for it to come back.
 
     Runs no experiment code and touches no data, so it is safe to run against a partner's
@@ -164,7 +166,8 @@ def smoke_test(uuid: str, label: str = "", timeout: float = DEFAULT_TIMEOUT) -> 
 
     label = label or uuid
     started = time.time()
-    executor = Executor(endpoint_id=uuid)
+    executor = Executor(endpoint_id=uuid, **({"client": client} if client is not None else {}))
+    executor.task_group_id = None
     executor.serializer = ComputeSerializer(strategy_code=CombinedCode())
     try:
         future = executor.submit(where_am_i)

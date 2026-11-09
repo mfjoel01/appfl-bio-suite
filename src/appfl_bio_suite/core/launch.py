@@ -121,7 +121,11 @@ def _shipped_module_path(spec: ExperimentSpec, module: str) -> str:
 
 
 def build_client_configs(
-    federation: Federation, experiment: str, spec: ExperimentSpec | None = None
+    federation: Federation,
+    experiment: str,
+    spec: ExperimentSpec | None = None,
+    *,
+    allow_unregistered: bool = False,
 ) -> list[dict[str, Any]]:
     """One APPFL client config per participating site, fully resolved.
 
@@ -131,6 +135,10 @@ def build_client_configs(
     """
     spec = spec or get_spec(experiment)
     exp = federation.experiment(experiment)
+    if not allow_unregistered:
+        missing = [entry.client_id for entry in exp.sites if not entry.endpoint_uuid]
+        if missing:
+            raise ValueError(f"Sites must register endpoints before launch: {', '.join(missing)}")
     template = _load_template(spec, "clients.template.yaml")
     defaults = template.get("client_defaults", {}) or {}
 
@@ -333,8 +341,10 @@ def build_server_config(
         ("causal_manifest", "causal_manifest"),
         ("susiex_binary", "susiex_binary"),
         ("fine_mapping_backend", "backend"),
+        ("fine_mapping_output_dir", "output_dir"),
         ("multisusie_rho", "multisusie_rho"),
         ("multisusie_min_abs_corr", "multisusie_min_abs_corr"),
+        ("multisusie_min_mac", "multisusie_min_mac"),
         ("credible_set_level", "level"),
         ("pval_thresh", "pval_thresh"),
         ("maf", "maf"),
@@ -343,6 +353,10 @@ def build_server_config(
         ("max_iter", "max_iter"),
         ("tol", "tol"),
     ):
+        if experiment != "fine-mapping" and (
+            field.startswith("fine_mapping_") or field.startswith("multisusie_")
+        ):
+            continue
         value = getattr(exp, field, None)
         if value is not None:
             server.setdefault("aggregator_kwargs", {})[key] = value
@@ -357,6 +371,9 @@ def build_server_config(
             raise ValueError("secure aggregation participants must match experiment sites")
         server.setdefault("aggregator_kwargs", {})["secure_aggregation"] = public
         config["client_configs"]["train_configs"]["secure_aggregation"] = public
+
+    if experiment == "fine-mapping" and exp.fine_mapping_output_dir:
+        server["logging_output_dirname"] = str(Path(exp.fine_mapping_output_dir) / "logs")
 
     # GA4GH provenance for the aggregator to write beside the results. Assembled from
     # the federation config rather than from the payloads, because it records what this
@@ -461,6 +478,7 @@ def launch(
     dry_run: bool = False,
     driver: str = "globus_compute",
     watch: bool = False,
+    site_credentials: Path | None = None,
 ) -> int:
     """Resolve, write, and run. Returns the driver's exit code.
 
@@ -469,6 +487,16 @@ def launch(
     the environment is wrong now than to find out from a worker three time zones away.
     """
     from appfl_bio_suite.core.preflight import run_preflight
+    from appfl_bio_suite.core.site_credentials import CREDENTIALS_ENV, load_site_credentials
+
+    credential_path = site_credentials or os.environ.get(CREDENTIALS_ENV)
+    if credential_path:
+        if driver != "globus_compute":
+            raise ValueError("Site credentials apply only to the globus_compute driver.")
+        load_site_credentials(
+            credential_path,
+            [entry.endpoint_uuid for entry in federation.experiment(experiment).sites],
+        )
 
     report = run_preflight(federation=federation, experiment=experiment, check="env")
     print(report.render(), file=sys.stderr)
@@ -508,6 +536,8 @@ def launch(
     print(f"\nlaunching: {shlex.join(cmd)}\n", file=sys.stderr)
 
     env = dict(os.environ)
+    if credential_path:
+        env[CREDENTIALS_ENV] = str(Path(credential_path).resolve())
     # The same caps the workers get. Without them a busy shared login node can refuse to
     # spawn threads during numpy import, and the driver dies before it dispatches.
     env.setdefault("OPENBLAS_NUM_THREADS", "1")

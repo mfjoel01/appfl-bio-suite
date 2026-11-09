@@ -67,7 +67,8 @@ class BundleContents:
 
 def partner_docs_root() -> Path:
     """The only directory bundle documents may come from."""
-    return repo_root() / "docs" / "partner"
+    source = repo_root() / "docs" / "partner"
+    return source if source.is_dir() else Path(__file__).parents[1] / "resources" / "partner"
 
 
 def _assert_inside_partner_docs(path: Path) -> Path:
@@ -99,7 +100,7 @@ def render_context(federation: Federation, experiment: str, site_key: str) -> di
     site = entry.resolved_site
     coordinator = federation.coordinator
 
-    return {
+    context = {
         # -- who is asking ------------------------------------------------
         # From federation.yaml, never a literal. A different coordinator running this
         # command gets correct bundles for their own federation with no code change.
@@ -118,6 +119,7 @@ def render_context(federation: Federation, experiment: str, site_key: str) -> di
         "install_spec": install_spec(",".join(spec.partner_extras)),
         "service_account": exp.service_account,
         "endpoint_name": exp.endpoint_name,
+        "conda_env": exp.conda_env,
         # -- this partner -------------------------------------------------
         "site_id": site.id,
         "site_name": site.name,
@@ -157,6 +159,44 @@ def render_context(federation: Federation, experiment: str, site_key: str) -> di
         "python_version": "3.12",
     }
 
+    # The endpoint template, rendered once. The setup guide shows it by including this
+    # text, and the bundle installs this same text as a file. The guide used to carry its
+    # own hand-kept copy of the YAML, which drifted: it rendered `account:` and
+    # `module load` with nothing after them long after the file had learned to mark an
+    # unknown value explicitly, so a partner copying from the guide got the bug the file
+    # had been fixed for.
+    context["worker_template"] = _render(
+        _worker_template_source().read_text(encoding="utf-8"), context
+    )
+
+    # The identity mapping, serialized once, for the same reason. The guide used to build
+    # its JSON by pasting the raw regex between quotes, which rendered
+    # `"a.researcher@example\.edu"` -- an invalid JSON escape. Told to "replace the entire
+    # contents with the block below", a partner installed a file the mapper could not parse.
+    context["identity_mapping"] = (
+        json.dumps(
+            build_mapping_document(
+                identity_match=context["coordinator_identity_match"],
+                output_account=context["service_account"],
+            ),
+            indent=2,
+        )
+        + "\n"
+    )
+    return context
+
+
+def _worker_template_source() -> Path:
+    source = repo_root() / "partners" / "templates" / "user_config_template.yaml.j2"
+    if not source.is_file():
+        source = Path(__file__).parents[1] / "resources/templates/user_config_template.yaml.j2"
+    if not source.is_file():
+        raise RuntimeError(
+            f"{source} does not exist. The endpoint template is missing from this installation. "
+            "Reinstall the complete suite wheel."
+        )
+    return source
+
 
 def _data_use_summary(federation: Federation, experiment: str) -> str:
     """The study's DUO request as a block of text, or "" when it declares none."""
@@ -186,7 +226,7 @@ def _client_config_block(federation: Federation, experiment: str, site_key: str)
     from appfl_bio_suite.core.launch import build_client_configs
 
     entry = federation.experiment_site(experiment, site_key)
-    for client in build_client_configs(federation, experiment):
+    for client in build_client_configs(federation, experiment, allow_unregistered=True):
         if client["client_id"] == entry.client_id:
             block = json.loads(json.dumps(client))  # deep copy
             block["data_configs"].pop("dataset_path", None)
@@ -201,6 +241,8 @@ def generate_bundle(
     out_dir: Path | None = None,
 ) -> Path:
     """Write one partner's bundle and return its directory."""
+    if get_spec(experiment).serial_runner:
+        raise ValueError(f"'{experiment}' is a serial simulation; partner bundles are unavailable")
     entry = federation.experiment_site(experiment, site_key)
     context = render_context(federation, experiment, site_key)
 
@@ -211,8 +253,8 @@ def generate_bundle(
     docs_root = partner_docs_root()
     if not docs_root.is_dir():
         raise RuntimeError(
-            f"{docs_root} does not exist. Partner documents are not packaged, so bundle "
-            "generation only works from a source checkout of the repository."
+            f"{docs_root} does not exist. Partner documents are missing from this installation. "
+            "Reinstall the complete suite wheel."
         )
 
     written: list[Path] = []
@@ -235,6 +277,14 @@ def generate_bundle(
         target = destination / name
         target.write_text(rendered, encoding="utf-8")
         written.append(target)
+
+    onboarding_doc = docs_root / "onboarding.md"
+    _assert_inside_partner_docs(onboarding_doc)
+    onboarding_target = destination / "0-onboarding.md"
+    onboarding_text = _render(onboarding_doc.read_text(encoding="utf-8"), context)
+    _check_no_placeholders_remain(onboarding_text, onboarding_doc)
+    onboarding_target.write_text(onboarding_text, encoding="utf-8")
+    written.append(onboarding_target)
 
     # -- 2. their client config block --------------------------------------
     config_path = destination / "your-config-block.yaml"
@@ -265,29 +315,29 @@ def generate_bundle(
         written.append(request_path)
 
     # -- 3. their identity mapping, ready to install -----------------------
+    # The same text Part 1 shows them, byte for byte -- see render_context().
     mapping_path = destination / "example_identity_mapping_config.json"
-    mapping = build_mapping_document(
-        identity_match=context["coordinator_identity_match"],
-        output_account=context["service_account"],
-    )
-    mapping_path.write_text(json.dumps(mapping, indent=2) + "\n", encoding="utf-8")
+    mapping_path.write_text(context["identity_mapping"], encoding="utf-8")
     written.append(mapping_path)
 
     # -- 4. their endpoint template, with their scheduler filled in --------
-    template_source = repo_root() / "partners" / "templates" / "user_config_template.yaml.j2"
-    if template_source.is_file():
-        target = destination / "user_config_template.yaml.j2"
-        target.write_text(
-            _render(template_source.read_text(encoding="utf-8"), context), encoding="utf-8"
-        )
-        written.append(target)
+    # The same text Part 1 shows them, byte for byte -- see render_context().
+    target = destination / "user_config_template.yaml.j2"
+    target.write_text(context["worker_template"], encoding="utf-8")
+    written.append(target)
 
     # -- 5. the validator, so they can check their own mapping -------------
     validator = repo_root() / "partners" / "templates" / "validate_mapping.py"
+    if not validator.is_file():
+        validator = Path(__file__).parents[1] / "resources/templates/validate_mapping.py"
     if validator.is_file():
         target = destination / "validate_mapping.py"
         shutil.copy2(validator, target)
         written.append(target)
+
+    from appfl_bio_suite.core.onboarding import write_specification
+
+    written.extend(write_specification(destination, context, federation, block))
 
     # -- 6. a manifest, so a stale bundle is detectable --------------------
     # A partner working from an outdated copy has already cost this project real time.

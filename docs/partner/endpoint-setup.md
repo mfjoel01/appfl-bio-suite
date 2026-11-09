@@ -8,12 +8,14 @@ one Globus identity; no secret is shared, and you never run the experiment yours
 **This is an admin task.** You need privileged (root) access on a login node, a scheduler
 account and {{ scheduler_slot }}, and `conda`.
 
-Everything you need is in this document. Nothing is sent separately.
+Everything you need is in this bundle: this guide, Part 2, and the files they name. Nothing
+is sent separately.
 
 > **Already run another Globus Compute MEP on this cluster?** Your account, cluster and
-> conda work carries over, but do **not** reuse that endpoint. Build a separate one
-> (`{{ endpoint_name }}` with service account `{{ service_account }}`) so the two stay
-> independent, with separate scheduler accounting.
+> conda installation carry over, but do **not** reuse that endpoint or its environment.
+> Build a separate one (`{{ endpoint_name }}` with service account `{{ service_account }}`,
+> running in environment `{{ conda_env }}`) so the two stay independent, with separate
+> scheduler accounting.
 
 This is Part 1 of 2 and is the same for every experiment. Part 2 covers what differs for
 yours.
@@ -35,19 +37,33 @@ yours.
 
 ## Step 1 — Get the software
 
+Create a conda environment named **`{{ conda_env }}`**:
+
 ```bash
-python -m venv ~/appfl-env       # or: conda create -n appfl_env python=3.12 -y
-source ~/appfl-env/bin/activate  # or: conda activate appfl_env
-python -V                        # must print 3.12.x
+conda create -n {{ conda_env }} python={{ python_version }} -y
+conda activate {{ conda_env }}
+python -V                        # must print {{ python_version }}.x
 ```
+
+Use exactly that name, and create it in a conda installation that `{{ service_account }}`
+(Step 3) also uses. The worker template in Step 4c activates it by that name, as that
+account, on a compute node. An environment the account cannot see does not fail here —
+your workers just never start. If an environment called `{{ conda_env }}` already exists
+on your cluster from an earlier project, do not reuse or replace it; tell us, and we will
+give this one a different name.
 
 Python must be **{{ python_version }}**. We ship function bytecode between machines, and
 bytecode is only portable within a minor version — a mismatch fails before any of your
 code runs. The patch level does not need to match ours.
 
 ```bash
-pip install "{{ install_spec }}"
+pip install --extra-index-url https://download.pytorch.org/whl/cpu \
+    "{{ install_spec }}"
 ```
+
+The extra index gives you the CPU-only build of PyTorch. Everything this federation runs
+on your cluster runs on CPU, and the default build adds about 3 GB of GPU libraries to the
+download that would never be used. Every version is otherwise identical.
 
 The suite is installed from a git tag, not from PyPI. Every site in this federation
 installs that same tag, so every site is running identical source. Please do not
@@ -80,11 +96,18 @@ you work around it.
 
 Create a local POSIX account named **`{{ service_account }}`**. It must be able to:
 
-- activate the environment from Step 1
+- activate `{{ conda_env }}` from Step 1
 - submit {{ scheduler }} jobs
 - read and write `{{ output_dir }}`
 
-Every task we send runs as this account and nothing else.
+Every task we send runs as this account and nothing else. Check the first of these the
+way your workers will do it:
+
+```bash
+sudo -iu {{ service_account }} bash -lc '{% if conda_module %}module load {{ conda_module }} && {% endif %}source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate {{ conda_env }} && python -V'
+```
+
+It must print Python {{ python_version }}.x.
 
 ## Step 4 — Configure the endpoint
 
@@ -113,18 +136,7 @@ Replace the entire contents of the file that `identity_mapping_config_path` name
 included it pre-filled as `example_identity_mapping_config.json` in this bundle.
 
 ```json
-[
-  {
-    "DATA_TYPE": "expression_identity_mapping#1.0.0",
-    "mappings": [
-      {
-        "source": "{username}",
-        "match": "{{ coordinator_identity_match }}",
-        "output": "{{ service_account }}"
-      }
-    ]
-  }
-]
+{{ identity_mapping | trim }}
 ```
 
 This says: *if the submitter is `{{ coordinator_identity }}`, run the task as
@@ -138,54 +150,38 @@ accepted.
 >
 > `match` is **not** a normal regular expression. The Globus expression mapper *escapes*
 > any `^` or `$` you write, turning them into literal characters, and then wraps your
-> pattern in its own `^...$`. So writing `"^{{ coordinator_identity_match }}$"` compiles
-> to a pattern that matches only a literal string beginning with a caret — it can never
-> match anything, and every submission is rejected with
+> pattern in its own `^...$`. So anchoring the pattern as `^{{ coordinator_identity_match }}$`
+> compiles to a pattern that matches only a literal string beginning with a caret — it
+> can never match anything, and every submission is rejected with
 > `422 SEMANTICALLY_INVALID … Identity failed to map to a local user name`.
 >
 > The unanchored form above is still an exact whole-string match, because the mapper adds
 > the anchors for you. Omitting them is not a loosening.
 >
 > Keep the backslash before each `.` — it escapes the dot so it matches only a literal
-> dot. Do **not** escape anything else: the mapper accepts only a small set of escapes
-> and rejects the whole file if it sees one it does not recognize.
+> dot. In the JSON file it is written doubled, `\\.`, because JSON itself needs a
+> backslash escaped; a single `\.` is invalid JSON. Do **not** escape anything else: the
+> mapper accepts only a small set of escapes and rejects the whole file if it sees one it
+> does not recognize.
 
 The endpoint **polls this file** and picks up changes within about five seconds. A restart
 is not required after editing it.
 
 ### 4c — the worker template
 
-Edit `user_config_template.yaml.j2`. We have included a pre-filled copy in this bundle;
-check the account and {{ scheduler_slot }} are right for you and use it as-is.
+Install the pre-filled `user_config_template.yaml.j2` from this bundle as
+`~/.globus_compute/{{ endpoint_name }}/user_config_template.yaml.j2`, replacing the one
+`configure` wrote. This is its full content:
 
 ```yaml
-engine:
-  type: GlobusComputeEngine
-  max_workers_per_node: 1
-  strategy: simple
-  provider:
-    type: {{ provider_type }}
-    account: {{ account }}
-    {{ scheduler_slot }}: {{ scheduler_slot_value }}
-    nodes_per_block: 1
-    init_blocks: 0
-    min_blocks: 0
-    max_blocks: 1
-    walltime: 00:30:00
-    launcher:
-      type: {{ launcher_type }}
-    worker_init: |
-      module load {{ conda_module }}
-      source "$(conda info --base)/etc/profile.d/conda.sh"
-      conda activate appfl_env
-      export TMPDIR=/tmp
-      export OPENBLAS_NUM_THREADS=1
-      export OMP_NUM_THREADS=1
-      export MKL_NUM_THREADS=1
-idle_heartbeats_soft: 0
-idle_heartbeats_hard: 5760
+{{ worker_template | trim }}
 ```
-
+{% if not account or not scheduler_slot_value %}
+**Replace each `REPLACE_WITH_` value** with your own {{ scheduler }} account and
+{{ scheduler_slot }} — we do not know them from here. Leave nothing else changed.
+{% else %}
+Check that the account and {{ scheduler_slot }} are the ones you want to use.
+{% endif %}
 Every line in `worker_init` prevents a specific failure we have already hit. Please keep
 all of them:
 

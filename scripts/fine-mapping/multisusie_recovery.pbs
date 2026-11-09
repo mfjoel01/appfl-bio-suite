@@ -1,0 +1,11 @@
+#!/bin/bash
+set -euo pipefail
+: "${FM_ROOT:?}" "${FM_PYTHON:?}" "${FM_RECOVERY:?}" "${FM_PHASE:?}"
+export PYTHONPATH="${FM_ROOT}/code/src"
+export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMBA_NUM_THREADS=1
+exec > "${FM_RECOVERY}/logs/${FM_PHASE}.${PBS_JOBID}.log" 2>&1
+stage=run
+if [[ "$FM_PHASE" == diagnostic ]]; then stage=diagnostic; fi
+"${FM_PYTHON}" "${FM_RECOVERY}/recover_multisusie.py" "$stage" \
+ --root "$FM_ROOT" --recovery "$FM_RECOVERY" --phase "$FM_PHASE" \
+ --workers "${FM_WORKERS:-2}" --index "${PBS_ARRAY_INDEX:-0}"

@@ -47,7 +47,9 @@ The viewer opens in the familiar **Flat map** view. Switch to **Globe** for a ro
 drag to turn it, zoom to look closer, and select a site to inspect its details. You can
 pause rotation. Arrow keys rotate the focused globe, `+` and `-` zoom, `Space` toggles
 rotation, and `Home` resets the view. Rotation starts paused when your browser requests
-reduced motion. Both views use the same sites and experiment selection.
+reduced motion. Both views use the same sites and experiment selection, and switching
+between them keeps your place: the other view opens on the same part of the world, at about
+the same zoom.
 The theme button also changes the globe: light mode uses pale oceans, mint land,
 and a bright sky, while dark mode retains the night palette.
 
@@ -55,7 +57,8 @@ Two query parameters let an embedding page open the viewer already matching itse
 rather than flashing the default and then being corrected: `?view=globe` starts on the
 globe instead of the flat map, and `?theme=light` starts in the light palette. Neither is
 remembered -- the viewer's own controls own the state from there on -- and any other
-value keeps the default. The project site's embed uses both.
+value keeps the default. The project site's embed and its full-screen links use both, so
+the viewer opens in the site's current theme.
 
 The header carries the suite logo and, on the right, a **BUILT ON** credit linking to
 [hivewatch](https://github.com/APPFL/hivewatch) and [APPFL](https://github.com/APPFL/APPFL).
@@ -108,13 +111,18 @@ Each partner has a stable `id`, `name`, `country`, `projects` array and `stage`.
 Optional fields are `contacts`, `notes`, `location`, `location_basis`, and `source_url`.
 Use the existing federation site id to enrich that site without duplicating it;
 the federation's sample counts, coordinates and endpoint status stay authoritative.
+Use the suite's experiment names (`gwas`, `fine-mapping`, `flamby-heart-disease`,
+`methylation`) in `projects`. A different spelling of the same experiment shows up
+as a second filter.
 New partners have no declared sample count or compute endpoint. A planning stage
 does not imply that an experiment is running. Use `location: null` for an unresolved
 location, or document a representative institutional marker with its source.
 
 Each results group names an `experiment`, `title`, optional `description`, and an
 `artifacts` array of `{ "title": "...", "path": "..." }` objects. Artifact descriptions
-are optional. Supported files are PNG, JPEG, WebP, CSV, TSV and HTML, up to 16 MiB each.
+are optional. Figures sit two or three to a row; `"wide": true` gives one the full
+width, which tables and reports always have. Supported files are PNG, JPEG, WebP, CSV,
+TSV and HTML, up to 16 MiB each.
 Tables preview the first 200 rows; search and sorting apply to that preview, while
 downloads contain the complete file. HTML report scripts are disabled in the viewer.
 For interactive report content, publish a static figure or table alongside the report.
@@ -151,13 +159,14 @@ python -m http.server -d site/ 8000     # preview it first
 A plain `file://` open will not work: the page fetches its data from alongside itself, and
 browsers refuse that for local files. Any static server does.
 
-This repository does exactly that for a fictional federation. `scripts/build_site.sh`
-exports `website/demo-federation.yaml` -- twenty invented institutions on six continents
--- and `.github/workflows/pages.yml` runs that script on every push to `main`, publishing
+This repository does exactly that for its own partners. `scripts/build_site.sh`
+exports `website/federation.yaml` with the catalogue `website/partners.json` -- each
+partner reduced to institution, country, a representative location and partnership
+stage -- and `.github/workflows/pages.yml` runs that script on every push to `main`, publishing
 the result at <https://mfjoel01.github.io/appfl-bio-suite/network.html>. Run the same
 script to preview locally.
 
-The fictional configs are the only ones the build is ever given:
+The committed configs are the only ones the build is ever given:
 `scripts/check_site_preview.py` fails it if the published metadata was assembled from
 anything else, or carries a contact block or an email address. A partner's address
 published to a public URL is not undone by deleting the page afterwards.
@@ -204,8 +213,21 @@ sites:
       city: Toronto
 ```
 
-The coordinator gets one too, under `coordinator:`. It becomes the hub every partner
-marker connects back to.
+The coordinator is a site too. Declare your institution under `sites:` like any other,
+with its `location`, and name it with `coordinator.site`:
+
+```yaml
+coordinator:
+  identity: a.researcher@example-university.edu
+  site: example-university
+```
+
+That site's marker is drawn with a gold diamond around it and a gold **Coordinator**
+label on its card, its details pane and its hover tooltip. Every other marker connects
+back to it, and it stays on the map under every experiment filter. Listing your site
+under `sites:` does not make it train; it trains only where an experiment lists it.
+A config written before `coordinator.site` existed still loads unchanged. Its
+`coordinator.location` is read as naming the site within about 1 km of it.
 
 hivewatch's own examples resolve each client's location by calling `ipinfo.io` from the
 client. That is a good default for a laptop demo and wrong here in three separate ways: a

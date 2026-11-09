@@ -6,7 +6,14 @@ Cross-silo **federated learning experiments in computational biology**, built on
 [Globus Compute](https://www.globus.org/compute).
 
 Institutions train on their own data, on their own hardware, and return only results.
-No data movement, no shared credential, no VPN, no inbound network access.
+The standard multi-user deployment uses individual identities, with no shared credential,
+VPN, or inbound network access.
+
+> **Experimental: single-user service-account onboarding.** An opt-in prototype uses one service
+> identity per site, with credentials held by that site and the coordinator. It is not
+> yet the default or a production-ready replacement for multi-user endpoints.
+> See the [trial guide](docs/coordinator/service-account-trial.md) and
+> [design evaluation](docs/coordinator/endpoint-sharing-evaluation.md).
 
 **→ [mfjoel01.github.io/appfl-bio-suite](https://mfjoel01.github.io/appfl-bio-suite/)** —
 the project site, with a live preview of the [federation network
@@ -24,11 +31,29 @@ map](https://mfjoel01.github.io/appfl-bio-suite/network.html).
 
 ## The experiments
 
+Fine-mapping also has a completed optional
+[MultiSuSiE coordinator pipeline](docs/experiments/fine-mapping/MULTISUSIE.md) and
+[matched-filter comparison against SuSiEx](docs/experiments/fine-mapping/MATCHED_RESULTS.md).
+Use `run fine-mapping --backend susiex` or `--backend multisusie` with either the
+local or remote driver; `--results-dir` keeps their outputs separate.
+The [comparison report and figures](docs/experiments/fine-mapping/COMPARISON_FIGURES.md)
+cover both methods across cohorts and filter policies.
+
+
+Four experiments, one toolchain. The first three dispatch to partner sites; the fourth is
+in development.
+
 | | What it is | Data |
 | --- | --- | --- |
 | **[FLamby Fed-Heart-Disease](docs/experiments/flamby-heart-disease/ABOUT.md)** | Multi-round FedAvg on a public tabular benchmark with natural hospital splits | Partners download it; ~40 KB, CC BY 4.0 |
 | **[Federated GWAS](docs/experiments/gwas/ABOUT.md)** | Single-round summary-statistic meta-analysis with polygenic-score evaluation | Simulated and distributed by the coordinator |
 | **[Federated fine-mapping](docs/experiments/fine-mapping/ABOUT.md)** | Single-round cross-ancestry credible-set construction from per-site second moments — provably equal to a pooled fit, not an approximation of one. Governed by [GA4GH DUO, DRS, TRS and TES](docs/coordinator/ga4gh.md) | Simulated and distributed by the coordinator |
+| **[Federated methylation](docs/experiments/methylation/ABOUT.md)** · *work in progress* | Multi-round FedAvg for methylation-based subtype classification on sparse, nanopore-like input, against pooled and local-only training. Currently a single-machine simulation | Synthetic, or open TCGA-LAML methylation data from the NCI GDC |
+
+**Federated methylation is a work in progress.** All of its sites are simulated in one
+process today, so there is no partner bundle or endpoint for it yet. Its results so far,
+including one real-data run, are recorded as measured in its
+[record of runs](docs/experiments/methylation/ABOUT.md#record-of-runs).
 
 ## Quickstart
 
@@ -206,3 +231,5 @@ inbound network access.
 
 MIT. See [LICENSE](LICENSE) — and note the third-party terms recorded there for APPFL,
 FLamby, and PGS Catalog data.
+
+For automated partner setup, see [bundle-based onboarding](docs/coordinator/onboarding.md).
