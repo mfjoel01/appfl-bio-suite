@@ -75,6 +75,8 @@ centralized paths fine-map slightly different variant sets and the exactness gua
 longer bites -- which is why the number is reported rather than silently absorbed.
 """
 
+import hashlib
+import hmac
 import json
 import os
 
@@ -308,6 +310,124 @@ def harmonize_bim(bim, reference, site_id):
             f"list at all, e.g. {bad[0]}: not a strand or order swap."
         )
     return bim.assign(a1=r1, a2=r2), flip
+
+
+# Fixed-point values are summed in Z/(2**64); int64 tensors preserve the wire bits.
+SECURE_SCALE = 2**20
+
+
+def secure_config(config):
+    """Validate the public, fixed-roster protocol configuration."""
+    config = dict(config)
+    if set(config) - {"run_id", "participants", "protocol", "scale"}:
+        raise ValueError("secure aggregation config accepts public protocol fields only")
+    if config.get("protocol") in ("appfl", "appfl-native"):
+        raise ValueError(
+            "APPFL native secure aggregation casts moments to float32 and uses "
+            "unit-scale Gaussian masks; it cannot preserve this protocol's "
+            "precision and moment-hiding guarantees. Use pairwise-u64-v1."
+        )
+    if config.get("protocol", "pairwise-u64-v1") != "pairwise-u64-v1":
+        raise ValueError("unsupported secure aggregation protocol")
+    if config.get("scale", SECURE_SCALE) != SECURE_SCALE:
+        raise ValueError("unsupported secure aggregation scale")
+    participants = list(config.get("participants", []))
+    if (
+        len(participants) < 2
+        or any(not isinstance(p, str) or not p for p in participants)
+        or len(set(participants)) != len(participants)
+    ):
+        raise ValueError("secure aggregation requires at least two distinct participants")
+    run_id = config.get("run_id")
+    if not isinstance(run_id, str) or not run_id.strip():
+        raise ValueError("secure aggregation requires a unique nonempty run_id")
+    return {
+        "protocol": "pairwise-u64-v1",
+        "run_id": run_id,
+        "participants": sorted(participants),
+        "scale": SECURE_SCALE,
+    }
+
+
+def secure_layout(manifest, payload):
+    """Public tensor schema, including ordered alleles, bound into every mask."""
+    blocks = {}
+    for kind in ("geno_blocks", "pheno_blocks"):
+        blocks[kind] = [
+            {k: v for k, v in b.items() if k not in ("n", "n_incomplete_variants")}
+            for b in manifest[kind]
+        ]
+    blocks["loci"] = manifest["loci"]
+    blocks["tensors"] = {k: list(v.shape) for k, v in sorted(payload.items()) if k != KEY_MANIFEST}
+    return hashlib.sha256(json.dumps(blocks, sort_keys=True).encode()).hexdigest()
+
+
+def mask_moments(payload, manifest, client_id, config, secrets):
+    """Mask each moment using independently provisioned pairwise 256-bit keys.
+
+    This helper stays in the shipped module: workers need no suite installation.
+    Sample counts and manifest metadata intentionally remain public.
+    """
+    public = secure_config(config)
+    peers = set(public["participants"]) - {client_id}
+    if client_id not in public["participants"] or set(secrets) != peers:
+        raise ValueError("secure aggregation peer keys do not match the fixed roster")
+    layout = secure_layout(manifest, payload)
+    context = json.dumps([public, layout], sort_keys=True).encode()
+    keys = {}
+    confirmations = {}
+    for peer, value in secrets.items():
+        key = bytes.fromhex(value)
+        if len(key) != 32:
+            raise ValueError("secure aggregation pairwise keys must contain 32 random bytes")
+        pair = json.dumps(sorted([client_id, peer])).encode()
+        keys[peer] = hmac.digest(key, context + pair, "sha256")
+        confirmations[peer] = hmac.digest(keys[peer], b"confirmation", "sha256").hex()
+    masked = {}
+    for name, tensor in payload.items():
+        if name == KEY_MANIFEST:
+            continue
+        values = tensor.detach().cpu().numpy().astype(np.float64)
+        scaled = np.rint(values * SECURE_SCALE)
+        if (
+            not np.isfinite(scaled).all()
+            or (np.abs(scaled) >= 2**62 // len(public["participants"])).any()
+        ):
+            raise ValueError("secure aggregation moment exceeds the fixed-point range")
+        encoded = scaled.astype(np.int64).view(np.uint64)
+        for peer, key in keys.items():
+            seed = hmac.digest(key, name.encode(), "sha256")
+            mask = np.frombuffer(
+                hashlib.shake_256(seed).digest(encoded.size * 8), dtype="<u8"
+            ).reshape(encoded.shape)
+            if client_id < peer:
+                encoded = encoded + mask
+            else:
+                encoded = encoded - mask
+        masked[name] = torch.from_numpy(encoded.view(np.int64).copy())
+    manifest["secure_aggregation"] = {**public, "layout": layout, "confirmations": confirmations}
+    masked[KEY_MANIFEST] = torch.frombuffer(
+        bytearray(json.dumps(manifest).encode()), dtype=torch.uint8
+    )
+    return masked
+
+
+def mask_site_payload(payload, client_id, config):
+    """Read site-local keys, pin the request, and prevent reuse of that key file."""
+    key_path = Path(os.environ["APPFL_FINEMAP_SECAGG_KEYS"])
+    local = json.loads(key_path.read_text())
+    public = secure_config(config)
+    if (
+        local.get("client_id") != client_id
+        or local.get("run_id") != public["run_id"]
+        or sorted(local.get("participants", [])) != public["participants"]
+    ):
+        raise ValueError("secure aggregation request disagrees with site-local authorization")
+    manifest = json.loads(payload[KEY_MANIFEST].numpy().tobytes())
+    # Fail closed on retries: a fresh run needs a fresh authorization/key file.
+    with Path(str(key_path) + ".used").open("x") as marker:
+        marker.write(public["run_id"])
+    return mask_moments(payload, manifest, client_id, config, local["keys"])
 
 
 class SiteFineMappingTrainer(BaseTrainer):
@@ -662,6 +782,10 @@ class SiteFineMappingTrainer(BaseTrainer):
 
         # THE ONLY THING THAT LEAVES THIS SITE.
         payload[KEY_MANIFEST] = torch.frombuffer(bytearray(manifest_blob), dtype=torch.uint8)
+        if self.train_configs.get("secure_aggregation") is not None:
+            payload = mask_site_payload(
+                payload, self.client_id, self.train_configs["secure_aggregation"]
+            )
         self.model_state = payload
 
         uplink_mb = sum(t.numel() * t.element_size() for t in payload.values()) / (1024 * 1024)

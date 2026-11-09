@@ -30,8 +30,9 @@ frequency variation before the coordinator can see it. That is the one real trap
 design; algo.md A.10 gives the worked example where it produces 0.866 against a truth of
 0.816, and ``tests/test_fine_mapping_federated.py`` pins that number.
 
-Privacy is out of scope: the genotypes are synthetic, so aggregates ship in the clear.
-No secure aggregation, no differential privacy. See DATA.md.
+Moment transport is plaintext by default. Optional fixed-roster integer masked sums
+hide individual site moments from the coordinator; see SECURE_AGGREGATION.md for the
+threat model and matching-layout requirements. No differential privacy is provided.
 
 MODULE ROLES, which differ in a way that matters
 ------------------------------------------------

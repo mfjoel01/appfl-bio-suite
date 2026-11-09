@@ -591,6 +591,7 @@ class Experiment(_Strict):
     locus_limit: int | None = None
     instance_limit: int | None = None
     pops: list[str] | None = None
+    secure_aggregation: dict[str, Any] | None = None
     uplink_gram_dtype: Literal["float64", "float32"] | None = None
 
     # Coordinator-side. The ground-truth causal variants, for scoring a simulated run;

@@ -20,6 +20,10 @@ The same choice can be overridden per run with `--backend susiex|multisusie`;
 use `--results-dir` to keep the two runs separate.
 See [MultiSuSiE configuration and outputs](MULTISUSIE.md#select-multisusie-for-an-appfl-federation).
 
+For optional masking of site moments with either inference backend, see
+[secure aggregation](SECURE_AGGREGATION.md). It requires a fixed roster, matching
+ancestry/variant blocks, and worker-local pairwise keys.
+
 ## 1. Make a data package
 
 ```bash

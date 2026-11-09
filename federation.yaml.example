@@ -380,6 +380,13 @@ experiments:
     # uplink; float64 is the conservative default.
     uplink_gram_dtype: float64
 
+    # Optional masked sums for either backend; keys stay in worker environments.
+    # Every site must hold matching ancestry/variant blocks.
+    # See docs/experiments/fine-mapping/SECURE_AGGREGATION.md.
+    # secure_aggregation:
+    #   run_id: "fresh-random-id-for-each-shard-and-attempt"
+    #   participants: [anl, covenant, mbzuai]
+
     # ---- coordinator-side settings ----
     #
     # The ground-truth causal variants. Present only because this example describes a

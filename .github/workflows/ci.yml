@@ -141,3 +141,6 @@ jobs:
 
       - name: MultiSuSiE APPFL payload parity and backend selection
         run: pytest tests/test_fine_mapping_multisusie_appfl.py -v
+
+      - name: Secure pooling preserves both inference backends
+        run: pytest tests/test_fine_mapping_secure_aggregation.py tests/test_fine_mapping_secure_backends.py -v

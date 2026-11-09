@@ -42,6 +42,9 @@ client_configs:
     # while the port is young.
     uplink_gram_dtype: float64
 
+    # Optional secure_aggregation is populated from federation.yaml for both roles.
+    # See docs/experiments/fine-mapping/SECURE_AGGREGATION.md; keys stay worker-local.
+
   data_readiness_configs:
     generate_dr_report: false
 

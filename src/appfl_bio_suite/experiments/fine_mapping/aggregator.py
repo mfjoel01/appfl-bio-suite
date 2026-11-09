@@ -221,12 +221,26 @@ class FineMappingAggregator(BaseAggregator):
 
     # -- decoding ----------------------------------------------------------
 
-    def _decode(self, client_ids, local_models):
+    def _decode(self, client_ids, local_models, *, _pooled=False):
         """Turn the flat tensor payloads back into the aggregate objects.
 
         Returns ``(geno_by_locus, pheno_by_instance, loci, site_manifests)``, keyed so
         that the pooling below never has to search.
         """
+        if not _pooled:
+            from appfl_bio_suite.experiments.fine_mapping.secure_aggregation import (
+                pool_secure_payloads,
+            )
+
+            pooled, original_manifests = pool_secure_payloads(
+                local_models, self.aggregator_configs.get("secure_aggregation")
+            )
+            if pooled is not None:
+                geno, pheno, loci, _ = self._decode(
+                    ["secure-pooled"], {"secure-pooled": pooled}, _pooled=True
+                )
+                return geno, pheno, loci, original_manifests
+
         geno_by_locus: dict[str, list[GenoAggregate]] = {}
         pheno_by_instance: dict[str, dict[str, list[PhenoAggregate]]] = {}
         loci: dict[str, pd.Series] = {}
@@ -460,6 +474,15 @@ class FineMappingAggregator(BaseAggregator):
                 shutil.rmtree(locus_dir, ignore_errors=True)
 
         from appfl_bio_suite.experiments.fine_mapping.backend_outputs import result_table
+
+        if self.aggregator_configs.get("secure_aggregation") is not None:
+            from appfl_bio_suite.experiments.fine_mapping.trainer import secure_config
+
+            (self.data_dir / "secure_aggregation.json").write_text(
+                json.dumps(secure_config(self.aggregator_configs["secure_aggregation"]), indent=2)
+                + "\n",
+                encoding="utf-8",
+            )
 
         results = result_table(rows, self.backend, pops, truth_map)
         self._write_outputs(results, client_ids, manifests)

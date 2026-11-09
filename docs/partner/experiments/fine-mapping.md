@@ -224,3 +224,11 @@ It reads a genomic region out of your genotype file and forms matrix products ov
 cohort, once per region. Long is normal; hours is worth telling us about.
 
 Contact: {{ coordinator_contact }}
+
+## Optional secure aggregation
+
+The coordinator can enable fixed-roster masked sums for either SuSiEx or MultiSuSiE.
+All sites must return matching ancestry/variant blocks. Provision the worker-local
+`APPFL_FINEMAP_SECAGG_KEYS` authorization file and use fresh authorization for every
+launch/retry; never send keys to the coordinator. See the
+[secure aggregation guide](../../experiments/fine-mapping/SECURE_AGGREGATION.md).
