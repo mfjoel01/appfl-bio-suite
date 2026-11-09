@@ -340,7 +340,8 @@ experiments:
   # producing a smaller cohort. See docs/experiments/fine-mapping/DATA.md.
   fine-mapping:
     # Coordinator backend; site payloads and partner dependencies are identical.
-    # Set multisusie after installing the coordinator extra .[multisusie].
+    # Set multisusie after installing the coordinator extra appfl-bio-suite[multisusie]
+    # and requirements-multisusie.txt (docs/experiments/fine-mapping/MULTISUSIE.md).
     fine_mapping_backend: susiex
     fine_mapping_output_dir: null  # or override per run with --results-dir
     multisusie_rho: 0.75

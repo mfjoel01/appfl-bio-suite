@@ -16,7 +16,7 @@
 This implementation is for review and controlled testing; these unchecked items are not completed
 by the local training tests below.
 
-This branch supports an opt-in coordinator route for distinct service accounts. The
+This release supports an opt-in coordinator route for distinct service accounts. The
 default multi-user flow remains available. The dashboard does not yet mint these
 accounts automatically.
 
@@ -39,14 +39,15 @@ scheduler-backed training test.
 
 ## Prepare the installations and endpoints
 
-The coordinator and both workers need Python 3.12 and the branch's pinned dependencies:
+The coordinator and both workers need Python 3.12 and the release's pinned dependencies:
 APPFL 1.10.0, Compute SDK/endpoint 4.9.0, Globus SDK 4.4.1, and Torch 2.8.0.
-Install the matching release from PyPI or use a checkout and its locally built wheel.
-For a checkout (see the [tracked setup examples](../../examples/service-account-trial/)
-for cloning, a virtual environment, and the CPU installation variant):
+Install the same release from PyPI on every machine (the
+[tracked setup examples](../../examples/service-account-trial/) cover the virtual
+environment, the coordinator's example files, and the CPU installation variant):
 
 ```bash
-python -m pip install -e . -c constraints.txt
+python -m pip install "appfl-bio-suite==0.3.0" \
+    -c https://raw.githubusercontent.com/mfjoel01/appfl-bio-suite/v0.3.0/constraints.txt
 ```
 
 The synthetic trial below requires no cohort download or experiment data staging.

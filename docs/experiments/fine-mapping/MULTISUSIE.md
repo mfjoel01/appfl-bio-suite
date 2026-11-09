@@ -104,11 +104,18 @@ The full matched-filter study remains the appropriate comparison for estimator c
 
 ## Select MultiSuSiE for an APPFL federation
 
-Install the optional backend on the coordinator from this checkout:
+Install the release from PyPI with the optional backend on the coordinator. MultiSuSiE
+itself is pinned to its validated upstream commit in `requirements-multisusie.txt`,
+because PyPI metadata cannot carry a Git dependency:
 
 ```bash
-python -m pip install '.[multisusie]' -r requirements-multisusie.txt
+python -m pip install "appfl-bio-suite[multisusie]==0.3.0" \
+    -r https://raw.githubusercontent.com/mfjoel01/appfl-bio-suite/v0.3.0/requirements-multisusie.txt \
+    -c https://raw.githubusercontent.com/mfjoel01/appfl-bio-suite/v0.3.0/constraints.txt
 ```
+
+From a checkout of the `v0.3.0` tag, the same files are local:
+`-r requirements-multisusie.txt -c constraints.txt`.
 
 Set these fields in your existing federation YAML (keep your site/endpoint settings):
 
@@ -165,10 +172,12 @@ documentation regression checks also passed.
 
 ## Run a pilot
 
-Install into a coordinator environment with Python 3.12:
+The pilot, comparison and batch commands below run from a source checkout (`src/`,
+`tests/` and `scripts/` are not in the wheel). From a checkout of the `v0.3.0` tag,
+install into a coordinator environment with Python 3.12:
 
 ```bash
-python -m pip install '.[multisusie]' -r requirements-multisusie.txt
+python -m pip install '.[multisusie]' -r requirements-multisusie.txt -c constraints.txt
 ```
 
 Use an existing **synthetic** simulation's `pipeline_config.yaml`. The standalone pilot

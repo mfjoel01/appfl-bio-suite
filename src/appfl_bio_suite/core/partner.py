@@ -92,7 +92,7 @@ def render_context(federation: Federation, experiment: str, site_key: str) -> di
     Deliberately flat and fully resolved: a template that has to compute anything is a
     template that can compute it wrong.
     """
-    from appfl_bio_suite import install_spec
+    from appfl_bio_suite import __version__, install_spec
 
     spec = get_spec(experiment)
     exp = federation.experiment(experiment)
@@ -117,6 +117,7 @@ def render_context(federation: Federation, experiment: str, site_key: str) -> di
         # The full pip requirement, resolved here rather than assembled in the template.
         # A partner copy-pastes this line; it must not be something they compose.
         "install_spec": install_spec(",".join(spec.partner_extras)),
+        "suite_version": __version__,
         "service_account": exp.service_account_for(entry),
         "endpoint_name": exp.endpoint_name,
         "conda_env": exp.conda_env,

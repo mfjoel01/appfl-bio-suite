@@ -5,11 +5,15 @@ no endpoint and no federation file.
 
 ## Before you start
 
-Python 3.12, from a clone of this repository:
+Python 3.12, with the release installed from PyPI:
 
 ```bash
-pip install -e ".[methylation]" -c constraints.txt
+pip install "appfl-bio-suite[methylation]==0.3.0" \
+    -c https://raw.githubusercontent.com/mfjoel01/appfl-bio-suite/v0.3.0/constraints.txt
 ```
+
+Every command below runs from that install. Only the tests at the end need a clone of
+the repository; there, use `pip install -e ".[methylation,dev]" -c constraints.txt`.
 
 A CPU is enough. Each run writes into a new directory and refuses to overwrite one, so
 give every command a fresh `--out-dir`.
@@ -36,8 +40,9 @@ the federated-minus-centralized gap and the federated-minus-local gain for each 
 
 `--config` takes a packaged scenario name — `ci-tiny`, `poc`, `stress`, `tcga-laml`,
 `uneven` or `uneven-curves`; see [ABOUT.md](ABOUT.md#configurations) — or a path to a YAML file of
-`RunConfig` fields. Copy a packaged file from
-`src/appfl_bio_suite/experiments/methylation/configs/` to start one. An
+`RunConfig` fields. Copy a packaged file from the installed package's
+`appfl_bio_suite/experiments/methylation/configs/` directory (under `src/` in a
+checkout) to start one. An
 unknown or misspelled field is rejected by name. `--dry-run` writes the resolved
 `config.json` without training.
 

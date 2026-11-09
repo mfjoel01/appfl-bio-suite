@@ -276,11 +276,12 @@ def _check_binaries(report: PreflightReport, experiment: str | None, federation=
         try:
             from MultiSuSiE.susiepy_ss import susie_multi_ss  # noqa: F401
         except ImportError:
+            from appfl_bio_suite import multisusie_install_hint
+
             report.add(
                 "MultiSuSiE backend",
                 Level.FAIL,
-                "Install the coordinator extra appfl-bio-suite[multisusie] and the backend "
-                "from requirements-multisusie.txt",
+                multisusie_install_hint(),
             )
         else:
             report.add(
@@ -421,12 +422,31 @@ def _satisfies_pin(installed: str, pinned: str) -> bool:
     return installed == pinned or ("+" not in pinned and installed.split("+", 1)[0] == pinned)
 
 
+def _suite_version() -> str:
+    from appfl_bio_suite import __version__
+
+    return __version__
+
+
+def _default_constraints(root: Path) -> Path:
+    """The working directory's constraints.txt, else the checkout's or the wheel's copy.
+
+    A PyPI install has no checkout, but its wheel carries the release's constraints.txt
+    (the same file partner bundles ship), so the pins can be checked with no clone.
+    """
+    from appfl_bio_suite.core.onboarding import constraints_path
+
+    candidate = root / "constraints.txt"
+    return candidate if candidate.is_file() else constraints_path()
+
+
 def _check_pins(report: PreflightReport, constraints: Path | None) -> None:
     if constraints is None or not constraints.is_file():
         report.add(
             "version pins",
             Level.SKIP,
-            "constraints.txt not found (are you running from a source checkout?)",
+            "constraints.txt not found in the working directory, the checkout, or the "
+            "installed package",
         )
         return
 
@@ -465,6 +485,8 @@ def _check_pins(report: PreflightReport, constraints: Path | None) -> None:
         "not fail at install time -- it fails as a deserialization error partway into a\n"
         "run on someone else's cluster.\n"
         "Reinstall with the constraints applied:\n"
+        f"    pip install 'appfl-bio-suite[all]=={_suite_version()}' -c {constraints}\n"
+        "or, from a source checkout:\n"
         "    pip install -e '.[all]' -c constraints.txt\n"
         "If a utility moved a pin (globus-cli is the usual culprit), install one-off\n"
         "tools in a throwaway venv instead of this environment.",
@@ -917,8 +939,7 @@ def run_preflight(
     report = PreflightReport()
     root = repo_root or Path.cwd()
     if constraints is None:
-        candidate = root / "constraints.txt"
-        constraints = candidate if candidate.is_file() else None
+        constraints = _default_constraints(root)
 
     want = {check} if check != "all" else {"env", "pins", "config", "data", "ga4gh", "endpoints"}
 

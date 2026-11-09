@@ -20,7 +20,7 @@ the single-user trial above remains separate.
 
 Read in this order:
 
-1. **[coordinator/new-federation.md](coordinator/new-federation.md)** — start here. Clone
+1. **[coordinator/new-federation.md](coordinator/new-federation.md)** — start here. Install
    to running experiment, assuming no prior contact with anyone who built this.
 2. [coordinator/architecture.md](coordinator/architecture.md) — how the pieces fit and why
    it is built this way.

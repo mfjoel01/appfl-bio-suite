@@ -58,6 +58,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
+from appfl_bio_suite import install_spec, release_file_url
 from appfl_bio_suite.core.config import Federation, Site
 from appfl_bio_suite.core.experiments import get_spec
 
@@ -104,7 +105,7 @@ _INSTALL_HINT = (
     "It is a coordinator-only extra -- the map is drawn on your machine from your\n"
     "federation config, and nothing about it reaches a partner:\n"
     "\n"
-    "    pip install 'appfl-bio-suite[watch]' -c constraints.txt"
+    f"    pip install '{install_spec('watch')}' -c {release_file_url('constraints.txt')}"
 )
 
 

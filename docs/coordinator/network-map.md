@@ -30,7 +30,7 @@ So the network view is built from `federation.yaml` alone. The day the config na
 partner, that partner is on the map.
 
 ```bash
-pip install 'appfl-bio-suite[watch]' -c constraints.txt
+pip install "appfl-bio-suite[watch]==0.3.0" -c constraints.txt
 
 appfl-bio-suite watch build          # draw it from federation.yaml
 appfl-bio-suite watch serve          # open http://localhost:7070
@@ -308,7 +308,7 @@ excluded when the data was generated.
 ## Troubleshooting
 
 **`hivewatch is not installed`** — it is a coordinator-only extra and never reaches a
-partner: `pip install 'appfl-bio-suite[watch]' -c constraints.txt`.
+partner: `pip install "appfl-bio-suite[watch]==0.3.0" -c constraints.txt`.
 
 **The map is empty and the sidebar says "Waiting for clients…"** — no participating site
 has coordinates. `watch build` names them and prints the YAML.
