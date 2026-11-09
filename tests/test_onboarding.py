@@ -10,6 +10,7 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
+import appfl_bio_suite
 from appfl_bio_suite.cli import main
 from appfl_bio_suite.core import onboarding as api
 from appfl_bio_suite.core.config import load_federation
@@ -294,10 +295,12 @@ def test_cli_init_preserves_local_file(bundle_dir, tmp_path):
 
 
 def test_wheel_transport_and_corruption(bundle_dir, tmp_path):
-    wheel = tmp_path / "appfl_bio_suite-0.2.1-py3-none-any.whl"
+    version = appfl_bio_suite.__version__
+    wheel = tmp_path / f"appfl_bio_suite-{version}-py3-none-any.whl"
     with zipfile.ZipFile(wheel, "w") as archive:
         archive.writestr(
-            "appfl_bio_suite-0.2.1.dist-info/METADATA", "Name: appfl-bio-suite\nVersion: 0.2.1\n"
+            f"appfl_bio_suite-{version}.dist-info/METADATA",
+            f"Name: appfl-bio-suite\nVersion: {version}\n",
         )
     api.attach_wheel(bundle_dir, wheel)
     bundle = api.read_bundle(bundle_dir)

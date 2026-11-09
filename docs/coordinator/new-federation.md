@@ -95,7 +95,7 @@ scripts/fine-mapping/install_susiex.sh     # SuSiEx    -> vendor/bin/
 
 Both are coordinator-side only; no partner is asked to install either.
 `appfl-bio-suite preflight --experiment fine-mapping` checks for them by default.
-For MultiSuSiE inference, install `.[multisusie]` on the coordinator and set
+For MultiSuSiE inference, install `.[multisusie]` and `-r requirements-multisusie.txt` on the coordinator and set
 `experiments.fine-mapping.fine_mapping_backend: multisusie` in your federation YAML.
 Preflight then checks that Python backend instead. Both backends consume the same
 partner payloads; see the [MultiSuSiE setup guide](../experiments/fine-mapping/MULTISUSIE.md).

@@ -41,8 +41,8 @@ scheduler-backed training test.
 
 The coordinator and both workers need Python 3.12 and the branch's pinned dependencies:
 APPFL 1.10.0, Compute SDK/endpoint 4.9.0, Globus SDK 4.4.1, and Torch 2.8.0.
-Install the trial branch from a checkout or its locally built wheel. This development
-work is not published on PyPI. For a checkout (see the [tracked setup examples](../../examples/service-account-trial/)
+Install the matching release from PyPI or use a checkout and its locally built wheel.
+For a checkout (see the [tracked setup examples](../../examples/service-account-trial/)
 for cloning, a virtual environment, and the CPU installation variant):
 
 ```bash

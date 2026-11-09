@@ -19,13 +19,12 @@ from pathlib import Path
 
 from appfl_bio_suite.core.compat import ensure_appfl_globus_compute_importable
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 # Where partners install from.
 #
-# NOT PyPI: this package is not published there, so the obvious
-# `pip install appfl-bio-suite` fails with "No matching distribution found" -- at a
-# partner site, on step one, before anyone has any context for what went wrong.
+# Release wheels are also published on PyPI. Generated partner bundles continue to
+# use an immutable Git tag so their existing installation contract stays consistent.
 #
 # A tag, not a branch. `main` moves, and a federation whose sites installed from `main`
 # on different days is running different code with no way to say which. Every site

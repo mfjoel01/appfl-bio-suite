@@ -57,8 +57,17 @@ including one real-data run, are recorded as measured in its
 
 ## Quickstart
 
+Python 3.12 is required. Install the released package from PyPI:
+
 ```bash
-git clone https://github.com/mfjoel01/appfl-bio-suite.git
+python -m pip install "appfl-bio-suite[all]==0.3.0"
+```
+
+For coordinator scripts, example federation files, and the pinned constraints, use
+the matching source checkout:
+
+```bash
+git clone --branch v0.3.0 https://github.com/mfjoel01/appfl-bio-suite.git
 cd appfl-bio-suite
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[all]" -c constraints.txt

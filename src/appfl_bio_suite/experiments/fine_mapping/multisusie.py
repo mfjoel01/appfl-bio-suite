@@ -138,7 +138,10 @@ def fit_multisusie(inputs: MomentInputs, options: MultiSuSiEOptions):
     try:
         from MultiSuSiE.susiepy_ss import susie_multi_ss
     except ImportError as exc:
-        raise ImportError("Install the coordinator extra appfl-bio-suite[multisusie]") from exc
+        raise ImportError(
+            "Install the coordinator extra appfl-bio-suite[multisusie] and the backend "
+            "from requirements-multisusie.txt"
+        ) from exc
     k = len(inputs.populations)
     rho = np.full((k, k), options.rho, dtype=np.float64)
     np.fill_diagonal(rho, 1.0)

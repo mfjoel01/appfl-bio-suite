@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "appfl-bio-suite"
-version = "0.2.1"
+version = "0.3.0"
 description = "Cross-silo federated learning experiments in computational biology, built on APPFL and Globus Compute"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -135,10 +135,10 @@ finemapping-sim = [
     "Jinja2>=3.1,<4",
 ]
 
-# Experimental coordinator backend; workers keep the existing finemapping extra.
+# Coordinator dependencies for MultiSuSiE; install the backend separately with
+# requirements-multisusie.txt (PyPI metadata cannot contain direct Git URLs).
 multisusie = [
     "appfl-bio-suite[finemapping-sim]",
-    "MultiSuSiE @ git+https://github.com/jordanero/MultiSuSiE.git@10351ebbbc0ed4c891c455000eb6ec7800d0b717",
 ]
 
 # COORDINATOR-ONLY, and for now everything the methylation experiment needs. It is a

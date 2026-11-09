@@ -1,0 +1,2 @@
+# Optional coordinator backend, pinned to the validated upstream revision.
+MultiSuSiE @ git+https://github.com/jordanero/MultiSuSiE.git@10351ebbbc0ed4c891c455000eb6ec7800d0b717
