@@ -2,8 +2,8 @@
 
 Single-round aggregate federated learning. Each site computes raw second-moment
 aggregates over its own individuals at a locus and returns only those; the coordinator
-sums them, standardizes once against the pooled moments, and runs SuSiEx. Genotypes and
-phenotypes never leave the site they originate from.
+sums them, standardizes once against the pooled moments, and runs SuSiEx or MultiSuSiE.
+Genotypes and phenotypes never leave the site they originate from.
 
 The claim this experiment makes is stronger than the GWAS experiment's. Inverse-variance
 meta-analysis *approximates* a pooled analysis under an assumption about the sites. This
@@ -30,8 +30,9 @@ frequency variation before the coordinator can see it. That is the one real trap
 design; algo.md A.10 gives the worked example where it produces 0.866 against a truth of
 0.816, and ``tests/test_fine_mapping_federated.py`` pins that number.
 
-Privacy is out of scope: the genotypes are synthetic, so aggregates ship in the clear.
-No secure aggregation, no differential privacy. See DATA.md.
+Moment transport is plaintext by default. Optional fixed-roster integer masked sums
+hide individual site moments from the coordinator; see SECURE_AGGREGATION.md for the
+threat model and matching-layout requirements. No differential privacy is provided.
 
 MODULE ROLES, which differ in a way that matters
 ------------------------------------------------

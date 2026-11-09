@@ -10,6 +10,12 @@ Three things you can run, in increasing order of what they need.
 | **Centralized baseline** | a data package | the reference fit, all data in one place |
 | **Federated** | a data package, or partners | the same fit, computed without pooling |
 
+For optional masking of site-level moments, see [secure aggregation](SECURE_AGGREGATION.md).
+It requires a fixed roster, matching ancestry/variant blocks, and worker-local pairwise keys.
+
+For the selectable SuSiEx and MultiSuSiE inference engines, installation and their
+output semantics, see [fine-mapping backends](BACKENDS.md).
+
 ## 1. Make a data package
 
 ```bash

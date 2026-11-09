@@ -182,6 +182,7 @@ def build_client_configs(
                 ("locus_limit", exp.locus_limit),
                 ("instance_limit", exp.instance_limit),
                 ("uplink_gram_dtype", exp.uplink_gram_dtype),
+                ("secure_aggregation", exp.secure_aggregation),
             ):
                 if value is not None:
                     train[field] = value
@@ -331,6 +332,9 @@ def build_server_config(
     for field, key in (
         ("causal_manifest", "causal_manifest"),
         ("susiex_binary", "susiex_binary"),
+        ("fine_mapping_backend", "backend"),
+        ("multisusie_rho", "multisusie_rho"),
+        ("multisusie_min_abs_corr", "multisusie_min_abs_corr"),
         ("credible_set_level", "level"),
         ("pval_thresh", "pval_thresh"),
         ("maf", "maf"),
@@ -342,6 +346,17 @@ def build_server_config(
         value = getattr(exp, field, None)
         if value is not None:
             server.setdefault("aggregator_kwargs", {})[key] = value
+
+    if exp.secure_aggregation is not None:
+        if experiment != "fine-mapping":
+            raise ValueError("secure_aggregation is only supported for fine-mapping")
+        from appfl_bio_suite.experiments.fine_mapping.trainer import secure_config
+
+        public = secure_config(exp.secure_aggregation)
+        if public["participants"] != sorted(site.client_id for site in exp.sites):
+            raise ValueError("secure aggregation participants must match experiment sites")
+        server.setdefault("aggregator_kwargs", {})["secure_aggregation"] = public
+        config["client_configs"]["train_configs"]["secure_aggregation"] = public
 
     # GA4GH provenance for the aggregator to write beside the results. Assembled from
     # the federation config rather than from the payloads, because it records what this

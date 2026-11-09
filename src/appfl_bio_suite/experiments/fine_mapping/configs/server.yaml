@@ -42,6 +42,9 @@ client_configs:
     # while the port is young.
     uplink_gram_dtype: float64
 
+    # Optional secure_aggregation is populated from federation.yaml for both roles.
+    # See docs/experiments/fine-mapping/SECURE_AGGREGATION.md; keys stay worker-local.
+
   data_readiness_configs:
     generate_dr_report: false
 
@@ -67,6 +70,9 @@ server_configs:
   aggregator: FineMappingAggregator
   aggregator_path: null     # resolved at run time; loaded LOCALLY, never shipped
   aggregator_kwargs:
+    backend: susiex         # or multisusie (install the coordinator extra)
+    multisusie_rho: 0.75
+    multisusie_min_abs_corr: 0.5
     keep_ambiguous: true
     n_signals: 10
     max_iter: 1000

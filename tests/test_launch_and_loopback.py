@@ -129,3 +129,33 @@ def test_localizing_moves_output_off_the_partners_cluster(federation, tmp_path):
     for entry in fed.experiment("gwas").sites:
         assert entry.output_dir.startswith(str(tmp_path / "out"))
         assert entry.data_dir == str(root / entry.client_id / "data")
+
+
+def test_secure_fine_mapping_configuration_reaches_both_roles(federation):
+    fed = federation.model_copy(deep=True)
+    exp = fed.experiment("fine-mapping")
+    config = {"run_id": "launch-test", "participants": [s.client_id for s in exp.sites]}
+    exp.secure_aggregation = config
+    server = build_server_config(fed, "fine-mapping")
+    public = server["server_configs"]["aggregator_kwargs"]["secure_aggregation"]
+    assert public["run_id"] == config["run_id"]
+    assert server["client_configs"]["train_configs"]["secure_aggregation"] == public
+    for client in build_client_configs(fed, "fine-mapping"):
+        assert client["train_configs"]["secure_aggregation"] == config
+    exp.secure_aggregation = {**config, "participants": ["wrong", "roster"]}
+    with pytest.raises(ValueError, match="participants"):
+        build_server_config(fed, "fine-mapping")
+
+
+def test_multisusie_backend_is_coordinator_only(federation):
+    fed = federation.model_copy(deep=True)
+    exp = fed.experiment("fine-mapping")
+    exp.fine_mapping_backend = "multisusie"
+    exp.multisusie_rho = 0.6
+    exp.multisusie_min_abs_corr = 0.7
+    kwargs = build_server_config(fed, "fine-mapping")["server_configs"]["aggregator_kwargs"]
+    assert kwargs["backend"] == "multisusie"
+    assert kwargs["multisusie_rho"] == 0.6
+    assert kwargs["multisusie_min_abs_corr"] == 0.7
+    for client in build_client_configs(fed, "fine-mapping"):
+        assert "backend" not in client["train_configs"]

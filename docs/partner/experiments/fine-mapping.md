@@ -18,8 +18,14 @@ results combinable.
 **What leaves your cluster:** sums and sums of products over your own individuals — a
 matrix of variant-by-variant co-occurrence counts, per-variant totals, and a handful of
 scalars, for each region and each ancestry group you hold. Genotypes and phenotypes never
-leave, and neither does anything about any individual. The analysis runs entirely on your
-machine.
+leave as individual records. Aggregate statistics can still reveal information; the site
+stage runs on your machine and inference runs at the coordinator.
+
+**Optional secure aggregation:** when configured, numeric moments leave as masked integer
+tensors and the coordinator recovers only their pooled sums. Metadata and sample counts
+remain visible. Each partner must provision private pairwise keys and authorize the fixed
+roster/run in its worker environment; see the
+[secure aggregation setup](../../experiments/fine-mapping/SECURE_AGGREGATION.md).
 
 **The payload is larger than you may expect** — hundreds of megabytes rather than a few,
 because the statistic being combined is a variant-by-variant matrix rather than one number

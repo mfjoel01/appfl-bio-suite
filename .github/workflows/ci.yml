@@ -101,7 +101,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -e ".[all,dev]" -c constraints.txt
+      - run: pip install -e ".[all,dev,finemapping-multisusie]" -c constraints.txt
 
       - name: Vendor PLINK and SuSiEx
         run: |
@@ -138,3 +138,6 @@ jobs:
       # exactly why this job installs them.
       - name: Federated equals centralized
         run: pytest tests/test_fine_mapping_federated.py tests/test_fine_mapping_scientific.py -v -m "not needs_network"
+
+      - name: Both inference backends preserve secure pooled results
+        run: pytest tests/test_fine_mapping_multisusie.py tests/test_fine_mapping_secure_aggregation.py -v

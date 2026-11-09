@@ -573,11 +573,15 @@ class Experiment(_Strict):
     locus_limit: int | None = None
     instance_limit: int | None = None
     pops: list[str] | None = None
+    secure_aggregation: dict[str, Any] | None = None
     uplink_gram_dtype: Literal["float64", "float32"] | None = None
 
     # Coordinator-side. The ground-truth causal variants, for scoring a simulated run;
     # a real federation has no such file and leaves this unset.
     causal_manifest: str | None = None
+    fine_mapping_backend: Literal["susiex", "multisusie"] | None = None
+    multisusie_rho: float | None = Field(default=None, ge=0, lt=1)
+    multisusie_min_abs_corr: float | None = Field(default=None, ge=0, le=1)
     susiex_binary: str | None = None
     credible_set_level: float | None = None
     pval_thresh: float | None = None

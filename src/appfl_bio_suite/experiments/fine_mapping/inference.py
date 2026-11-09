@@ -51,11 +51,20 @@ def read_table(path: Path) -> pd.DataFrame:
 
 
 def inclusion_probabilities(df: pd.DataFrame) -> pd.Series:
-    """Overall PIP over retained CS components, matching SuSiEx OVRL_PIP.
+    """Read explicitly labeled MultiSuSiE PIPs or reconstruct SuSiEx retained PIPs.
 
-    Filtered components are not emitted by SuSiEx; this is explicitly not a
-    reconstruction of the full, unfiltered model posterior.
+    Filtered components are not emitted by SuSiEx; that path is explicitly not a
+    reconstruction of the full, unfiltered model posterior. MultiSuSiE files carry
+    full-model PIPs and their definition so plotting/reporting cannot replace them
+    with zeros when no SuSiEx component columns exist.
     """
+    if "PIP" in df and "PIP_DEFINITION" in df:
+        if not df.PIP_DEFINITION.eq("multisusie_full_model").all():
+            raise ValueError("Unknown posterior probability definition")
+        pip = pd.to_numeric(df.PIP, errors="raise")
+        if not np.isfinite(pip).all() or ((pip < 0) | (pip > 1)).any():
+            raise ValueError("MultiSuSiE emitted invalid posterior probabilities")
+        return pip
     cols = [c for c in df if c.startswith("PIP(")]
     if not cols:
         return pd.Series(0.0, index=df.index)
@@ -92,14 +101,35 @@ def parse_outputs(out_dir: Path, out_name: str, truth_snps: list[str]) -> dict:
     eligible = set(snps.SNP.astype(str)) if "SNP" in snps else set()
     pip = pip_by_snp(out_dir / f"{out_name}.snp") if converged else {}
     groups = [set(g.SNP.astype(str)) for _, g in cs.groupby("CS_ID")] if has_cs else []
-    sizes = [len(g) for g in groups]
-    captured = set().union(*groups) & truth if groups else set()
-    successful = [len(g) for g in groups if g & truth]
     pur = (
         pd.to_numeric(summ["CS_PURITY"], errors="raise")
         if "CS_PURITY" in summ
         else pd.Series(dtype=float)
     )
+    return summarize_fit(
+        truth,
+        eligible if "SNP" in snps else None,
+        pip,
+        groups,
+        pur,
+        status,
+        pip_definition="overall_retained_components",
+        protocol=PROTOCOL,
+    )
+
+
+def summarize_fit(truth, eligible, pip, groups, purity, status, *, pip_definition, protocol):
+    """Score backend results without conflating full and retained-component PIPs."""
+    truth = set(truth)
+    eligibility_known = eligible is not None
+    eligible = set(eligible or [])
+    converged = status.startswith("converged_")
+    if not converged:
+        pip, groups, purity = {}, [], []
+    sizes = [len(g) for g in groups]
+    captured = set().union(*groups) & truth if groups else set()
+    successful = [len(g) for g in groups if g & truth]
+    pur = pd.Series(purity, dtype=float)
     # Unconditional recovery assigns zero to excluded truths; eligibility-conditioned
     # PIP is a separate metric. A failed fit never receives posterior probabilities.
     causal_pips = [pip.get(s, 0.0) for s in sorted(truth)] if converged else []
@@ -119,12 +149,12 @@ def parse_outputs(out_dir: Path, out_name: str, truth_snps: list[str]) -> dict:
         "min_cs_purity": float(pur.min()),
         "converged": converged,
         "fit_status": status,
-        "n_eligible_causal": len(truth & eligible) if "SNP" in snps else np.nan,
-        "n_excluded_causal": len(truth - eligible) if "SNP" in snps else np.nan,
+        "n_eligible_causal": len(truth & eligible) if eligibility_known else np.nan,
+        "n_excluded_causal": len(truth - eligible) if eligibility_known else np.nan,
         "causal_pip_mean_eligible": float(np.mean(eligible_pips)) if eligible_pips else np.nan,
         "n_cs_containing_causal": sum(bool(g & truth) for g in groups),
-        "pip_definition": "overall_retained_components",
-        "analysis_protocol": PROTOCOL,
+        "pip_definition": pip_definition,
+        "analysis_protocol": protocol,
     }
     for label, threshold in [("50", 0.5), ("95", 0.95)]:
         discovered = {s for s, prob in pip.items() if prob > threshold}

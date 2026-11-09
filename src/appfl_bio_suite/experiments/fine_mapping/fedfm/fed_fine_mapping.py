@@ -821,12 +821,27 @@ def fed_finemap_instance(
             ss = pooled_sumstats(col.variants, col.g_diag, col.u,
                                  moments.c, moments.q, moments.w, col.n)
             min_p[col.pop] = float(ss["p"].min()) if len(ss) else np.nan
-            sumstats.append(write_sumstats(ss, priv / f"{col.pop}.sumstats"))
+            path = priv / f"{col.pop}.sumstats"
+            if (options or {}).get("backend", "susiex") == "multisusie":
+                ss.to_csv(path, sep="\t", index=False, float_format="%.17g")
+                sumstats.append(path)
+            else:
+                sumstats.append(write_sumstats(ss, path))
             ld_list.append(col.ld_prefix)
             n_list.append(col.n)
-        run_susiex(sumstats, ld_list, n_list, chrom, start, end,
-                   priv, "cs", susiex, plink, level, pval_thresh, options=options)
-        row.update(parse_susiex(priv, "cs", truth_snps))
+        backend = (options or {}).get("backend", "susiex")
+        if backend == "multisusie":
+            from ..multisusie_backend import run_multisusie
+            var_y = [(pheno[col.pop].w - pheno[col.pop].q ** 2 / col.n) / (col.n - 1)
+                     for col in columns]
+            row.update(run_multisusie(sumstats, ld_list, n_list, var_y, priv,
+                                     truth_snps, level, pval_thresh, options or {}))
+        elif backend == "susiex":
+            run_susiex(sumstats, ld_list, n_list, chrom, start, end,
+                       priv, "cs", susiex, plink, level, pval_thresh, options=options)
+            row.update(parse_susiex(priv, "cs", truth_snps))
+        else:
+            raise ValueError(f"Unknown fine-mapping backend: {backend}")
         row["error"] = ""
     except Exception as exc:  # keep the shard alive; record the failure
         get_logger().warning("fed fine-map FAILED %s: %s", inst, exc)

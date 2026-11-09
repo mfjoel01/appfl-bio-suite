@@ -356,6 +356,14 @@ experiments:
     # uplink; float64 is the conservative default.
     uplink_gram_dtype: float64
 
+    # Optional masked sums; disabled unless configured. All sites must hold matching
+    # ancestry/variant blocks. Keys are provisioned privately in worker environments.
+    # See docs/experiments/fine-mapping/SECURE_AGGREGATION.md before enabling.
+    # secure_aggregation:
+    #   run_id: "fresh-random-id-for-each-shard-and-attempt"
+    #   participants: [anl, covenant, mbzuai]  # must match the sites below exactly
+
+
     # ---- coordinator-side settings ----
     #
     # The ground-truth causal variants. Present only because this example describes a
@@ -364,6 +372,11 @@ experiments:
     # in which case the run still produces credible sets -- it just cannot score them.
     causal_manifest: null
 
+    # Select the inference engine; both accept plaintext or secure pooled moments.
+    # MultiSuSiE requires the coordinator-only [finemapping-multisusie] extra.
+    fine_mapping_backend: susiex  # susiex | multisusie
+    multisusie_rho: 0.75
+    multisusie_min_abs_corr: 0.5
     credible_set_level: 0.95
     pval_thresh: 1.0e-5
     maf: 0.005

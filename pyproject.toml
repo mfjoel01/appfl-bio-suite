@@ -132,6 +132,12 @@ finemapping-sim = [
     "Jinja2>=3.1,<4",
 ]
 
+# Optional coordinator backend, pinned to an upstream revision for reproducibility.
+finemapping-multisusie = [
+    "appfl-bio-suite[finemapping-sim]",
+    "MultiSuSiE @ git+https://github.com/jordanero/MultiSuSiE.git@a89e091d45297d983118438f116c3eb5bc1219ed",
+]
+
 # COORDINATOR-ONLY. The federation network map.
 #
 # hivewatch (https://github.com/APPFL/hivewatch) is APPFL's monitoring toolkit: it supplies

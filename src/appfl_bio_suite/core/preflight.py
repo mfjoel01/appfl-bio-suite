@@ -252,7 +252,7 @@ def _check_tmpdir(report: PreflightReport) -> None:
         report.add("TMPDIR length", Level.OK, f"{tmpdir} ({len(tmpdir)} chars)")
 
 
-def _check_binaries(report: PreflightReport, experiment: str | None) -> None:
+def _check_binaries(report: PreflightReport, experiment: str | None, federation=None) -> None:
     """Executables an experiment shells out to, which pip cannot install.
 
     Only fine-mapping has any. It is worth a check rather than a stack trace because of
@@ -271,6 +271,24 @@ def _check_binaries(report: PreflightReport, experiment: str | None) -> None:
     targeted = bool(experiment and experiment in REGISTRY)
     specs = [REGISTRY[experiment]] if targeted else [s for s in REGISTRY.values() if s.implemented]
     wanted = {name: spec.name for spec in specs for name in spec.required_binaries}
+    if (
+        experiment == "fine-mapping"
+        and federation is not None
+        and federation.experiment(experiment).fine_mapping_backend == "multisusie"
+    ):
+        from appfl_bio_suite.experiments.fine_mapping.multisusie_backend import require_multisusie
+
+        try:
+            require_multisusie()
+        except ImportError as exc:
+            report.add("MultiSuSiE backend", Level.FAIL, str(exc))
+        else:
+            report.add(
+                "MultiSuSiE backend",
+                Level.OK,
+                "Python backend importable; no inference binaries needed",
+            )
+        return
     if not wanted:
         report.add("external binaries", Level.SKIP, "no experiment here needs one")
         return
@@ -894,7 +912,7 @@ def run_preflight(
         _check_user_site(report)
         _check_thread_caps(report)
         _check_tmpdir(report)
-        _check_binaries(report, experiment)
+        _check_binaries(report, experiment, federation)
         if federation is not None:
             _check_host(report, federation)
 

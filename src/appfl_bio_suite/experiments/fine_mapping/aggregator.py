@@ -138,6 +138,24 @@ class FineMappingAggregator(BaseAggregator):
         from appfl_bio_suite.experiments.fine_mapping.inference import DEFAULT_OPTIONS
 
         self.inference_options = {k: cfg.get(k, v) for k, v in DEFAULT_OPTIONS.items()}
+        self.backend = cfg.get("backend", "susiex")
+        if self.backend not in ("susiex", "multisusie"):
+            raise ValueError(f"Unknown fine-mapping backend: {self.backend}")
+        if self.backend == "multisusie":
+            from appfl_bio_suite.experiments.fine_mapping.multisusie_backend import (
+                require_multisusie,
+                validate_options,
+            )
+
+            require_multisusie()
+            self.inference_options.update(
+                {
+                    "backend": self.backend,
+                    "multisusie_rho": cfg.get("multisusie_rho", 0.75),
+                    "multisusie_min_abs_corr": cfg.get("multisusie_min_abs_corr", 0.5),
+                }
+            )
+            validate_options(self.inference_options)
         self.population_order = list(
             cfg.get("population_order", ["EUR", "AFR", "AMR", "EAS", "CSA", "MID"])
         )
@@ -178,7 +196,11 @@ class FineMappingAggregator(BaseAggregator):
         # present, which on this path they always are -- a coordinator holds no genotypes
         # and so has no reason to have PLINK at all.
         self.vendor_root = Path(cfg.get("vendor_root", ".")).resolve()
-        self.susiex = str(cfg.get("susiex_binary") or _resolve_binary("SuSiEx", self.vendor_root))
+        self.susiex = (
+            str(cfg.get("susiex_binary") or _resolve_binary("SuSiEx", self.vendor_root))
+            if self.backend == "susiex"
+            else ""
+        )
         try:
             self.plink = str(cfg.get("plink_binary") or _resolve_binary("plink", self.vendor_root))
         except FileNotFoundError:
@@ -191,12 +213,26 @@ class FineMappingAggregator(BaseAggregator):
 
     # -- decoding ----------------------------------------------------------
 
-    def _decode(self, client_ids, local_models):
+    def _decode(self, client_ids, local_models, *, _pooled=False):
         """Turn the flat tensor payloads back into the aggregate objects.
 
         Returns ``(geno_by_locus, pheno_by_instance, loci, site_manifests)``, keyed so
         that the pooling below never has to search.
         """
+        if not _pooled:
+            from appfl_bio_suite.experiments.fine_mapping.secure_aggregation import (
+                pool_secure_payloads,
+            )
+
+            pooled, original_manifests = pool_secure_payloads(
+                local_models, self.aggregator_configs.get("secure_aggregation")
+            )
+            if pooled is not None:
+                geno, pheno, loci, _ = self._decode(
+                    ["secure-pooled"], {"secure-pooled": pooled}, _pooled=True
+                )
+                return geno, pheno, loci, original_manifests
+
         geno_by_locus: dict[str, list[GenoAggregate]] = {}
         pheno_by_instance: dict[str, dict[str, list[PhenoAggregate]]] = {}
         loci: dict[str, pd.Series] = {}
@@ -383,6 +419,15 @@ class FineMappingAggregator(BaseAggregator):
             rows.extend(self._run_instances(locus, jobs, columns))
             if not self.keep_work:
                 shutil.rmtree(locus_dir, ignore_errors=True)
+
+        if self.aggregator_configs.get("secure_aggregation") is not None:
+            from appfl_bio_suite.experiments.fine_mapping.trainer import secure_config
+
+            (self.data_dir / "secure_aggregation.json").write_text(
+                json.dumps(secure_config(self.aggregator_configs["secure_aggregation"]), indent=2)
+                + "\n",
+                encoding="utf-8",
+            )
 
         results = pd.DataFrame(rows)
         self._write_outputs(results, client_ids, manifests)

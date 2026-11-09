@@ -406,3 +406,63 @@ def test_the_shipped_loader_rejects_an_unlabelled_individual(package, tmp_path):
 
     with pytest.raises(ValueError, match="no ancestry label"):
         get_dataset(broken, "anl")
+
+
+def test_secure_trainer_to_decoder_matches_plain_moments(package, tmp_path, monkeypatch):
+    """Exercise the real shipped trainer, including allele flips, with worker-local keys."""
+    import json
+
+    from appfl_bio_suite.experiments.fine_mapping.aggregator import FineMappingAggregator
+    from appfl_bio_suite.experiments.fine_mapping.fedfm.fed_fine_mapping import (
+        pool_geno,
+        pool_pheno,
+    )
+
+    # Both sites have complete genotypes and matching ancestry/variant layouts.
+    root, _, _ = package
+    sites = ["covenant", "mbzuai"]
+    config = {"run_id": "trainer-integration", "participants": sites}
+    plain, masked = {}, {}
+    for site in sites:
+        dataset, _ = get_dataset(root / site / "data", site)
+        settings = {"trainer_output_dirname": str(tmp_path / site), "pops": POPS}
+        for secure in (False, True):
+            if secure:
+                key_path = tmp_path / f"{site}.json"
+                key_path.write_text(
+                    json.dumps(
+                        {
+                            **config,
+                            "client_id": site,
+                            "keys": {peer: "a1" * 32 for peer in sites if peer != site},
+                        }
+                    )
+                )
+                monkeypatch.setenv("APPFL_FINEMAP_SECAGG_KEYS", str(key_path))
+                settings["secure_aggregation"] = config
+            trainer = SiteFineMappingTrainer(
+                train_dataset=dataset,
+                train_configs=settings,
+                client_id=site,
+                logger=logging.getLogger("secure-integration"),
+            )
+            trainer.train()
+            (masked if secure else plain)[site] = trainer.get_parameters()
+    aggregator = object.__new__(FineMappingAggregator)
+    aggregator.aggregator_configs = {}
+    pg, pp, _, _ = aggregator._decode(sites, plain)
+    aggregator.aggregator_configs = {"secure_aggregation": config}
+    sg, sp, _, _ = aggregator._decode(sites, masked)
+    for locus in pg:
+        for pop in POPS:
+            expected = pool_geno([g for g in pg[locus] if g.pop == pop])
+            actual = pool_geno([g for g in sg[locus] if g.pop == pop])
+            np.testing.assert_array_equal(actual.G, expected.G)
+            np.testing.assert_array_equal(actual.u, expected.u)
+            assert actual.n == expected.n
+            for inst in pp:
+                ids = expected.variants["snp_id"].to_numpy()
+                a, b = pool_pheno(sp[inst][pop], ids), pool_pheno(pp[inst][pop], ids)
+                np.testing.assert_allclose(a.c, b.c, atol=1e-6, rtol=0)
+                assert a.q == pytest.approx(b.q, abs=1e-6)
+                assert a.w == pytest.approx(b.w, abs=1e-6)

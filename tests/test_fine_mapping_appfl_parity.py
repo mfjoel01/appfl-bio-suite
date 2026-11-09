@@ -157,7 +157,9 @@ def through_appfl(package, binaries, tmp_path_factory):
         logger=logger,
     )
     aggregator.aggregate(local_models)
-    return pd.read_csv(output_dir / "data" / "fed_fm_results.tsv", sep="\t")
+    results = pd.read_csv(output_dir / "data" / "fed_fm_results.tsv", sep="\t")
+    results.attrs["output_dir"] = str(output_dir)
+    return results
 
 
 def _aligned(a: pd.DataFrame, b: pd.DataFrame):
@@ -226,13 +228,13 @@ def test_the_run_actually_produced_credible_sets(through_appfl):
     )
 
 
-def test_the_aggregator_writes_its_site_summary(through_appfl, package, tmp_path_factory):
+def test_the_aggregator_writes_its_site_summary(through_appfl, package):
     """The per-site record of what each partner sent. It is the only place the uplink
     size and the harmonization count are retained after a run."""
     out, scenario = package
     # Written beside the results by the same aggregate() call the fixture made.
-    summaries = list(Path(tmp_path_factory.getbasetemp()).rglob("fed_fm_site_summary.csv"))
-    assert summaries, "no fed_fm_site_summary.csv was written"
-    summary = pd.read_csv(summaries[0])
+    summary_path = Path(through_appfl.attrs["output_dir"]) / "data" / "fed_fm_site_summary.csv"
+    assert summary_path.is_file(), "no fed_fm_site_summary.csv was written"
+    summary = pd.read_csv(summary_path)
     assert set(summary["CLIENT_ID"]) == set(scenario.site_ids)
     assert (summary["N_GENO_BLOCKS"] > 0).all()
