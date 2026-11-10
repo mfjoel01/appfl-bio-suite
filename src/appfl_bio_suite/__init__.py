@@ -19,13 +19,13 @@ from pathlib import Path
 
 from appfl_bio_suite.core.compat import ensure_appfl_globus_compute_importable
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 # Where partners install from: PyPI, at exactly this version.
 #
 # An exact pin, never a range. A federation whose sites resolved `>=` on different days
 # is running different code with no way to say which. PyPI never lets a published
-# version's files be replaced, so every site installing `==0.3.0` runs the same wheel,
+# version's files be replaced, so every site installing `==X.Y.Z` runs the same wheel,
 # for the same reason the Globus Compute stack is pinned in constraints.txt: skew here
 # does not fail at install time, it fails as a deserialization error partway into
 # someone else's run.

@@ -17,9 +17,9 @@ ZIP instead, so that its checksum is bound into the specification, add the publi
 wheel itself:
 
 ```bash
-pip download "appfl-bio-suite==0.3.0" --no-deps -d dist/
+pip download "appfl-bio-suite==0.3.1" --no-deps -d dist/
 appfl-bio-suite experiment package gwas --federation local/federation.yaml \
-  --out local/onboarding --wheel dist/appfl_bio_suite-0.3.0-py3-none-any.whl
+  --out local/onboarding --wheel dist/appfl_bio_suite-0.3.1-py3-none-any.whl
 ```
 
 Use the PyPI wheel rather than one you built locally, so that every partner's checksum

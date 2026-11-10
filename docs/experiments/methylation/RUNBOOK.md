@@ -8,8 +8,8 @@ no endpoint and no federation file.
 Python 3.12, with the release installed from PyPI:
 
 ```bash
-pip install "appfl-bio-suite[methylation]==0.3.0" \
-    -c https://raw.githubusercontent.com/mfjoel01/appfl-bio-suite/v0.3.0/constraints.txt
+pip install "appfl-bio-suite[methylation]==0.3.1" \
+    -c https://raw.githubusercontent.com/mfjoel01/appfl-bio-suite/v0.3.1/constraints.txt
 ```
 
 Every command below runs from that install. Only the tests at the end need a clone of
