@@ -62,8 +62,8 @@
       <a href="https://www.globus.org/compute">Globus&nbsp;Compute</a>, together with the
       tooling to run them across independently administered HPC centres. Each institution
       computes on its own data, on its own hardware, and returns only results.
-      <strong>No data movement, no shared credential, no VPN, and no inbound network
-      access.</strong>
+      No data movement, no shared credential, no VPN, and no inbound network
+      access.
     </p>
 
     <p class="byline">
@@ -100,24 +100,27 @@
           returned.</desc>
 
         <!-- coordinator -->
-        <text x="30" y="92" fill="var(--accent)" font-size="12" font-weight="600" letter-spacing="1.6">YOU · COORDINATOR</text>
-        <rect x="30" y="104" width="228" height="134" rx="12" fill="var(--surface-2)" stroke="var(--border)"/>
-        <text x="54" y="142" fill="var(--text)" font-size="16" font-weight="600">driver</text>
-        <text x="54" y="167" fill="var(--muted)" font-size="12.5">dispatches the work</text>
-        <line x1="54" y1="180" x2="234" y2="180" stroke="var(--border)"/>
-        <text x="54" y="199" fill="var(--text)" font-size="16" font-weight="600">aggregator</text>
-        <text x="54" y="224" fill="var(--muted)" font-size="12.5">combines what comes back</text>
+        <!-- Layout: everything centres on the partner column (y = 162). The coordinator
+             box is x 30–258 (centre 144), the cards x 614–870 (centre 742), and the
+             arrows span the gap between them (centre 436). -->
+        <text x="144" y="83" fill="var(--accent)" font-size="12" font-weight="600" letter-spacing="1.6" text-anchor="middle">YOU · COORDINATOR</text>
+        <rect x="30" y="95" width="228" height="134" rx="12" fill="var(--surface-2)" stroke="var(--border)"/>
+        <text x="144" y="120.5" fill="var(--text)" font-size="16" font-weight="600" text-anchor="middle">driver</text>
+        <text x="144" y="145.5" fill="var(--muted)" font-size="12.5" text-anchor="middle">dispatches the work</text>
+        <line x1="54" y1="162" x2="234" y2="162" stroke="var(--border)"/>
+        <text x="144" y="187.5" fill="var(--text)" font-size="16" font-weight="600" text-anchor="middle">aggregator</text>
+        <text x="144" y="212.5" fill="var(--muted)" font-size="12.5" text-anchor="middle">combines what comes back</text>
 
         <!-- flows -->
         <g stroke="var(--accent)" stroke-width="1.6" fill="none">
-          <path d="M262 136 H600" marker-end="url(#arrow-fwd)"/>
+          <path d="M266 135 H606" marker-end="url(#arrow-fwd)"/>
         </g>
-        <text x="300" y="126" fill="var(--accent)" font-size="13" font-weight="600">task</text>
+        <text x="436" y="125" fill="var(--accent)" font-size="13" font-weight="600" text-anchor="middle">task</text>
 
         <g stroke="var(--muted)" stroke-width="1.6" fill="none">
-          <path d="M600 190 H266" marker-end="url(#arrow-back)"/>
+          <path d="M606 189 H266" marker-end="url(#arrow-back)"/>
         </g>
-        <text x="300" y="212" fill="var(--muted)" font-size="13">weights, or summary statistics</text>
+        <text x="436" y="211" fill="var(--muted)" font-size="13" text-anchor="middle">weights, or summary statistics</text>
 
         <defs>
           <marker id="arrow-fwd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -129,21 +132,20 @@
         </defs>
 
         <!-- partner sites -->
-        <text x="616" y="28" fill="var(--muted)" font-size="12" font-weight="600" letter-spacing="1.6">PARTNER SITES</text>
+        <!-- The dot is a glyph inside the title so it stays beside the centred text
+             whatever width the system font gives the title. -->
+        <text x="742" y="28" fill="var(--muted)" font-size="12" font-weight="600" letter-spacing="1.6" text-anchor="middle">PARTNER SITES</text>
         <rect x="614" y="40" width="256" height="72" rx="10" fill="var(--surface-2)" stroke="var(--border)"/>
-        <circle cx="640" cy="66" r="4.5" fill="var(--accent)"/>
-        <text x="656" y="71" fill="var(--text)" font-size="14.5" font-weight="600">their cluster</text>
-        <text x="640" y="94" fill="var(--muted)" font-size="12.5">their scheduler, their accounts</text>
+        <text x="742" y="68.5" fill="var(--text)" font-size="14.5" font-weight="600" text-anchor="middle"><tspan fill="var(--accent)" font-size="11">●</tspan>&#160; their cluster</text>
+        <text x="742" y="91.5" fill="var(--muted)" font-size="12.5" text-anchor="middle">their scheduler, their accounts</text>
 
         <rect x="614" y="126" width="256" height="72" rx="10" fill="var(--surface-2)" stroke="var(--border)"/>
-        <circle cx="640" cy="152" r="4.5" fill="var(--accent)"/>
-        <text x="656" y="157" fill="var(--text)" font-size="14.5" font-weight="600">their data</text>
-        <text x="640" y="180" fill="var(--muted)" font-size="12.5">genotypes never open to us</text>
+        <text x="742" y="154.5" fill="var(--text)" font-size="14.5" font-weight="600" text-anchor="middle"><tspan fill="var(--accent)" font-size="11">●</tspan>&#160; their data</text>
+        <text x="742" y="177.5" fill="var(--muted)" font-size="12.5" text-anchor="middle">genotypes never open to us</text>
 
         <rect x="614" y="212" width="256" height="72" rx="10" fill="var(--surface-2)" stroke="var(--border)"/>
-        <circle cx="640" cy="238" r="4.5" fill="var(--accent)"/>
-        <text x="656" y="243" fill="var(--text)" font-size="14.5" font-weight="600">their consent code</text>
-        <text x="640" y="266" fill="var(--muted)" font-size="12.5">checked before a file is opened</text>
+        <text x="742" y="240.5" fill="var(--text)" font-size="14.5" font-weight="600" text-anchor="middle"><tspan fill="var(--accent)" font-size="11">●</tspan>&#160; their consent code</text>
+        <text x="742" y="263.5" fill="var(--muted)" font-size="12.5" text-anchor="middle">checked before a file is opened</text>
       </svg>
       <figcaption>
         Partners need no inbound network access: their endpoint reaches out to Globus
