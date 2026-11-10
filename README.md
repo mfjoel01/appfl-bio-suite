@@ -1,5 +1,7 @@
 # appfl-bio-suite
 
+[![PyPI](https://img.shields.io/pypi/v/appfl-bio-suite)](https://pypi.org/project/appfl-bio-suite/)
+
 Cross-silo **federated learning experiments in computational biology**, built on
 [APPFL](https://github.com/APPFL/APPFL),
 [hivewatch](https://github.com/APPFL/hivewatch) and
@@ -57,21 +59,18 @@ including one real-data run, are recorded as measured in its
 
 ## Quickstart
 
-Python 3.12 is required. Install the released package from PyPI:
+Python 3.12 is required. Install the release from
+[PyPI](https://pypi.org/project/appfl-bio-suite/0.3.0/), with the release's pinned
+constraints:
 
 ```bash
-python -m pip install "appfl-bio-suite[all]==0.3.0"
+python3.12 -m venv .venv && source .venv/bin/activate
+python -m pip install "appfl-bio-suite[all]==0.3.0" \
+    -c https://raw.githubusercontent.com/mfjoel01/appfl-bio-suite/v0.3.0/constraints.txt
 ```
 
-For coordinator scripts, example federation files, and the pinned constraints, use
-the matching source checkout:
-
-```bash
-git clone --branch v0.3.0 https://github.com/mfjoel01/appfl-bio-suite.git
-cd appfl-bio-suite
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[all]" -c constraints.txt
-```
+Always pin the exact version. Every site in a federation must run the same release, and
+`-c` pins the rest of the dependency tree to the versions that release was tested with.
 
 Prove the install works — a complete federation on one machine, no partners, no network,
 and nothing to fill in first:
@@ -81,15 +80,24 @@ appfl-bio-suite simulate gwas --scenario ci-tiny --out /tmp/gwas-ci
 appfl-bio-suite run gwas --config loopback --driver serial --data-root /tmp/gwas-ci
 ```
 
-Results land in `local/output/gwas-loopback/`. This is the same pair of commands CI runs.
+Results land in `local/output/gwas-loopback/` under the current directory. This is the
+same pair of commands CI runs.
 
-Then stand up a real federation:
+Then stand up a real federation. The example federation file, the fine-mapping binary
+installers under `scripts/`, and the example configurations are not part of the wheel,
+so take them from the matching release tag:
 
 ```bash
+git clone --branch v0.3.0 https://github.com/mfjoel01/appfl-bio-suite.git
+cd appfl-bio-suite
 cp federation.yaml.example local/federation.yaml
 $EDITOR local/federation.yaml
 appfl-bio-suite preflight
 ```
+
+To modify the suite, install from that checkout instead:
+`pip install -e ".[all]" -c constraints.txt`. Fine-mapping with the SuSiEx backend also
+needs two vendored binaries on `PATH`; the guide below covers both install routes.
 
 **→ [docs/coordinator/new-federation.md](docs/coordinator/new-federation.md)** takes you
 from here to a running experiment across institutions you recruit yourself.
@@ -183,7 +191,7 @@ every institution on a world map, which experiments each runs, what kind of data
 holds, how many samples they declared, and whether their endpoint is answering.
 
 ```bash
-pip install 'appfl-bio-suite[watch]' -c constraints.txt
+pip install "appfl-bio-suite[watch]==0.3.0" -c constraints.txt   # included in [all]
 
 appfl-bio-suite watch build              # draw it from federation.yaml
 appfl-bio-suite watch serve              # look at it locally

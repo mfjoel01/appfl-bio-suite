@@ -8,7 +8,9 @@
 # into a run on a partner's cluster, in a different country, hours after you launched.
 # That is the most expensive class of bug this project has.
 #
-# Use it:
+# Use it, with the exact release from PyPI:
+#     pip install "appfl-bio-suite[flamby]==X.Y.Z" -c constraints.txt
+# or from a source checkout of the matching tag:
 #     pip install -e ".[flamby]" -c constraints.txt
 #
 # Verify it (do not verify by reading):

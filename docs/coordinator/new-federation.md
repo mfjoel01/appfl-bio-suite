@@ -65,16 +65,23 @@ schedulers, or any inbound network access to your machine.
 ## Step 1 — Install
 
 ```bash
-git clone https://github.com/<your-org>/appfl-bio-suite.git
+git clone --branch v0.3.0 https://github.com/mfjoel01/appfl-bio-suite.git
 cd appfl-bio-suite
 
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[all]" -c constraints.txt
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install "appfl-bio-suite[all]==0.3.0" -c constraints.txt
 ```
 
+The package comes from [PyPI](https://pypi.org/project/appfl-bio-suite/0.3.0/). It is
+the same release, at the same exact version, that every partner's bundle installs. The
+clone of the matching tag supplies what the wheel does not carry: `federation.yaml.example`,
+`constraints.txt`, and the fine-mapping binary installers under `scripts/`. If you intend
+to change the suite's code, install the checkout itself instead:
+`pip install -e ".[all]" -c constraints.txt`.
+
 The `-c constraints.txt` is not optional decoration. It pins the versions every site in
-the federation must share. Without it, pip resolves `globus-compute-sdk` to a release that
-cannot start the endpoint you need.
+the federation must share, down to transitive dependencies that the package metadata does
+not pin.
 
 Verify:
 
@@ -95,8 +102,16 @@ scripts/fine-mapping/install_susiex.sh     # SuSiEx    -> vendor/bin/
 
 Both are coordinator-side only; no partner is asked to install either.
 `appfl-bio-suite preflight --experiment fine-mapping` checks for them by default.
-For MultiSuSiE inference, install `.[multisusie]` and `-r requirements-multisusie.txt` on the coordinator and set
-`experiments.fine-mapping.fine_mapping_backend: multisusie` in your federation YAML.
+An editable install puts `vendor/bin/` on `PATH` by itself. A PyPI install does not,
+and simulation calls PLINK by name, so add it in every shell that runs the suite:
+
+```bash
+export PATH="$PWD/vendor/bin:$PATH"     # from the checkout root
+```
+
+For MultiSuSiE inference, install the backend on the coordinator with
+`pip install "appfl-bio-suite[multisusie]==0.3.0" -r requirements-multisusie.txt -c constraints.txt`
+and set `experiments.fine-mapping.fine_mapping_backend: multisusie` in your federation YAML.
 Preflight then checks that Python backend instead. Both backends consume the same
 partner payloads; see the [MultiSuSiE setup guide](../experiments/fine-mapping/MULTISUSIE.md).
 

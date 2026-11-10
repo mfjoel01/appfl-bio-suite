@@ -21,32 +21,51 @@ from appfl_bio_suite.core.compat import ensure_appfl_globus_compute_importable
 
 __version__ = "0.3.0"
 
-# Where partners install from.
+# Where partners install from: PyPI, at exactly this version.
 #
-# Release wheels are also published on PyPI. Generated partner bundles continue to
-# use an immutable Git tag so their existing installation contract stays consistent.
+# An exact pin, never a range. A federation whose sites resolved `>=` on different days
+# is running different code with no way to say which. PyPI never lets a published
+# version's files be replaced, so every site installing `==0.3.0` runs the same wheel,
+# for the same reason the Globus Compute stack is pinned in constraints.txt: skew here
+# does not fail at install time, it fails as a deserialization error partway into
+# someone else's run.
 #
-# A tag, not a branch. `main` moves, and a federation whose sites installed from `main`
-# on different days is running different code with no way to say which. Every site
-# installing `v0.2.0` is running byte-identical source, for the same reason the Globus
-# Compute stack is pinned in constraints.txt: skew here does not fail at install time,
-# it fails as a deserialization error partway into someone else's run.
-#
-# Bump INSTALL_TAG with __version__ and push the matching git tag; the release checklist
-# in docs/coordinator/releasing.md is what keeps those three in step.
+# The matching git tag (INSTALL_TAG) is still cut for every release. The publish
+# workflow builds the PyPI distributions from it, and coordinators check it out for the
+# scripts and example files that are not in the wheel. The release checklist in
+# docs/coordinator/releasing.md keeps the version, the tag and the PyPI upload in step.
 REPO_URL = "https://github.com/mfjoel01/appfl-bio-suite"
 INSTALL_TAG = f"v{__version__}"
 
 
 def install_spec(extras: str = "") -> str:
-    """The pip requirement a partner installs, as a PEP 508 direct reference.
+    """The pip requirement a partner installs: this exact release, from PyPI.
 
     ``extras`` is a comma-separated string ("gwas", "flamby"), matching the shape the
     experiment registry already stores. Empty means no extras -- ``pkg[]`` is not valid
     requirement syntax, so it must be omitted rather than rendered empty.
     """
     name = f"appfl-bio-suite[{extras}]" if extras else "appfl-bio-suite"
-    return f"{name} @ git+{REPO_URL}.git@{INSTALL_TAG}"
+    return f"{name}=={__version__}"
+
+
+def release_file_url(path: str) -> str:
+    """A repository file as of this release's tag, for installs that have no checkout.
+
+    pip accepts URLs for ``-c`` and ``-r``, so a PyPI install can apply this release's
+    ``constraints.txt`` or ``requirements-multisusie.txt`` without cloning anything.
+    """
+    raw = REPO_URL.replace("https://github.com/", "https://raw.githubusercontent.com/")
+    return f"{raw}/{INSTALL_TAG}/{path}"
+
+
+def multisusie_install_hint() -> str:
+    """How to install the optional MultiSuSiE backend, which PyPI metadata cannot carry."""
+    return (
+        "Install the coordinator extra and the pinned MultiSuSiE backend:\n"
+        f"    pip install '{install_spec('multisusie')}' "
+        f"-r {release_file_url('requirements-multisusie.txt')}"
+    )
 
 
 # Vendored command-line tools, put on PATH at import time.
@@ -75,4 +94,11 @@ if _vendor_bin.is_dir():
 # for the full explanation and the deletion criteria.
 ensure_appfl_globus_compute_importable()
 
-__all__ = ["INSTALL_TAG", "REPO_URL", "__version__", "install_spec"]
+__all__ = [
+    "INSTALL_TAG",
+    "REPO_URL",
+    "__version__",
+    "install_spec",
+    "multisusie_install_hint",
+    "release_file_url",
+]

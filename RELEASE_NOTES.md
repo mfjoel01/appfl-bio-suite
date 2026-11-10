@@ -1,8 +1,9 @@
 # appfl-bio-suite 0.3.0
 
 This release adds portable partner onboarding, a MultiSuSiE inference backend, and
-fixed-roster secure aggregation for fine-mapping. It also prepares the suite's first
-PyPI distribution with the same version as the Git release.
+fixed-roster secure aggregation for fine-mapping. It is also the suite's first release
+on [PyPI](https://pypi.org/project/appfl-bio-suite/0.3.0/), with the same version as
+the Git release.
 
 - Generate portable partner bundles and use guided setup and readiness checks.
 - Configure service-account endpoints for independently administered sites, with per-site service account overrides.

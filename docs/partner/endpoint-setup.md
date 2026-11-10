@@ -65,10 +65,11 @@ The extra index gives you the CPU-only build of PyTorch. Everything this federat
 on your cluster runs on CPU, and the default build adds about 3 GB of GPU libraries to the
 download that would never be used. Every version is otherwise identical.
 
-The suite is installed from a git tag, not from PyPI. Every site in this federation
-installs that same tag, so every site is running identical source. Please do not
-substitute a branch, a newer tag, or `pip install --upgrade` — if you think you need a
-different version, tell us and we will move the whole federation at once.
+The suite is installed from [PyPI](https://pypi.org/project/appfl-bio-suite/) at one
+exact version, `{{ suite_version }}`. Every site in this federation installs that same
+release, so every site is running identical code. Please do not drop the `=={{ suite_version }}`,
+substitute a different version or a git checkout, or run `pip install --upgrade` — if you
+think you need a different version, tell us and we will move the whole federation at once.
 
 Verify:
 

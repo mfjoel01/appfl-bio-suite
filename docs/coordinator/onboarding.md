@@ -8,12 +8,22 @@ partner registers. The launch configuration builder refuses sites without a UUID
 
 ```bash
 appfl-bio-suite experiment package gwas --federation local/federation.yaml \
+  --out local/onboarding
+```
+
+Without `--wheel`, partners install the pinned release from PyPI
+(`appfl-bio-suite[<extras>]==<this version>`) during setup. To ship the code inside the
+ZIP instead, so that its checksum is bound into the specification, add the published
+wheel itself:
+
+```bash
+pip download "appfl-bio-suite==0.3.0" --no-deps -d dist/
+appfl-bio-suite experiment package gwas --federation local/federation.yaml \
   --out local/onboarding --wheel dist/appfl_bio_suite-0.3.0-py3-none-any.whl
 ```
 
-Build the wheel first with `python -m build`. Including `--wheel` makes the ZIP carry
-the setup tool and experiment code; its checksum is bound into the specification.
-Omit `--wheel` to install from the pinned published release instead.
+Use the PyPI wheel rather than one you built locally, so that every partner's checksum
+matches the published release.
 
 This emits a ZIP per participating site. Use repeated `--site SITE_ID` options for a
 subset. `partner-bundle` also emits the machine-readable specification for compatibility
@@ -65,16 +75,18 @@ executor shutdown after a timeout.
 
 ## Distribution and development
 
-Build a wheel and source distribution with `python -m build`. Both carry the partner-only
-documents, templates and constraints. Bundle generation works from an installed wheel;
-a source checkout is no longer required. GitHub release wheels can be used before PyPI
-publication. Publish the matching version/tag using the existing release procedure.
+Releases are published on [PyPI](https://pypi.org/project/appfl-bio-suite/). The wheel
+and source distribution both carry the partner-only documents, templates and
+constraints, so bundle generation works from a plain PyPI install; a source checkout is
+not required. Generate bundles with the same release your partners will run: a bundle
+records the suite version that generated it, and `join` refuses a different one.
 
-Until this branch has a published release, install the built wheel into a Python 3.12
-environment and include it with `experiment package --wheel`. Partners install the
-bootstrap tool from the ZIP and setup uses that same wheel automatically.
-`site setup --install-source` remains available for a separately supplied artifact.
-Do not use the old published 0.2.1 tag to test these new commands. No release/tag is created by this change.
+To test unreleased changes, build a wheel from your checkout with `python -m build`,
+install it into a Python 3.12 environment, and include it with
+`experiment package --wheel`. Partners install the bootstrap tool from the ZIP and setup
+uses that same wheel automatically. `site setup --install-source` remains available for
+a separately supplied artifact. Publish a new version with the
+[release procedure](releasing.md) before using such changes in a real federation.
 
 The v1 flow uses venv runtimes. Container-backed runtimes can be added behind the same
 bundle/setup interface later. It does not provision cluster accounts, alter institutional

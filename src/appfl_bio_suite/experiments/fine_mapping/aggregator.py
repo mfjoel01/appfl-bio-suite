@@ -158,10 +158,9 @@ class FineMappingAggregator(BaseAggregator):
             try:
                 from MultiSuSiE.susiepy_ss import susie_multi_ss  # noqa: F401
             except ImportError as exc:
-                raise ImportError(
-                    "Install the coordinator extra appfl-bio-suite[multisusie] and the backend "
-                    "from requirements-multisusie.txt"
-                ) from exc
+                from appfl_bio_suite import multisusie_install_hint
+
+                raise ImportError(multisusie_install_hint()) from exc
 
         self.inference_options = {k: cfg.get(k, v) for k, v in DEFAULT_OPTIONS.items()}
         self.population_order = list(

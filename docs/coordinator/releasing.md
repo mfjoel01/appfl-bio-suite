@@ -80,34 +80,45 @@ of that shim. It is a real constraint, not a tidiness issue.
 
 ## Cutting a release
 
-Release wheels and source archives are published on PyPI. Generated partner bundles
-continue to install from a matching immutable git tag
-(`docs/partner/endpoint-setup.md`, Step 1). `main` moves; a tag does not. Two sites that
-installed from `main` a week apart are running different code with no way to say which,
-which is the same failure mode `constraints.txt` exists to prevent — just one level up.
+Releases are published on [PyPI](https://pypi.org/project/appfl-bio-suite/), and
+generated partner bundles install one exact version from there,
+`appfl-bio-suite[<extras>]==X.Y.Z` (`docs/partner/endpoint-setup.md`, Step 1). PyPI never
+lets a published version's files be replaced, so every site that installs `==X.Y.Z` runs
+the same wheel. `main` moves; a released version does not. Two sites that installed from
+`main` a week apart are running different code with no way to say which, which is the
+same failure mode `constraints.txt` exists to prevent — just one level up.
+
+Each release also has a matching `vX.Y.Z` git tag. The publish workflow builds the PyPI
+distributions from it, and coordinators check it out for the scripts and example files
+that are not in the wheel.
 
 Three things carry the version and must move together:
 
 | | |
 | --- | --- |
 | `pyproject.toml` | `version` |
-| `src/appfl_bio_suite/__init__.py` | `__version__` — `INSTALL_TAG` is derived from it |
+| `src/appfl_bio_suite/__init__.py` | `__version__` — `install_spec()` and `INSTALL_TAG` are derived from it |
 | `CITATION.cff` | `version` |
+
+Install commands in `README.md`, `docs/`, `examples/` and `website/` name the version
+too. `tests/test_version_is_consistent.py` fails until every one of them is updated.
+`RELEASE_NOTES.md` describes the release being cut.
 
 Then tag and push:
 
 ```bash
-git tag -a v0.1.0 -m "appfl-bio-suite 0.1.0"
-git push origin v0.1.0
+git tag -a vX.Y.Z -m "appfl-bio-suite X.Y.Z"
+git push origin vX.Y.Z
 ```
 
-**Push the tag before you send a bundle that references it.** A partner whose bundle names
-`v0.1.0` while the tag exists only on your machine gets a bare
-`fatal: Remote branch v0.1.0 not found`, on step one, with nothing in it to act on.
+**Publish to PyPI before you send a bundle that names the version.** A partner whose
+bundle pins a version that is not on PyPI yet gets
+`No matching distribution found for appfl-bio-suite==X.Y.Z` on step one, with nothing in
+it to act on.
 
-Do not move a tag once a partner has installed from it. `git tag -f` gives two sites the
-same version string over different code — worse than skew, because nothing detects it.
-Cut a new version instead.
+Do not move a tag once a release has been published from it. `git tag -f` gives the
+tag and the PyPI wheel different code under one version string — worse than skew,
+because nothing detects it. Cut a new version instead.
 
 ## Release checklist
 
@@ -117,10 +128,13 @@ Cut a new version instead.
 - [ ] A loopback federation runs for both implemented experiments
 - [ ] `pip freeze` in a clean 3.12 environment matches `constraints.txt`
 - [ ] Every experiment still has all four documents, non-empty
-- [ ] `CITATION.cff` version matches `pyproject.toml` and `__version__`
-- [ ] The `vX.Y.Z` tag is pushed to `origin`, and
-      `pip install "appfl-bio-suite[gwas] @ git+<repo>.git@vX.Y.Z"` succeeds in a clean
-      3.12 environment — this is literally a partner's step one, so run it as one
+- [ ] `CITATION.cff` version matches `pyproject.toml` and `__version__`, and every
+      documented install command names the new version
+      (`tests/test_version_is_consistent.py`)
+- [ ] `RELEASE_NOTES.md` describes this release
+- [ ] After publishing (below): `pip install "appfl-bio-suite[gwas]==X.Y.Z"` from PyPI
+      succeeds in a clean 3.12 environment — this is literally a partner's step one, so
+      run it as one
 - [ ] No live endpoint UUID, coordinator identity, or partner name appears in the tracked
       tree or in git history
 
@@ -144,9 +158,10 @@ MultiSuSiE is installed separately with `pip install -r requirements-multisusie.
 PyPI rejects direct Git URL requirements in distribution metadata, even in extras.
 The `multisusie` extra installs the coordinator dependencies for that backend.
 
-Configure a PyPI pending Trusted Publisher for project `appfl-bio-suite`, GitHub owner
-`mfjoel01`, repository `appfl-bio-suite`, workflow `publish.yml`, environment `pypi`.
-Create the matching GitHub Actions environment. No long-lived PyPI token is needed.
+Publishing uses PyPI Trusted Publishing. The PyPI project `appfl-bio-suite` trusts
+workflow `publish.yml` in GitHub repository `mfjoel01/appfl-bio-suite`, environment
+`pypi`. No long-lived PyPI token is needed. A fork that publishes under another name
+needs its own Trusted Publisher and GitHub Actions environment.
 
 After release validation passes, merge the release branch, push the immutable
 `vX.Y.Z` tag, and publish a GitHub release for that tag. `.github/workflows/publish.yml`
@@ -157,9 +172,10 @@ that tag can retry a failure that occurred before upload.
 Verify the published version with a clean Python 3.12 install:
 
 ```bash
-python -m pip install "appfl-bio-suite[gwas]==X.Y.Z"
-appfl-bio-suite --help
-appfl-bio-suite preflight --check pins
+python -m pip install "appfl-bio-suite[gwas]==X.Y.Z" \
+    -c https://raw.githubusercontent.com/mfjoel01/appfl-bio-suite/vX.Y.Z/constraints.txt
+appfl-bio-suite --version
+appfl-bio-suite preflight --check pins   # checks against the wheel's constraints.txt
 ```
 
 Do not overwrite tags or reuse a published PyPI version. Correct a released defect

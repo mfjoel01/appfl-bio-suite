@@ -10,19 +10,21 @@ The onboarding commands require the release that generated the bundle.
 
 ## Install the setup tool
 
-When your coordinator includes a wheel in the ZIP, unpack it and install the tool in a
-Python 3.12 environment:
+Unpack the ZIP and install the tool in a Python 3.12 environment. The suite is published
+on [PyPI](https://pypi.org/project/appfl-bio-suite/); install exactly the release that
+generated your bundle:
 
 ```bash
 python3.12 -m zipfile -e site.zip site-bundle
 python3.12 -m venv bootstrap
 bootstrap/bin/python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu \
-  -c site-bundle/runtime-constraints.txt site-bundle/*.whl
+  -c site-bundle/runtime-constraints.txt "{{ install_spec }}"
 source bootstrap/bin/activate
 ```
 
-If the bundle has no wheel, use the pinned installation command in Part 1. The bootstrap
-environment supplies the CLI; setup creates the runtime used by the workers.
+If your coordinator included a wheel in the ZIP, install that file instead by replacing
+`"{{ install_spec }}"` with `site-bundle/*.whl`. The bootstrap environment supplies the
+CLI; setup creates the runtime used by the workers.
 
 ## Join in one guided command
 
@@ -115,13 +117,14 @@ under the bundle's constraints, checks compatibility and local path access, and 
 the endpoint configuration. It can be rerun after an interrupted installation. Changing
 inputs requires a new state directory. Nothing edits an unrelated Python environment.
 
-If the coordinator included a wheel, setup verifies its checksum and installs it with
-the experiment extras automatically. No source override is needed.
+Without a bundled wheel, setup installs `{{ install_spec }}` from PyPI. If the
+coordinator included a wheel, setup verifies its checksum and installs it with the
+experiment extras automatically. No source override is needed in either case.
 
-For a separately delivered prerelease wheel, supply
+To install a separately delivered wheel instead, supply
 `--install-source '/absolute/path/appfl_bio_suite-VERSION-py3-none-any.whl[gwas]'`
 (substitute the extra for your experiment). The coordinator must distribute the matching
-wheel. Once a release is published this override is unnecessary.
+wheel.
 
 ## Activate the endpoint
 
