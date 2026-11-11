@@ -355,6 +355,15 @@ class FineMappingAggregator(BaseAggregator):
     # -- the exchange ------------------------------------------------------
 
     def aggregate(self, local_models, **kwargs):
+        from appfl_bio_suite.core.result_spool import SPOOL_KEY
+
+        spooled = [cid for cid, payload in local_models.items() if SPOOL_KEY in (payload or {})]
+        if spooled:
+            raise RuntimeError(
+                f"{', '.join(map(str, spooled))} returned a result-spool handle, not a payload. "
+                "The Globus Compute driver fetches spooled results before aggregating; this "
+                "driver did not. See appfl_bio_suite/core/result_spool.py."
+            )
         self.global_state = {"fine_mapping_ready": torch.tensor([0], dtype=torch.int64)}
         started = time.time()
         client_ids = list(local_models.keys())

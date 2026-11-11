@@ -19,7 +19,7 @@ from pathlib import Path
 
 from appfl_bio_suite.core.compat import ensure_appfl_globus_compute_importable
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 # Where partners install from: PyPI, at exactly this version.
 #

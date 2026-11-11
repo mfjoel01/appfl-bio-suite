@@ -8,6 +8,15 @@ settings in `site.yaml`, and the experiment's data instructions. The bundle iden
 only your participation; keep your edited `site.yaml` separate from the original ZIP.
 The onboarding commands require the release that generated the bundle.
 
+**Your endpoint:** {% if single_user %}a **single-user** endpoint that runs as
+`{{ service_account }}` itself and authenticates as a Globus service-account client your
+coordinator issues to your site. No root access and no identity mapping are needed.
+{% else %}a **multi-user** endpoint (MEP), which an administrator with root starts and
+which maps the coordinator's identity onto `{{ service_account }}`.
+{% endif %}**Workers run:** {% if local_scheduler %}on this host itself, with no batch
+scheduler, so there is no scheduler account or queue to choose.{% else %}as
+{{ scheduler }} jobs.{% endif %} Both choices are fixed by the bundle.
+
 ## Install the setup tool
 
 Unpack the ZIP and install the tool in a Python 3.12 environment. The suite is published
@@ -22,33 +31,40 @@ bootstrap/bin/python -m pip install --extra-index-url https://download.pytorch.o
 source bootstrap/bin/activate
 ```
 
+No `python3.12`? Ubuntu 22.04, for one, ships 3.10. Install 3.12 alongside it (for
+example from the deadsnakes PPA, or with `uv python install 3.12`) and use that
+interpreter for these commands and for `--python` below.
+
 If your coordinator included a wheel in the ZIP, install that file instead by replacing
 `"{{ install_spec }}"` with `site-bundle/*.whl`. The bootstrap environment supplies the
 CLI; setup creates the runtime used by the workers.
 
 ## Join in one guided command
 
-After installing BIOSIM, run:
+{% if single_user %}Run it as `{{ service_account }}`, the account the endpoint will run
+as. Create that account first if it does not exist; it needs no special privileges.
+{% endif %}After installing BIOSIM, run:
 
 ```bash
 appfl-bio-suite join site.zip
 ```
 
-The command asks for the scheduler account, queue/partition, and absolute data/work
-paths, showing coordinator-provided values as suggestions. Invalid answers are reported
-at the question. It prepares the runtime and prints the exact activation and registration
-commands for this installation. It never activates an endpoint as a side effect of join.
+The command asks for {% if not local_scheduler %}the scheduler account, {{ scheduler_slot }},
+and {% endif %}absolute data/work paths, showing coordinator-provided values as
+suggestions. Invalid answers are reported at the question. It prepares the runtime and
+prints the exact activation and registration commands for this installation. It never
+activates an endpoint as a side effect of join.
 
 You can also prepare your settings **before** pointing BIOSIM at the bundle:
 
 ```yaml
-account: my-allocation
-partition: cpu
-data_dir: /shared/project/data
+{% if not local_scheduler %}account: my-allocation
+{{ scheduler_slot }}: cpu
+{% endif %}data_dir: /shared/project/data
 work_dir: /shared/project/work
 ```
 
-For PBS Pro, use `queue` instead of `partition`. Then run:
+Then run:
 
 ```bash
 appfl-bio-suite join site.zip --local site.yaml
@@ -66,18 +82,19 @@ identities, credentials, endpoint UUIDs, or data/work paths. Explicit local valu
 precedence over a profile. A profile for another scheduler is refused.
 
 The installation defaults to `WORK_DIR/.biosim/BUNDLE_REVISION`; choose `--state` to
-place it elsewhere on a shared filesystem. Resolved local settings are saved there as
-`site.yaml`. To resume, supply the same bundle and `--state`; already recorded settings
-are not prompted again. Changing the bundle or local settings requires a new directory.
+place it elsewhere{% if not local_scheduler %} on a shared filesystem{% endif %}. Resolved
+local settings are saved there as `site.yaml`. To resume, supply the same bundle and
+`--state`; already recorded settings are not prompted again. Changing the bundle or
+local settings requires a new directory.
 
-**Current endpoint support:** this workflow supports the multi-user endpoint (MEP).
-The single-user Globus pattern is actively being tested separately and is not yet
-available through `join`. The endpoint handoff is kept separate so that pattern can be
-incorporated once validated; it is never silently inferred from the current user.
-
-For MEP, follow the administrator activation command printed by join. Once the
-administrator supplies the endpoint UUID, run as the service account:
-
+The data can arrive before or after `join`; it must be in place before activation.
+{% if single_user %}
+Follow the activation command printed by join (see [Activate the endpoint](#activate-the-endpoint)
+below). It prints the endpoint UUID; then run:
+{% else %}
+Follow the administrator activation command printed by join. Once the administrator
+supplies the endpoint UUID, run as the service account:
+{% endif %}
 ```bash
 appfl-bio-suite join site.zip --state /shared/project/onboarding --endpoint-id UUID
 ```
@@ -92,20 +109,21 @@ coordinator for the remote probe. No registration is sent automatically.
 appfl-bio-suite site init site.zip --out site.yaml
 ```
 
-Edit the scheduler account, partition (Slurm) or queue (PBS Pro), data directory and
-work directory. Use absolute paths visible from compute nodes. An optional `interface`
-selects the endpoint's interface facing those nodes. Unknown keys and missing settings
-are errors. Experiment settings, coordinator identity and software versions come from
-the bundle and cannot be overridden in this file.
+Edit {% if not local_scheduler %}the scheduler account, {{ scheduler_slot }}, {% endif %}the
+data directory and work directory. Use absolute paths visible from {% if local_scheduler %}this
+host{% else %}compute nodes{% endif %}. An optional `interface` selects the endpoint's interface
+facing the workers. Unknown keys and missing settings are errors. Experiment settings,
+coordinator identity and software versions come from the bundle and cannot be
+overridden in this file.
 
-Stage your experiment data using the experiment guide in the ZIP before verification.
+Stage your experiment data using the experiment guide in the ZIP before activation.
 The onboarding ZIP contains software configuration, not the scientific datasets.
 
 ## Prepare the runtime
 
 Run setup as the experiment's service account, or an administrator preparing an
-installation accessible to that account. Choose a state directory shared with compute
-nodes and writable by the service account. Python 3.12 must already be available.
+installation accessible to that account. Choose a state directory {% if not local_scheduler %}shared with compute
+nodes and {% endif %}writable by the service account. Python 3.12 must already be available.
 
 ```bash
 appfl-bio-suite site setup site.zip --local site.yaml \
@@ -113,9 +131,10 @@ appfl-bio-suite site setup site.zip --local site.yaml \
 ```
 
 Setup creates an isolated Python environment, installs the experiment's dependencies
-under the bundle's constraints, checks compatibility and local path access, and renders
-the endpoint configuration. It can be rerun after an interrupted installation. Changing
-inputs requires a new state directory. Nothing edits an unrelated Python environment.
+under the bundle's constraints, checks compatibility and work-directory access, and
+renders the endpoint configuration. It can be rerun after an interrupted installation.
+Changing inputs requires a new state directory. Nothing edits an unrelated Python
+environment.
 
 Without a bundled wheel, setup installs `{{ install_spec }}` from PyPI. If the
 coordinator included a wheel, setup verifies its checksum and installs it with the
@@ -127,7 +146,48 @@ To install a separately delivered wheel instead, supply
 wheel.
 
 ## Activate the endpoint
+{% if single_user %}
+Your coordinator gives you a Globus **service-account client ID and secret** for this
+site. Never paste the secret into a chat, a ticket or a shared file. As
+`{{ service_account }}`, put it in a file only that account can read:
 
+```bash
+mkdir -p ~/.config && install -m 600 /dev/null ~/.config/{{ endpoint_name }}.env
+# then edit it to contain exactly these two lines:
+#   GLOBUS_COMPUTE_CLIENT_ID=<client UUID from your coordinator>
+#   GLOBUS_COMPUTE_CLIENT_SECRET=<secret from your coordinator>
+```
+
+Then, as `{{ service_account }}` and using the prepared runtime's executable:
+
+```bash
+/shared/project/onboarding/runtime/bin/appfl-bio-suite site activate \
+  --state /shared/project/onboarding --credentials-file ~/.config/{{ endpoint_name }}.env
+```
+
+Activation refuses to run as root or as any account other than `{{ service_account }}`,
+because the endpoint runs every task as whoever starts it. It checks the runtime, the
+data and the work directory as that account, configures a dedicated single-user endpoint
+named `{{ endpoint_name }}`, starts it in the background, and prints its **UUID**. It
+refuses to alter an endpoint it did not create. The credentials are read from the file,
+never echoed, and never placed in any configuration sent to anyone.
+
+It also writes `{{ endpoint_name }}.service` in the state directory: a systemd unit that
+keeps the endpoint running across logouts, crashes and reboots. Installing it needs root
+once; the command prints the three lines to run. Without it, the endpoint stops when the
+host reboots and must be activated again.
+
+Then, as `{{ service_account }}`:
+
+```bash
+appfl-bio-suite site verify --state /shared/project/onboarding --endpoint-id UUID
+```
+
+A single-user endpoint accepts tasks only from its own service-account client, so you
+cannot submit a test task to it from your personal Globus login. That is the isolation
+working, not a fault. The coordinator holds a credential for the same client and
+performs the remote probe.
+{% else %}
 An administrator must create the named service account and give it scheduler access.
 The account must be able to traverse the state directory, activate its runtime, read the
 data, and write the work directory. Setup does not create POSIX accounts or allocations.
@@ -156,7 +216,7 @@ As the service account:
 ```bash
 appfl-bio-suite site verify --state /shared/project/onboarding --endpoint-id UUID
 ```
-
+{% endif %}
 Send the resulting `registration.json` to the coordinator. It records local verification;
 the coordinator then verifies a real remote worker before accepting the registration.
 Use `--runtime-only` to check local runtime access without producing a receipt.

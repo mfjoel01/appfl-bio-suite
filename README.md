@@ -60,13 +60,13 @@ including one real-data run, are recorded as measured in its
 ## Quickstart
 
 Python 3.12 is required. Install the release from
-[PyPI](https://pypi.org/project/appfl-bio-suite/0.3.1/), with the release's pinned
+[PyPI](https://pypi.org/project/appfl-bio-suite/0.3.2/), with the release's pinned
 constraints:
 
 ```bash
 python3.12 -m venv .venv && source .venv/bin/activate
-python -m pip install "appfl-bio-suite[all]==0.3.1" \
-    -c https://raw.githubusercontent.com/mfjoel01/appfl-bio-suite/v0.3.1/constraints.txt
+python -m pip install "appfl-bio-suite[all]==0.3.2" \
+    -c https://raw.githubusercontent.com/mfjoel01/appfl-bio-suite/v0.3.2/constraints.txt
 ```
 
 Always pin the exact version. Every site in a federation must run the same release, and
@@ -88,7 +88,7 @@ installers under `scripts/`, and the example configurations are not part of the 
 so take them from the matching release tag:
 
 ```bash
-git clone --branch v0.3.1 https://github.com/mfjoel01/appfl-bio-suite.git
+git clone --branch v0.3.2 https://github.com/mfjoel01/appfl-bio-suite.git
 cd appfl-bio-suite
 cp federation.yaml.example local/federation.yaml
 $EDITOR local/federation.yaml
@@ -191,7 +191,7 @@ every institution on a world map, which experiments each runs, what kind of data
 holds, how many samples they declared, and whether their endpoint is answering.
 
 ```bash
-pip install "appfl-bio-suite[watch]==0.3.1" -c constraints.txt   # included in [all]
+pip install "appfl-bio-suite[watch]==0.3.2" -c constraints.txt   # included in [all]
 
 appfl-bio-suite watch build              # draw it from federation.yaml
 appfl-bio-suite watch serve              # look at it locally

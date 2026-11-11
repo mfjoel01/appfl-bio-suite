@@ -179,6 +179,8 @@ sites:
       lat: 43.6532
       lng: -79.3832
       city: Toronto
+    # slurm | pbspro | local. `local` runs workers on the endpoint host itself -- a cloud
+    # VM or workstation with no batch scheduler -- and takes no partition, queue or account.
     scheduler: slurm
     partition: compute          # `partition` for SLURM; use `queue` for PBS
     account: fedlearn
@@ -309,6 +311,12 @@ experiments:
       - site: site-north
         client_id: Site1
         endpoint_uuid: cccccccc-0000-0000-0000-000000000001
+        # How this site's endpoint runs: multi-user (the default; an administrator's MEP
+        # maps your identity onto the service account) or single-user (the endpoint runs
+        # as the service account under a Globus service-account client you issue, and you
+        # reach it with a --site-credentials route). Carried in the bundle; see
+        # docs/coordinator/onboarding.md.
+        # endpoint_mode: single-user
         # Absolute path ON THEIR CLUSTER where they unpacked the bundle you sent.
         data_dir: /home/gwas_svc/data/site1
         output_dir: /home/gwas_svc/outputs

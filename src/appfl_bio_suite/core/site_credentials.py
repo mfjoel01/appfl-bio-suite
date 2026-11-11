@@ -2,6 +2,20 @@
 
 The manifest contains public client IDs and environment-variable references, never
 secrets. Nothing from this module is added to the configuration sent to workers.
+
+Every endpoint a command touches must have a route. A route is either a site's
+service-account client::
+
+    {"client_id": "...", "client_secret_env": "NAME", "expected_user": "finemap_svc"}
+
+or an explicit statement that this one endpoint is reached with the coordinator's own
+Globus login -- a multi-user endpoint mapping the coordinator, say, in the same run as
+single-user sites::
+
+    {"coordinator_login": true, "expected_user": "finemap_svc"}
+
+There is still no fallback: an endpoint without a route is refused, so a forgotten
+entry cannot quietly send a site's tasks under the wrong identity.
 """
 
 from __future__ import annotations
@@ -19,13 +33,19 @@ CREDENTIALS_ENV = "APPFL_BIO_SUITE_GLOBUS_CREDENTIALS"
 
 @dataclass(frozen=True)
 class SiteCredential:
-    client_id: str
-    client_secret_env: str
+    client_id: str | None
+    client_secret_env: str | None
     expected_user: str
+    coordinator_login: bool = False
 
     def client(self):
         from globus_compute_sdk import Client
         from globus_compute_sdk.serialize import CombinedCode
+
+        if self.coordinator_login:
+            # The SDK's default app: the coordinator's stored personal login.
+            return Client(code_serialization_strategy=CombinedCode())
+
         from globus_sdk import ClientApp, GlobusAppConfig
         from globus_sdk.token_storage import MemoryTokenStorage
 
@@ -65,21 +85,30 @@ def load_site_credentials(path: str | Path, endpoint_ids) -> dict[str, SiteCrede
         try:
             if str(UUID(endpoint)) != endpoint:
                 raise ValueError()
-            if not isinstance(entry, dict) or set(entry) != {
-                "client_id",
-                "client_secret_env",
-                "expected_user",
-            }:
+            if not isinstance(entry, dict):
+                raise ValueError()
+            if (
+                not isinstance(entry.get("expected_user"), str)
+                or not entry["expected_user"].strip()
+            ):
+                raise ValueError()
+            if set(entry) == {"coordinator_login", "expected_user"}:
+                if entry["coordinator_login"] is not True:
+                    raise ValueError()
+                credentials[endpoint] = SiteCredential(
+                    None, None, entry["expected_user"], coordinator_login=True
+                )
+                continue
+            if set(entry) != {"client_id", "client_secret_env", "expected_user"}:
                 raise ValueError()
             identity = str(UUID(entry["client_id"]))
             if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", entry["client_secret_env"]):
                 raise ValueError()
-            if not isinstance(entry["expected_user"], str) or not entry["expected_user"].strip():
-                raise ValueError()
         except (ValueError, TypeError, AttributeError) as exc:
             raise ValueError(
-                "Each endpoint route requires UUIDs, client_secret_env, and expected_user. "
-                "Inline secrets and extra fields are not accepted."
+                "Each endpoint route requires either client_id, client_secret_env and "
+                "expected_user, or coordinator_login: true and expected_user. Inline "
+                "secrets and extra fields are not accepted."
             ) from exc
         if identity in identities:
             raise ValueError("Use a distinct service-account client ID for each endpoint route.")
@@ -92,6 +121,8 @@ def load_site_credentials(path: str | Path, endpoint_ids) -> dict[str, SiteCrede
     if missing:
         raise ValueError("Missing site credentials for endpoint(s): " + ", ".join(sorted(missing)))
     for endpoint in selected:
+        if credentials[endpoint].coordinator_login:
+            continue
         name = credentials[endpoint].client_secret_env
         if not os.environ.get(name):
             raise ValueError(f"Set coordinator environment variable {name}.")

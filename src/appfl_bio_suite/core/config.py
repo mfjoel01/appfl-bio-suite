@@ -307,7 +307,9 @@ class Site(_Strict):
     # Where this institution is. Only the network map reads it; nothing about a run
     # depends on it. See :class:`Location` for why it is declared rather than detected.
     location: Location | None = None
-    scheduler: Literal["pbspro", "slurm"] = "slurm"
+    # `local` runs workers on the endpoint host itself (parsl LocalProvider): a cloud VM
+    # or workstation with no batch scheduler, where an account and queue mean nothing.
+    scheduler: Literal["pbspro", "slurm", "local"] = "slurm"
     queue: str | None = None
     partition: str | None = None
     account: str | None = None
@@ -317,6 +319,15 @@ class Site(_Strict):
     @model_validator(mode="after")
     def _scheduler_slot(self) -> Site:
         """SLURM sites use `partition`, PBS sites use `queue`. Catch the mix-up early."""
+        if self.scheduler == "local":
+            given = [f for f in ("queue", "partition", "account") if getattr(self, f)]
+            if given:
+                raise ValueError(
+                    f"site '{self.id}' is scheduler: local but sets {', '.join(given)}. "
+                    "A local site runs workers on the endpoint host and has no scheduler "
+                    "account or queue; remove them."
+                )
+            return self
         if self.scheduler == "slurm" and self.queue and not self.partition:
             raise ValueError(
                 f"site '{self.id}' is scheduler: slurm but sets `queue`. "
@@ -331,21 +342,25 @@ class Site(_Strict):
 
     @property
     def scheduler_slot(self) -> str:
-        """The provider key this site's scheduler expects: 'queue' or 'partition'."""
-        return "queue" if self.scheduler == "pbspro" else "partition"
+        """The provider key this site's scheduler expects: 'queue', 'partition', or ''."""
+        return {"pbspro": "queue", "slurm": "partition"}.get(self.scheduler, "")
 
     @property
     def scheduler_slot_value(self) -> str | None:
-        return self.queue if self.scheduler == "pbspro" else self.partition
+        return {"pbspro": self.queue, "slurm": self.partition}.get(self.scheduler)
 
     @property
     def provider_type(self) -> str:
         """The parsl provider class name for this scheduler."""
-        return "PBSProProvider" if self.scheduler == "pbspro" else "SlurmProvider"
+        return {"pbspro": "PBSProProvider", "slurm": "SlurmProvider"}.get(
+            self.scheduler, "LocalProvider"
+        )
 
     @property
     def launcher_type(self) -> str:
-        return "MpiExecLauncher" if self.scheduler == "pbspro" else "SrunLauncher"
+        return {"pbspro": "MpiExecLauncher", "slurm": "SrunLauncher"}.get(
+            self.scheduler, "SingleNodeLauncher"
+        )
 
 
 class ExperimentSite(_Strict):
@@ -365,6 +380,16 @@ class ExperimentSite(_Strict):
     # before joining this experiment has a mapping to their own account name; without
     # this, every smoke test against them warns that identity mapping is not working.
     service_account: str | None = None
+
+    # How this site's endpoint authenticates and whom it runs tasks as.
+    #   multi-user   an administrator's MEP maps the coordinator's identity onto
+    #                `service_account` (the established default)
+    #   single-user  the endpoint runs as `service_account` itself, registered under a
+    #                Globus service-account client; the coordinator reaches it through a
+    #                --site-credentials route for that client. No root, no mapping.
+    # Declared here, by the coordinator, so the bundle carries it: a partner never has
+    # it inferred from whichever account happens to run `join`.
+    endpoint_mode: Literal["multi-user", "single-user"] = "multi-user"
 
     # FLamby
     center: int | None = None

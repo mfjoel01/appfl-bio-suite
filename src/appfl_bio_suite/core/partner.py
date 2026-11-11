@@ -147,7 +147,10 @@ def render_context(federation: Federation, experiment: str, site_key: str) -> di
         "expected_train_samples": entry.expected_train_samples or "",
         "expected_samples": entry.expected_samples or "",
         # -- their cluster ------------------------------------------------
+        "endpoint_mode": entry.endpoint_mode,
+        "single_user": entry.endpoint_mode == "single-user",
         "scheduler": site.scheduler,
+        "local_scheduler": site.scheduler == "local",
         "provider_type": site.provider_type,
         "launcher_type": site.launcher_type,
         "scheduler_slot": site.scheduler_slot,
@@ -364,6 +367,8 @@ def unresolved_fields(federation: Federation, experiment: str, site_key: str) ->
     bundle they are about to send still has a blank in it.
     """
     site = federation.experiment_site(experiment, site_key).resolved_site
+    if site.scheduler == "local":
+        return []
     missing = []
     if not site.account:
         missing.append("account")

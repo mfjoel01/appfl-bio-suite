@@ -22,11 +22,15 @@ leave, and neither does anything about any individual. Your site computes those 
 fits either SuSiEx or MultiSuSiE; that backend choice does not change your payload
 or require additional partner packages.
 
-**The payload is larger than you may expect** — hundreds of megabytes rather than a few,
-because the statistic being combined is a variant-by-variant matrix rather than one number
-per variant. That is the nature of this analysis, not a fault. If your endpoint has an
-outbound transfer limit that this would run into, tell us and we will split the run into
-smaller pieces; that is a change on our side only.
+**The payload is larger than you may expect** — hundreds of megabytes to a few
+gigabytes rather than a few megabytes, because the statistic being combined is a
+variant-by-variant matrix rather than one number per variant. That is the nature of this
+analysis, not a fault. Globus Compute returns at most 10 MiB per task, so your worker
+writes the result to `{{ output_dir }}/spool/` and we read it back through your endpoint
+in pieces, check its checksum, and then delete your copy. **Leave free space in
+`{{ output_dir }}` at least the size of the payload.** If your endpoint has an outbound
+transfer limit that this would run into, tell us and we will split the run into smaller
+pieces; that is a change on our side only.
 
 **Nothing to install beyond Part 1.** The analysis is numpy and pandas. There is no
 statistical package, no genetics toolchain, and no compiler involved on your side.
@@ -35,7 +39,10 @@ statistical package, no genetics toolchain, and no compiler involved on your sid
 
 ## Step 1 — Place your bundle
 
-Unpack the archive we sent you somewhere `{{ service_account }}` can read:
+We deliver your cohort either as an archive or as a directory (by rsync or a Globus
+transfer). Put it somewhere `{{ service_account }}` can read.
+
+From an archive:
 
 ```bash
 sudo -iu {{ service_account }}
@@ -43,6 +50,17 @@ mkdir -p {{ data_dir }}
 cd {{ data_dir }}
 tar xzf /path/to/the/bundle/you/received.tar.gz --strip-components=1
 ```
+
+From a delivered directory (here, one copied into a staging area by another account):
+
+```bash
+sudo mkdir -p {{ data_dir }}
+sudo rsync -a /path/to/the/delivered/directory/ {{ data_dir }}/
+sudo chown -R {{ service_account }}: {{ data_dir }}
+```
+
+The trailing slashes matter: the files must land directly in `{{ data_dir }}`, not in a
+subdirectory of it.
 
 Your data directory is:
 
