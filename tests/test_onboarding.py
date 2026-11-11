@@ -633,10 +633,11 @@ def test_join_rejects_state_from_different_bundle(bundle_dir, bundle, local, tmp
     assert not join_setup
 
 
-def test_join_does_not_enable_unfinished_single_user_mode(bundle_dir, join_setup):
+def test_join_refuses_a_mode_the_bundle_does_not_declare(bundle_dir, join_setup):
+    # The coordinator chooses the endpoint mode; a partner's flag can only assert it.
     result = CliRunner().invoke(main, ["join", str(bundle_dir), "--endpoint-mode", "single-user"])
     assert result.exit_code != 0
-    assert "Invalid value" in result.output
+    assert "declares a multi-user endpoint" in result.output
     assert not join_setup
 
 

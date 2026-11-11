@@ -108,6 +108,8 @@ KEY_USUM = "u"  # u::<locus_id>::<pop>    -- (M,)   column sums
 KEY_XTY = "c"  # c::<instance>::<pop>    -- (M,)   X'y
 KEY_SCALARS = "s"  # s::<instance>::<pop>    -- (3,)   (q, w, n)
 KEY_MANIFEST = "manifest"
+# A spooled payload's handle; equal to appfl_bio_suite.core.result_spool.SPOOL_KEY.
+KEY_SPOOL = "result_spool"
 
 # ``X'X`` entries are sums of products of dosages in {0,1,2}, so they are integers
 # bounded by 4n. float32 holds every integer below 2^24 exactly, so at any realistic
@@ -786,13 +788,48 @@ class SiteFineMappingTrainer(BaseTrainer):
             payload = mask_site_payload(
                 payload, self.client_id, self.train_configs["secure_aggregation"]
             )
-        self.model_state = payload
-
-        uplink_mb = sum(t.numel() * t.element_size() for t in payload.values()) / (1024 * 1024)
+        uplink_bytes = sum(t.numel() * t.element_size() for t in payload.values())
         self.logger.info(
             f"{self.client_id}: {len(geno_meta)} genotype block(s), "
-            f"{len(pheno_meta)} phenotype block(s), {uplink_mb:.1f} MB uplink"
+            f"{len(pheno_meta)} phenotype block(s), {uplink_bytes / (1024 * 1024):.1f} MB uplink"
         )
+        # Globus Compute refuses results over 10 MiB, which one locus already exceeds.
+        # The driver sets this limit; above it the payload stays here and the
+        # coordinator reads it back in chunks (appfl_bio_suite.core.result_spool).
+        spool_limit = self.train_configs.get("result_spool_bytes", None)
+        if spool_limit is not None and uplink_bytes > int(spool_limit):
+            self.model_state = self._spool(payload)
+        else:
+            self.model_state = payload
 
         self._has_run = True
         self.round += 1
+
+    def _spool(self, payload):
+        """Write the payload to this site's work directory; return a handle to it."""
+        import hashlib
+        import secrets
+
+        spool_dir = self.output_dir / "spool"
+        spool_dir.mkdir(parents=True, exist_ok=True)
+        path = spool_dir / f"{self.client_id}-{secrets.token_hex(8)}.pt"
+        partial = path.with_suffix(".part")
+        torch.save(payload, partial)
+        partial.replace(path)
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(block)
+        info = {
+            "format": "torch-save-v1",
+            "path": str(path),
+            "size": path.stat().st_size,
+            "sha256": digest.hexdigest(),
+            "client_id": self.client_id,
+        }
+        self.logger.info(
+            f"{self.client_id}: payload is over the inline limit; spooled "
+            f"{info['size'] / (1024 * 1024):.1f} MiB to {path} for the coordinator to fetch"
+        )
+        blob = json.dumps(info, sort_keys=True).encode("utf-8")
+        return {KEY_SPOOL: torch.frombuffer(bytearray(blob), dtype=torch.uint8)}

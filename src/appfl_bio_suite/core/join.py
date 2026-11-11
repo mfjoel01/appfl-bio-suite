@@ -1,7 +1,9 @@
 """Guided partner onboarding; endpoint activation remains an explicit backend step.
 
-The current backend is MEP. The single-user Globus pattern is being developed separately;
-joining must not silently select it or infer it from the invoking user's privileges.
+The endpoint mode -- a multi-user endpoint (MEP) administered by root, or a single-user
+endpoint running as the service account under a Globus service-account client -- is the
+coordinator's declaration, carried in the bundle. Joining never selects it or infers it
+from the invoking user's privileges.
 """
 
 from __future__ import annotations
@@ -51,12 +53,7 @@ def prompt_value(field: str, default):
         value = click.prompt(labels[field], default=str(default) if default else None)
         # Validate this individual answer immediately, so only this question repeats.
         try:
-            candidate = {
-                "account": "unused",
-                "data_dir": "/unused",
-                "work_dir": "/unused",
-                field: value,
-            }
+            candidate = {"data_dir": "/unused", "work_dir": "/unused", field: value}
             api.SiteConfig.model_validate(candidate)
             return value
         except ValidationError as exc:
@@ -69,16 +66,13 @@ def collect_settings(bundle, profile_values, local_values, *, interactive):
     if unknown:
         raise ValueError(f"Unknown local fields: {sorted(unknown)}")
     values = {**bundle.defaults, **supplied}
-    slot = "partition" if bundle.scheduler == "slurm" else "queue"
-    for field in ("account", slot, "data_dir", "work_dir"):
+    for field in (*api.scheduler_fields(bundle.scheduler), "data_dir", "work_dir"):
         # An explicit file/profile is authoritative. Coordinator defaults are suggestions
         # during the guided flow, rather than assumptions about a partner's filesystem.
         if interactive and not supplied.get(field):
             values[field] = prompt_value(field, values.get(field))
-    site = api.SiteConfig.model_validate(values)
-    other = "queue" if slot == "partition" else "partition"
-    if not getattr(site, slot) or getattr(site, other):
-        raise ValueError(f"{bundle.scheduler} needs {slot}; do not set {other}")
+    site = api.SiteConfig.model_validate(api.without_blanks(values))
+    api.check_scheduler_settings(bundle.scheduler, site)
     return site
 
 
@@ -96,6 +90,32 @@ def mep_handoff(state, bundle_path, spec):
     click.echo("As that same administrator, obtain the endpoint UUID:")
     click.echo(command_line(state / "runtime/bin/globus-compute-endpoint", "list"))
     click.echo(f"Then, as {spec.service_account}, finish registration:")
+    click.echo(
+        command_line(
+            executable, "join", bundle_path.resolve(), "--state", state, "--endpoint-id", "UUID"
+        )
+    )
+
+
+def single_user_handoff(state, bundle_path, spec):
+    executable = state / "runtime/bin/appfl-bio-suite"
+    click.echo(
+        f"Prepared. Endpoint mode: single-user; worker account: {spec.service_account}. "
+        "No root and no identity mapping."
+    )
+    click.echo(
+        "Put the site's Globus service-account client ID and secret in a file readable only "
+        f"by {spec.service_account}, as two lines:\n"
+        "  GLOBUS_COMPUTE_CLIENT_ID=<client UUID>\n"
+        "  GLOBUS_COMPUTE_CLIENT_SECRET=<secret>"
+    )
+    click.echo(
+        f"Stage the data, then as {spec.service_account} activate (prints the endpoint UUID):"
+    )
+    click.echo(
+        command_line(executable, "site", "activate", "--state", state, "--credentials-file", "FILE")
+    )
+    click.echo("Then finish registration:")
     click.echo(
         command_line(
             executable, "join", bundle_path.resolve(), "--state", state, "--endpoint-id", "UUID"
@@ -129,9 +149,10 @@ def mep_handoff(state, bundle_path, spec):
 )
 @click.option(
     "--endpoint-mode",
-    type=click.Choice(["multi-user"]),
-    default="multi-user",
-    help="Current supported mode. Single-user support will follow separate validation.",
+    type=click.Choice(["multi-user", "single-user"]),
+    default=None,
+    help="Optional assertion of the mode the bundle declares; a mismatch stops before "
+    "anything is installed. The coordinator chooses the mode, not this flag.",
 )
 @errors
 def join(
@@ -150,9 +171,15 @@ def join(
     if profile and no_profile:
         raise ValueError("Use either --profile or --no-profile")
     spec = api.read_bundle(bundle)
+    if endpoint_mode is not None and endpoint_mode != spec.endpoint_mode:
+        raise ValueError(
+            f"This bundle declares a {spec.endpoint_mode} endpoint, not {endpoint_mode}. "
+            "The coordinator chooses the mode; ask them for a new bundle if it is wrong."
+        )
     click.echo(
         f"Joining {spec.experiment} / {spec.client_id}; coordinator: {spec.coordinator_identity}"
     )
+    click.echo(f"Endpoint mode: {spec.endpoint_mode}; scheduler: {spec.scheduler}")
     local_values = read_mapping(local) if local else {}
     saved = None
     if state and (state / "state.json").exists():
@@ -175,10 +202,7 @@ def join(
     if saved and install_source and install_source != saved["install_source"]:
         raise ValueError("Install source changed; choose a new --state directory")
     # A prepared installation can finish registration without another network install.
-    prepared = saved and all(
-        (state / name).is_file()
-        for name in ("runtime/bin/python", "identity_mapping.json", "user_config_template.yaml.j2")
-    )
+    prepared = saved and all((state / name).is_file() for name in api.prepared_files(spec))
     if not (prepared and endpoint_id):
         api.setup_site(
             spec,
@@ -192,12 +216,9 @@ def join(
         yaml.safe_dump(config.model_dump(mode="json"), sort_keys=False)
     )
     if not no_profile and not saved:
-        slot = "partition" if spec.scheduler == "slurm" else "queue"
-        values = {
-            "scheduler": spec.scheduler,
-            "account": config.account,
-            slot: getattr(config, slot),
-        }
+        values = {"scheduler": spec.scheduler}
+        for field in api.scheduler_fields(spec.scheduler):
+            values[field] = getattr(config, field)
         if config.interface:
             values["interface"] = config.interface
         profile_path.parent.mkdir(parents=True, exist_ok=True)
@@ -210,5 +231,7 @@ def join(
         api.verify_site(state, str(endpoint_id))
         click.echo(f"Locally verified. Send {state / 'registration.json'} to the coordinator.")
         click.echo("The coordinator's remote probe is still required before readiness.")
+    elif spec.endpoint_mode == "single-user":
+        single_user_handoff(state, bundle, spec)
     else:
         mep_handoff(state, bundle, spec)

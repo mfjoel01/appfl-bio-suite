@@ -228,7 +228,7 @@ def checksum_tree(root: str | Path, patterns: tuple[str, ...] = ("**/*",)) -> di
     return seen
 
 
-def _git_commit() -> str | None:
+def _git_commit(root: Path | None = None) -> str | None:
     """The suite's commit, if we are in a checkout and git is available.
 
     Returned with a '-dirty' suffix when the tree has uncommitted changes, because a
@@ -236,7 +236,20 @@ def _git_commit() -> str | None:
     commit at all.
     """
     try:
-        root = Path(__file__).resolve().parent.parent.parent.parent
+        root = (root or Path(__file__).resolve().parent.parent.parent.parent).resolve()
+        # Only this suite's own checkout. An installed wheel sits in site-packages, and
+        # git would otherwise walk up from there into whatever repository happens to
+        # contain the virtual environment and report *its* commit as the suite's.
+        if not (root / "pyproject.toml").is_file():
+            return None
+        toplevel = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if toplevel.returncode != 0 or Path(toplevel.stdout.strip()).resolve() != root:
+            return None
         commit = subprocess.run(
             ["git", "-C", str(root), "rev-parse", "HEAD"],
             capture_output=True,

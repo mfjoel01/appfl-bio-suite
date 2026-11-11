@@ -435,6 +435,20 @@ def resolve_run(federation: Federation, experiment: str, variant: str = "default
     )
 
 
+def enable_result_spool(experiment: str, client_configs: list[dict[str, Any]]) -> None:
+    """Let fine-mapping sites hold results over Globus Compute's 10 MiB result cap.
+
+    Only for the Globus Compute driver, which knows how to fetch them back; see
+    core/result_spool.py. Serial and TES runs keep the inline payload.
+    """
+    from appfl_bio_suite.core.result_spool import INLINE_LIMIT_BYTES
+
+    if experiment != "fine-mapping":
+        return
+    for client in client_configs:
+        client["train_configs"].setdefault("result_spool_bytes", INLINE_LIMIT_BYTES)
+
+
 def check_no_placeholders(config: Any, where: str) -> None:
     """Refuse to launch with an unfilled placeholder.
 
@@ -514,6 +528,8 @@ def launch(
         return 1
 
     run = resolve_run(federation, experiment, variant)
+    if driver == "globus_compute":
+        enable_result_spool(experiment, run.client_configs)
     out_dir = out_dir or Path("local/configs/generated")
     server_path, client_path = write_run_configs(run, out_dir)
 
