@@ -248,6 +248,7 @@ src/appfl_bio_suite/experiments/fine_mapping/
 ├── plotting.py    coordinator-side   — the aggregator's figure entry point
 ├── figures/       coordinator-side   — the full figure set
 ├── fedfm/         coordinator-side   — the maintained science fork; see UPSTREAM.json
+├── real_data/     coordinator-side   — MAGE + 1000G NYGC 30x real-data benchmark & figures
 └── simulation/    coordinator-side   — never reaches a partner at all
 ```
 
@@ -255,6 +256,16 @@ src/appfl_bio_suite/experiments/fine_mapping/
 `fedfm/UPSTREAM.json`. The shipped site stage is self-contained; its numerical results
 are compared against the coordinator implementation at zero tolerance by
 `tests/test_fine_mapping_shipped_parity.py`.
+
+## Real-data validation (MAGE + 1000 Genomes NYGC 30x)
+
+Beyond the synthetic simulation grid, [MAGE_VALIDATION.md](MAGE_VALIDATION.md) documents
+end-to-end validation on **MAGE v1.0** (`N = 730` clean donors across 5 continental groups and
+26 populations after removing the documented `NA11919` / `HG00237` sample swap) paired with
+regional 1000 Genomes NYGC 30x GRCh38 slices across 16 eQTL loci. Federated SuSiEx and
+Federated MultiSuSiE match centralized pooled genotypes (`max |ΔPIP| = 0.0` and `4.64e-12`,
+respectively), while MultiSuSiE captures `38/46` (`83%`) published MAGE credible sets compared
+against solo biobanks (`17–22%`) and single-ancestry subsets (`2–17%`).
 
 ## Running it
 

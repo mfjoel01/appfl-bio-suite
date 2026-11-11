@@ -380,32 +380,32 @@ class FineMappingAggregator(BaseAggregator):
         self._log_uplink(client_ids, manifests)
 
         rows: list[dict] = []
-        for locus_id in sorted(geno_by_locus):
-            locus = loci[locus_id]
-            blocks = geno_by_locus[locus_id]
-            if self.backend == "multisusie":
-                instances = sorted(
-                    inst for inst in pheno_by_instance if inst.startswith(f"{locus_id}_")
+        if self.backend == "multisusie":
+            ms_jobs = [
+                (
+                    loci[locus_id],
+                    inst,
+                    geno_by_locus[locus_id],
+                    [block for group in pheno_by_instance[inst].values() for block in group],
+                    truth_map,
                 )
+                for locus_id in sorted(geno_by_locus)
+                for inst in sorted(i for i in pheno_by_instance if i.startswith(f"{locus_id}_"))
+            ]
+            if self.n_workers <= 1:
+                rows = [self._run_multisusie_instance(*job) for job in ms_jobs]
+            else:
                 from joblib import Parallel, delayed
 
-                rows.extend(
+                rows = list(
                     Parallel(n_jobs=self.n_workers)(
-                        delayed(self._run_multisusie_instance)(
-                            locus,
-                            inst,
-                            blocks,
-                            [
-                                block
-                                for group in pheno_by_instance[inst].values()
-                                for block in group
-                            ],
-                            truth_map,
-                        )
-                        for inst in instances
+                        delayed(self._run_multisusie_instance)(*job) for job in ms_jobs
                     )
                 )
-                continue
+
+        for locus_id in () if self.backend == "multisusie" else sorted(geno_by_locus):
+            locus = loci[locus_id]
+            blocks = geno_by_locus[locus_id]
             locus_dir = self.work_root / f"{locus_id}_ld"
             locus_dir.mkdir(parents=True, exist_ok=True)
 

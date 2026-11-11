@@ -1803,7 +1803,7 @@ def write_figures(
                 Path(data_root), Path(out_dir).parent / "cache" / "allele_flips.tsv"
             )
         except Exception as exc:  # noqa: BLE001
-            active.warning("could not derive allele-coding flags: %s", exc)
+            active.warning(f"could not derive allele-coding flags: {exc}")
         if loci is None:
             lp = Path(data_root) / "loci" / "selected_loci.tsv"
             if lp.exists():
@@ -1814,19 +1814,18 @@ def write_figures(
                     Path(data_root), loci, Path(out_dir).parent / "cache" / "locus_ld_strength.tsv"
                 )
             except Exception as exc:  # noqa: BLE001
-                active.warning("could not measure locus LD strength: %s", exc)
+                active.warning(f"could not measure locus LD strength: {exc}")
     members = None
     if detail_dir:
         try:
             cs_detail = load_cs_detail(Path(detail_dir), df)
             if cs_detail is not None:
+                n_inst = cs_detail["instance"].nunique()
                 active.info(
-                    "per-credible-set detail: %d sets over %d instances",
-                    len(cs_detail),
-                    cs_detail["instance"].nunique(),
+                    f"per-credible-set detail: {len(cs_detail)} sets over {n_inst} instances"
                 )
         except Exception as exc:  # noqa: BLE001
-            active.warning("could not load per-credible-set detail: %s", exc)
+            active.warning(f"could not load per-credible-set detail: {exc}")
         mp = Path(detail_dir) / "fm_cs_members.tsv"
         if mp.exists():
             members = pd.read_csv(mp, sep="\t")
@@ -1835,7 +1834,7 @@ def write_figures(
                 for r in df.itertuples(index=False)
             }
             members = members[members.instance.isin(instance_ids)]
-            active.info("credible-set members: %d rows", len(members))
+            active.info(f"credible-set members: {len(members)} rows")
 
     jobs = [
         ("pap1_recall_grid.png", lambda o: pap1_recall_grid(df, o)),
@@ -1912,13 +1911,13 @@ def write_figures(
         except Exception as exc:  # noqa: BLE001 - a figure must never lose a run
             if strict:
                 raise RuntimeError(f"Could not draw {name}") from exc
-            active.warning("could not draw %s: %s", name, exc)
+            active.warning(f"could not draw {name}: {exc}")
             continue
         if p is None:
-            active.info("skipped %s (inputs absent)", name)
+            active.info(f"skipped {name} (inputs absent)")
         else:
             written.append(p)
-    active.info("wrote %d paper-analogue figure(s) -> %s", len(written), out_dir)
+    active.info(f"wrote {len(written)} paper-analogue figure(s) -> {out_dir}")
     return written
 
 

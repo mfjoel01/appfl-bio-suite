@@ -83,8 +83,16 @@ def prepare_inputs(
             raise ValueError("Missing or duplicate variant metadata")
         if any(not np.isfinite(a).all() for a in (g.G, g.u, p.c, [p.q, p.w])):
             raise ValueError("Nonfinite moments")
-        if not np.allclose(g.G, g.G.T, rtol=0, atol=1e-8):
+        # Cache-blocked check avoids strided G.T cache thrashing on large matrices.
+        n_var = g.G.shape[0]
+        if g.G.ndim != 2 or g.G.shape[1] != n_var:
             raise ValueError("Genotype Gram matrix is not symmetric")
+        for i0 in range(0, n_var, 256):
+            i1 = min(i0 + 256, n_var)
+            for j0 in range(i0, n_var, 256):
+                j1 = min(j0 + 256, n_var)
+                if float(np.max(np.abs(g.G[i0:i1, j0:j1] - g.G[j0:j1, i0:i1].T))) > 1e-8:
+                    raise ValueError("Genotype Gram matrix is not symmetric")
         if ((g.u < 0) | (g.u > 2 * g.n)).any():
             raise ValueError("Allele totals are outside dosage bounds")
 

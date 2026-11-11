@@ -185,3 +185,10 @@ Full index and the mapping onto the SuSiEx paper's own figures:
 
 See [COMPARISON_FIGURES.md](COMPARISON_FIGURES.md) for the checked numerical inputs,
 reproduction command, offline report and PNG/PDF/SVG exports in the primary checkout.
+
+## Real-data validation (MAGE + 1000G NYGC 30x)
+
+See [MAGE_VALIDATION.md](MAGE_VALIDATION.md) and
+`scripts/fine-mapping/run_mage_validation.py` to stage MAGE v1.0 expression/covariates,
+slice 1000 Genomes NYGC 30x GRCh38 regional genotypes, run the 15-arm parity/control
+benchmark, verify APPFL serial loopback, and render the five publication figures.
