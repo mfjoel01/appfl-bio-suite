@@ -417,15 +417,15 @@ appfl-bio-suite ga4gh duo | drs | trs | tes          <span class="c">data use, d
 
     <pre><code><span class="c"># install the release from PyPI (Python 3.12)</span>
 python3.12 -m venv .venv &amp;&amp; source .venv/bin/activate
-pip install <span class="k">"appfl-bio-suite[all]==0.3.1"</span> \
-    -c https://raw.githubusercontent.com/mfjoel01/appfl-bio-suite/v0.3.1/constraints.txt
+pip install <span class="k">"appfl-bio-suite[all]==0.3.2"</span> \
+    -c https://raw.githubusercontent.com/mfjoel01/appfl-bio-suite/v0.3.2/constraints.txt
 
 <span class="c"># a whole federation, on one machine</span>
 appfl-bio-suite simulate gwas --scenario ci-tiny --out /tmp/gwas-ci
 appfl-bio-suite run gwas --config loopback --driver serial --data-root /tmp/gwas-ci
 
 <span class="c"># then stand up a real one, from the matching release tag</span>
-git clone --branch v0.3.1 https://github.com/mfjoel01/appfl-bio-suite.git
+git clone --branch v0.3.2 https://github.com/mfjoel01/appfl-bio-suite.git
 cd appfl-bio-suite
 cp federation.yaml.example local/federation.yaml
 $EDITOR local/federation.yaml

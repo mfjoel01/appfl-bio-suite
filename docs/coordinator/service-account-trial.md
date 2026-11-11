@@ -48,8 +48,8 @@ Install the same release from PyPI on every machine (the
 environment, the coordinator's example files, and the CPU installation variant):
 
 ```bash
-python -m pip install "appfl-bio-suite==0.3.1" \
-    -c https://raw.githubusercontent.com/mfjoel01/appfl-bio-suite/v0.3.1/constraints.txt
+python -m pip install "appfl-bio-suite==0.3.2" \
+    -c https://raw.githubusercontent.com/mfjoel01/appfl-bio-suite/v0.3.2/constraints.txt
 ```
 
 The synthetic trial below requires no cohort download or experiment data staging.

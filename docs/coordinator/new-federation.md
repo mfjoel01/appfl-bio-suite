@@ -65,14 +65,14 @@ schedulers, or any inbound network access to your machine.
 ## Step 1 — Install
 
 ```bash
-git clone --branch v0.3.1 https://github.com/mfjoel01/appfl-bio-suite.git
+git clone --branch v0.3.2 https://github.com/mfjoel01/appfl-bio-suite.git
 cd appfl-bio-suite
 
 python3.12 -m venv .venv && source .venv/bin/activate
-pip install "appfl-bio-suite[all]==0.3.1" -c constraints.txt
+pip install "appfl-bio-suite[all]==0.3.2" -c constraints.txt
 ```
 
-The package comes from [PyPI](https://pypi.org/project/appfl-bio-suite/0.3.1/). It is
+The package comes from [PyPI](https://pypi.org/project/appfl-bio-suite/0.3.2/). It is
 the same release, at the same exact version, that every partner's bundle installs. The
 clone of the matching tag supplies what the wheel does not carry: `federation.yaml.example`,
 `constraints.txt`, and the fine-mapping binary installers under `scripts/`. If you intend
@@ -110,7 +110,7 @@ export PATH="$PWD/vendor/bin:$PATH"     # from the checkout root
 ```
 
 For MultiSuSiE inference, install the backend on the coordinator with
-`pip install "appfl-bio-suite[multisusie]==0.3.1" -r requirements-multisusie.txt -c constraints.txt`
+`pip install "appfl-bio-suite[multisusie]==0.3.2" -r requirements-multisusie.txt -c constraints.txt`
 and set `experiments.fine-mapping.fine_mapping_backend: multisusie` in your federation YAML.
 Preflight then checks that Python backend instead. Both backends consume the same
 partner payloads; see the [MultiSuSiE setup guide](../experiments/fine-mapping/MULTISUSIE.md).
