@@ -51,8 +51,8 @@ The partner never chooses it, and `join` never infers it from who runs the comma
 experiments:
   fine-mapping:
     sites:
-      - site: mbzuai
-        client_id: mbzuai
+      - site: site-east
+        client_id: east
         endpoint_mode: single-user   # default: multi-user
 ```
 
@@ -84,12 +84,12 @@ explicit route saying you reach it with your own login:
 {
   "version": 1,
   "endpoints": {
-    "<mbzuai endpoint UUID>": {
-      "client_id": "<mbzuai service-account client ID>",
-      "client_secret_env": "BIOSIM_MBZUAI_SECRET",
+    "<site-east endpoint UUID>": {
+      "client_id": "<site-east service-account client ID>",
+      "client_secret_env": "BIOSIM_SITE_EAST_SECRET",
       "expected_user": "finemap_svc"
     },
-    "<anl endpoint UUID>": {"coordinator_login": true, "expected_user": "finemap_svc"}
+    "<site-north endpoint UUID>": {"coordinator_login": true, "expected_user": "finemap_svc"}
   }
 }
 ```
@@ -169,6 +169,6 @@ Single-user activation is covered the same way: refusal as root or as any other 
 refusal without service-account credentials or with a credentials file others can read,
 endpoint ownership, restart of a managed endpoint, and registration through a route.
 `globus-compute-endpoint configure`/`start` are mocked there too. Its first live
-deployment (a Hyperstack VM) is the validation step; the
+deployment (a cloud VM) is the validation step; the
 [service-account trial](service-account-trial.md) records the cross-site isolation checks
 that remain open. Both endpoint modes keep the bundle revision and readiness checks.
