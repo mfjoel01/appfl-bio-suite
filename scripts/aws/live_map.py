@@ -61,9 +61,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 DEFAULT_NAME = "appfl-bio-suite-live-map"
 DEFAULT_REGION = "us-east-1"
-# Graviton, 2 GB: the install is the full pinned suite, which wants the memory once and
-# then idles. arm64 also means PyPI's torch wheel is the small CPU one.
-DEFAULT_INSTANCE_TYPE = "t4g.small"
+# x86, 2 GB. x86 because the instance installs the full pinned suite, and on x86 that
+# install is proven on every push by the Pages build; on arm64 several pinned packages
+# (psutil<6, among others) have no wheel and would compile on the instance. 2 GB plus
+# the swap file instance_setup.sh adds is enough for the install, which is the peak.
+DEFAULT_INSTANCE_TYPE = "t3.small"
 DEFAULT_TARGETS = ROOT / "local" / "live-map" / "targets.json"
 DEFAULT_GLOBUS = ROOT / "local" / "live-map" / "globus-client.json"
 

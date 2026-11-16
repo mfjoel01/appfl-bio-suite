@@ -126,6 +126,6 @@ python -m http.server -d local/site-preview 8000
 
 ## Cost and teardown
 
-One `t4g.small`, a 20 GB volume and one public IPv4 address: under 20 USD a month at
+One `t3.small`, a 20 GB volume and one public IPv4 address: under 20 USD a month at
 on-demand prices in us-east-1 at the time of writing. `destroy --yes` removes the
 instance, the address, the security group, the role and the stored parameters.

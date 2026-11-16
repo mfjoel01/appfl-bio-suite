@@ -39,6 +39,14 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get install -y -q python3.12-venv python3-dev build-essential git caddy
 
+# The pinned install (torch among it) is the one moment this 2 GB instance is short of
+# memory. A swap file makes that slow instead of fatal.
+if ! swapon --show=NAME --noheadings | grep -q '^/swapfile$'; then
+  [[ -f /swapfile ]] || { fallocate -l 2G /swapfile; chmod 600 /swapfile; mkswap -q /swapfile; }
+  swapon /swapfile
+  grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
 id -u livemap >/dev/null 2>&1 || useradd --system --home-dir "$home" --shell /usr/sbin/nologin livemap
 mkdir -p "$home"
 # The Globus SDK keeps its token cache under $HOME; the rest of $home stays root's.
