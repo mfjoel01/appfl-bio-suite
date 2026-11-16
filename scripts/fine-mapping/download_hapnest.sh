@@ -23,9 +23,9 @@
 # `chromosome: 1` in simulation_config.yaml.
 #
 # Usage:
-#   scripts/download_hapnest.sh [dest_dir]
-#   CHROMS="1" scripts/download_hapnest.sh
-#   FORCE=1 scripts/download_hapnest.sh
+#   scripts/fine-mapping/download_hapnest.sh [dest_dir]
+#   CHROMS="1" scripts/fine-mapping/download_hapnest.sh
+#   FORCE=1 scripts/fine-mapping/download_hapnest.sh
 
 set -euo pipefail
 
@@ -33,7 +33,9 @@ set -euo pipefail
 ACCESSION="S-BSST936"
 BASE_URL="https://ftp.ebi.ac.uk/biostudies/fire/S-BSST/936/${ACCESSION}/Files"
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Two levels up: this script lives in scripts/fine-mapping/. One level put the default
+# destination -- 135 GB for chr1 alone -- and the logs under scripts/.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DEST="${1:-${REPO_ROOT}/data/raw/hapnest}"
 DEST="$(mkdir -p "${DEST}" && cd "${DEST}" && pwd)"
 GENO_DIR="${DEST}/genotypes"
@@ -194,4 +196,6 @@ log "Done."
 log "Pipeline-ready inputs:"
 ls -lh "${DEST}/chr"*.bed 2>/dev/null | tee -a "${LOG_FILE}" || true
 ls -lh "${MANIFEST}" | tee -a "${LOG_FILE}"
-log "Next: ./scripts/run_all.sh"
+log "Next: point the scenario at it -- set cohort.hapnest_dir, or"
+log "  export FEDFM_HAPNEST_DIR=${DEST}"
+log "then: appfl-bio-suite simulate fine-mapping --scenario three-site-hapnest --out <dir>"
