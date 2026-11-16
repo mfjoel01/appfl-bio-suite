@@ -368,7 +368,14 @@ class DrsRegistry(BaseModel):
             ) from exc
         except json.JSONDecodeError as exc:
             raise DrsError(f"{path} is not valid JSON: {exc}") from exc
-        return cls.model_validate(raw)
+        except OSError as exc:
+            raise DrsError(f"could not read the DRS registry at {path}: {exc}") from exc
+        try:
+            return cls.model_validate(raw)
+        except ValueError as exc:
+            # Every caller handles DrsError -- the loopback run, in particular, treats an
+            # unloadable registry as a reason to run unverified, not as a reason to stop.
+            raise DrsError(f"{path} is not a DRS registry:\n\n{exc}") from exc
 
     def summary(self) -> str:
         blobs = len(self.objects) - len(self.bundles())
@@ -595,6 +602,8 @@ def _verify_tree(
     obj: DrsObject, target: Path, resolve: Callable[[str], DrsObject] | None, label: str
 ) -> list[str]:
     if not obj.is_bundle:
+        if not target.is_file():
+            return [f"{label}: the DRS object is a single file, but {target} is not one"]
         actual = file_sha256(target)
         if actual != obj.sha256:
             return [f"{label}: sha-256 mismatch\n  expected {obj.sha256}\n  actual   {actual}"]
@@ -700,13 +709,14 @@ class DrsClient:
         return self._request(f"{self.base_url}/ga4gh/drs/v1/service-info")
 
     def _request(self, url: str) -> dict[str, Any]:
+        import http.client
         import urllib.error
         import urllib.request
 
-        request = urllib.request.Request(url, headers={"Accept": "application/json"})
-        if self.token:
-            request.add_header("Authorization", f"Bearer {self.token}")
         try:
+            request = urllib.request.Request(url, headers={"Accept": "application/json"})
+            if self.token:
+                request.add_header("Authorization", f"Bearer {self.token}")
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
@@ -714,6 +724,10 @@ class DrsClient:
             raise DrsError(f"{url} returned {exc.code}: {body}") from exc
         except urllib.error.URLError as exc:
             raise DrsError(f"could not reach {url}: {exc.reason}") from exc
+        except (OSError, ValueError, http.client.HTTPException) as exc:
+            # A timeout or dropped connection mid-read, a URL with no scheme, or a body
+            # that is not JSON (a proxy's HTML error page served with a 200).
+            raise DrsError(f"no usable response from {url}: {exc}") from exc
 
 
 def serve(

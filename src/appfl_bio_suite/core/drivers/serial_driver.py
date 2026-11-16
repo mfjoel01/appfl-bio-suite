@@ -110,53 +110,57 @@ def main(argv: list[str] | None = None) -> int:
         config={"rounds": int(rounds), "sites": len(client_configs), "driver": "serial"},
     )
 
-    initial = server_agent.get_parameters(serial_run=True)
-    if isinstance(initial, tuple):
-        initial = initial[0]
-    for agent in agents:
-        agent.load_parameters(initial)
-
-    sample_sizes: dict[str, int] = {}
-    for agent in agents:
-        try:
-            size = agent.get_sample_size()
-        except Exception:  # noqa: BLE001 - not every loader reports one
-            continue
-        sample_sizes[agent.get_id()] = size
-        server_agent.set_sample_size(client_id=agent.get_id(), sample_size=size)
-        log.info(f"[loopback] {agent.get_id()}: n = {size}")
-
-    round_no = 0
-    while not server_agent.training_finished():
-        round_no += 1
-        log.info(f"[loopback] round {round_no}/{rounds}")
-        watcher.round_start(round_no)
-        futures = []
+    # Whatever happens below, the run is closed on the map: a trainer that raises would
+    # otherwise leave it shown as in progress for as long as the file exists.
+    try:
+        initial = server_agent.get_parameters(serial_run=True)
+        if isinstance(initial, tuple):
+            initial = initial[0]
         for agent in agents:
-            started = time.time()
-            agent.train()
-            local = agent.get_parameters()
-            if isinstance(local, tuple):
-                local, metadata = local
-            else:
-                metadata = {}
-            # What the trainer reported wins; the driver only fills gaps. A trainer that
-            # measures its own training time knows better than a wall clock wrapped
-            # around a call that also loads data.
-            metrics = watchable(metadata)
-            metrics.setdefault("num_samples", sample_sizes.get(agent.get_id()))
-            metrics.setdefault("train_time_sec", round(time.time() - started, 3))
-            watcher.client_update(agent.get_id(), round_no, **metrics)
-            futures.append(
-                server_agent.global_update(
-                    client_id=agent.get_id(), local_model=local, blocking=False, **metadata
-                )
-            )
-        for agent, future in zip(agents, futures, strict=True):
-            agent.load_parameters(future.result())
-        watcher.round_end(round_no)
+            agent.load_parameters(initial)
 
-    watcher.finish()
+        sample_sizes: dict[str, int] = {}
+        for agent in agents:
+            try:
+                size = agent.get_sample_size()
+            except Exception:  # noqa: BLE001 - not every loader reports one
+                continue
+            sample_sizes[agent.get_id()] = size
+            server_agent.set_sample_size(client_id=agent.get_id(), sample_size=size)
+            log.info(f"[loopback] {agent.get_id()}: n = {size}")
+
+        round_no = 0
+        while not server_agent.training_finished():
+            round_no += 1
+            log.info(f"[loopback] round {round_no}/{rounds}")
+            watcher.round_start(round_no)
+            futures = []
+            for agent in agents:
+                started = time.time()
+                agent.train()
+                local = agent.get_parameters()
+                if isinstance(local, tuple):
+                    local, metadata = local
+                else:
+                    metadata = {}
+                # What the trainer reported wins; the driver only fills gaps. A trainer that
+                # measures its own training time knows better than a wall clock wrapped
+                # around a call that also loads data.
+                metrics = watchable(metadata)
+                metrics.setdefault("num_samples", sample_sizes.get(agent.get_id()))
+                metrics.setdefault("train_time_sec", round(time.time() - started, 3))
+                watcher.client_update(agent.get_id(), round_no, **metrics)
+                futures.append(
+                    server_agent.global_update(
+                        client_id=agent.get_id(), local_model=local, blocking=False, **metadata
+                    )
+                )
+            for agent, future in zip(agents, futures, strict=True):
+                agent.load_parameters(future.result())
+            watcher.round_end(round_no)
+    finally:
+        watcher.finish()
+
     log.info("Federated Learning Training Completed!")
     out = server_config.server_configs.get("logging_output_dirname")
     if out:

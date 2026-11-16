@@ -116,7 +116,8 @@ def load_site_credentials(path: str | Path, endpoint_ids) -> dict[str, SiteCrede
         credentials[endpoint] = SiteCredential(
             identity, entry["client_secret_env"], entry["expected_user"]
         )
-    selected = set(endpoint_ids)
+    # A site with no endpoint yet has nothing to route to; callers report those.
+    selected = {endpoint for endpoint in endpoint_ids if endpoint}
     missing = selected - credentials.keys()
     if missing:
         raise ValueError("Missing site credentials for endpoint(s): " + ", ".join(sorted(missing)))

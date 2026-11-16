@@ -436,6 +436,66 @@ def test_a_missing_task_is_an_error_carrying_the_body(tes_service):
         TesClient(tes_service).get_task("nope")
 
 
+def test_a_url_with_no_scheme_is_reported_by_the_client_not_by_urllib():
+    with pytest.raises(TesError, match="no usable response"):
+        TesClient("tes.example.org").service_info()
+    with pytest.raises(TrsError, match="no usable response"):
+        TrsClient("dockstore.org/api").service_info()
+
+
+def test_a_state_outside_the_specification_is_read_not_rejected(tes_service, monkeypatch):
+    """`state` is the server's word. One this client has not heard of must still parse.
+
+    TERMINAL_STATES allows for "CANCELLED", which the 1.1 enumeration does not contain --
+    so a service that reported it failed validation, the poll raised something `wait` does
+    not retry, and the driver died without cancelling the other sites.
+    """
+    assert "CANCELLED" in TERMINAL_STATES
+    monkeypatch.setattr(_StubTES, "sequence", ["RUNNING", "CANCELLED"])
+    client = TesClient(tes_service)
+    task_id = client.create_task(
+        build_site_task(
+            client_id="anl",
+            experiment="fine-mapping",
+            image="img",
+            bundle_url="drs://h/x",
+            outputs_url="file:///out",
+            run_config={},
+        )
+    )
+    finished = client.wait(task_id, poll_seconds=0.01, timeout_seconds=30)
+    assert finished.state == "CANCELLED"
+
+
+# -- the site stage's exit codes ----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("raised", "code", "banner"),
+    [
+        # What the loader raises for a study the site's terms do not permit: no errno.
+        (PermissionError("this site's data use terms do not permit this study"), 77, True),
+        # What the operating system raises for a bundle this account cannot read.
+        (PermissionError(13, "Permission denied", "/data/bundle/site_genotypes.fam"), 1, False),
+    ],
+)
+def test_exit_77_means_the_consent_check_refused_and_nothing_else(
+    tmp_path, monkeypatch, capsys, raised, code, banner
+):
+    """The TES driver tells the coordinator exit 77 is a DUO refusal. A chmod is not one."""
+    from appfl_bio_suite.experiments.fine_mapping import site_stage
+
+    def refuse(*args, **kwargs):
+        raise raised
+
+    monkeypatch.setattr(site_stage, "run_site_stage", refuse)
+    config = tmp_path / "site.json"
+    config.write_text("{}")
+    args = ["fine-mapping", "--config", str(config), "--data-dir", str(tmp_path)]
+    assert site_stage.main(args) == code
+    assert ("DATA USE REFUSED" in capsys.readouterr().err) is banner
+
+
 # -- the payload wire format the TES path depends on -------------------------
 
 

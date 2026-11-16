@@ -719,7 +719,7 @@ class FineMappingAggregator(BaseAggregator):
             "run": {
                 "experiment": "fine-mapping",
                 "backend": self.backend,
-                "finished_at": pd.Timestamp.utcnow().isoformat(),
+                "finished_at": pd.Timestamp.now("UTC").isoformat(),
                 "sites": len(client_ids),
             },
             "dispatched": self.ga4gh,

@@ -168,138 +168,143 @@ def main(argv: list[str] | None = None) -> int:
         algorithm="single-round-aggregate",
         config={"rounds": 1, "sites": len(plans), "driver": "tes"},
     )
-    watcher.round_start(1)
+    # Closed on the map however this ends -- an unreadable payload or a failed fit
+    # included -- so an abandoned run is not shown as still in progress.
+    try:
+        watcher.round_start(1)
 
-    # -- submit, and wait ---------------------------------------------------
-    poll = float(tes_settings.get("poll_seconds", 15.0))
-    timeout = float(tes_settings.get("timeout_seconds", 7200.0))
-    submitted: dict[str, tuple[TesClient, str]] = {}
-    lock = threading.Lock()
-    abort = threading.Event()
+        # -- submit, and wait ---------------------------------------------------
+        poll = float(tes_settings.get("poll_seconds", 15.0))
+        timeout = float(tes_settings.get("timeout_seconds", 7200.0))
+        submitted: dict[str, tuple[TesClient, str]] = {}
+        lock = threading.Lock()
+        abort = threading.Event()
 
-    def cancel_others(reason: str) -> None:
-        # A single-round aggregate needs every site, so once one has failed the others'
-        # results will never be read. Leaving their tasks running would leave partners
-        # burning allocations on them -- the same reason `TesClient.wait` cancels on
-        # timeout.
-        with lock:
+        def cancel_others(reason: str) -> None:
+            # A single-round aggregate needs every site, so once one has failed the others'
+            # results will never be read. Leaving their tasks running would leave partners
+            # burning allocations on them -- the same reason `TesClient.wait` cancels on
+            # timeout.
+            with lock:
+                if abort.is_set():
+                    return
+                abort.set()
+                pending = list(submitted.items())
+            print(f"\n{reason}; cancelling the other sites' tasks.", file=sys.stderr)
+            for other_id, (other_client, other_task) in pending:
+                try:
+                    other_client.cancel_task(other_task)
+                except TesError as exc:
+                    print(f"{other_id}: could not cancel {other_task}: {exc}", file=sys.stderr)
+
+        def run_one(plan):
+            client_id, service_url, outputs_url, task = plan
             if abort.is_set():
-                return
-            abort.set()
-            pending = list(submitted.items())
-        print(f"\n{reason}; cancelling the other sites' tasks.", file=sys.stderr)
-        for other_id, (other_client, other_task) in pending:
+                return client_id, outputs_url, None, "not submitted: another site failed first"
+            client = TesClient(service_url)
             try:
-                other_client.cancel_task(other_task)
+                task_id = client.create_task(task)
             except TesError as exc:
-                print(f"{other_id}: could not cancel {other_task}: {exc}", file=sys.stderr)
+                cancel_others(f"{client_id}: submission failed")
+                return client_id, outputs_url, None, str(exc)
+            with lock:
+                submitted[client_id] = (client, task_id)
+                late = abort.is_set()
+            print(f"{client_id}: submitted {task_id} to {service_url}", file=sys.stderr)
+            if late:
+                # Submitted while another site was failing: cancel_others had already
+                # taken its snapshot of `submitted`, so this one is cancelled here.
+                try:
+                    client.cancel_task(task_id)
+                except TesError:
+                    pass
 
-    def run_one(plan):
-        client_id, service_url, outputs_url, task = plan
-        if abort.is_set():
-            return client_id, outputs_url, None, "not submitted: another site failed first"
-        client = TesClient(service_url)
-        try:
-            task_id = client.create_task(task)
-        except TesError as exc:
-            cancel_others(f"{client_id}: submission failed")
-            return client_id, outputs_url, None, str(exc)
-        with lock:
-            submitted[client_id] = (client, task_id)
-            late = abort.is_set()
-        print(f"{client_id}: submitted {task_id} to {service_url}", file=sys.stderr)
-        if late:
-            # Submitted while another site was failing: cancel_others had already
-            # taken its snapshot of `submitted`, so this one is cancelled here.
+            def on_state(_id, state):
+                print(f"{client_id}: {state}", file=sys.stderr)
+
             try:
-                client.cancel_task(task_id)
-            except TesError:
-                pass
+                finished = client.wait(
+                    task_id, poll_seconds=poll, timeout_seconds=timeout, on_state=on_state
+                )
+            except TesError as exc:
+                cancel_others(f"{client_id}: {exc}")
+                return client_id, outputs_url, None, str(exc)
+            if str(finished.state) != "COMPLETE":
+                cancel_others(f"{client_id}: {finished.state}")
+            return client_id, outputs_url, finished, None
 
-        def on_state(_id, state):
-            print(f"{client_id}: {state}", file=sys.stderr)
+        # Concurrently, because sites are independent and a serial wait would make the run as
+        # long as the sum of the sites rather than the slowest one.
+        with ThreadPoolExecutor(max_workers=max(1, len(plans))) as pool:
+            outcomes = list(pool.map(run_one, plans))
 
-        try:
-            finished = client.wait(
-                task_id, poll_seconds=poll, timeout_seconds=timeout, on_state=on_state
-            )
-        except TesError as exc:
-            cancel_others(f"{client_id}: {exc}")
-            return client_id, outputs_url, None, str(exc)
-        if str(finished.state) != "COMPLETE":
-            cancel_others(f"{client_id}: {finished.state}")
-        return client_id, outputs_url, finished, None
+        for client_id, _, _, error in outcomes:
+            if error:
+                print(f"\n{client_id}: {error}", file=sys.stderr)
+        results = [(cid, url, task) for cid, url, task, error in outcomes if task is not None]
+        errored = any(error for *_, error in outcomes)
 
-    # Concurrently, because sites are independent and a serial wait would make the run as
-    # long as the sum of the sites rather than the slowest one.
-    with ThreadPoolExecutor(max_workers=max(1, len(plans))) as pool:
-        outcomes = list(pool.map(run_one, plans))
+        failed = [(cid, task) for cid, _, task in results if str(task.state) != "COMPLETE"]
+        if failed or errored:
+            for client_id, task in failed:
+                print(f"\n{client_id}: {task.state}", file=sys.stderr)
+                for entry in task.logs or []:
+                    for log_entry in entry.get("logs", []) or []:
+                        if log_entry.get("stderr"):
+                            print(f"  stderr: {log_entry['stderr'][-2000:]}", file=sys.stderr)
+                        if log_entry.get("exit_code") == 77:
+                            print(
+                                "  exit 77 is the site stage's DATA USE REFUSED code: this "
+                                "site's DUO terms do not permit the declared study.",
+                                file=sys.stderr,
+                            )
+            watcher.finish()
+            return 1
 
-    for client_id, _, _, error in outcomes:
-        if error:
-            print(f"\n{client_id}: {error}", file=sys.stderr)
-    results = [(cid, url, task) for cid, url, task, error in outcomes if task is not None]
-    errored = any(error for *_, error in outcomes)
+        # -- read the payloads back --------------------------------------------
+        from appfl_bio_suite.experiments.fine_mapping.site_stage import load_payload
 
-    failed = [(cid, task) for cid, _, task in results if str(task.state) != "COMPLETE"]
-    if failed or errored:
-        for client_id, task in failed:
-            print(f"\n{client_id}: {task.state}", file=sys.stderr)
-            for entry in task.logs or []:
-                for log_entry in entry.get("logs", []) or []:
-                    if log_entry.get("stderr"):
-                        print(f"  stderr: {log_entry['stderr'][-2000:]}", file=sys.stderr)
-                    if log_entry.get("exit_code") == 77:
-                        print(
-                            "  exit 77 is the site stage's DATA USE REFUSED code: this "
-                            "site's DUO terms do not permit the declared study.",
-                            file=sys.stderr,
-                        )
+        local_models: dict[str, Any] = {}
+        for client_id, outputs_url, _task in results:
+            base = _local_path(outputs_url)
+            if base is None:
+                print(
+                    f"{client_id}: outputs are at {outputs_url}, which this driver cannot "
+                    "read directly. Stage them to a path this machine can see, or fetch them "
+                    "and re-run with --driver serial over the downloaded payloads.",
+                    file=sys.stderr,
+                )
+                return 1
+            payload_path = base / "aggregates.npz"
+            if not payload_path.is_file():
+                print(
+                    f"{client_id}: the task completed but {payload_path} is not there. The "
+                    "service staged its outputs somewhere this driver cannot see.",
+                    file=sys.stderr,
+                )
+                return 1
+            local_models[client_id] = load_payload(payload_path)
+            watcher.client_update(client_id, 1, num_samples=None)
+
+        # -- aggregate, in this process ----------------------------------------
+        import logging
+
+        from appfl_bio_suite.experiments.fine_mapping.aggregator import FineMappingAggregator
+
+        logging.basicConfig(
+            level=logging.INFO, format="[%(asctime)s %(levelname)s] %(message)s", datefmt="%H:%M:%S"
+        )
+        aggregator = FineMappingAggregator(
+            aggregator_configs=aggregator_kwargs, logger=logging.getLogger("fine-mapping")
+        )
+        aggregator.aggregate(local_models)
+
+        watcher.round_end(1)
         watcher.finish()
-        return 1
-
-    # -- read the payloads back --------------------------------------------
-    from appfl_bio_suite.experiments.fine_mapping.site_stage import load_payload
-
-    local_models: dict[str, Any] = {}
-    for client_id, outputs_url, _task in results:
-        base = _local_path(outputs_url)
-        if base is None:
-            print(
-                f"{client_id}: outputs are at {outputs_url}, which this driver cannot "
-                "read directly. Stage them to a path this machine can see, or fetch them "
-                "and re-run with --driver serial over the downloaded payloads.",
-                file=sys.stderr,
-            )
-            return 1
-        payload_path = base / "aggregates.npz"
-        if not payload_path.is_file():
-            print(
-                f"{client_id}: the task completed but {payload_path} is not there. The "
-                "service staged its outputs somewhere this driver cannot see.",
-                file=sys.stderr,
-            )
-            return 1
-        local_models[client_id] = load_payload(payload_path)
-        watcher.client_update(client_id, 1, num_samples=None)
-
-    # -- aggregate, in this process ----------------------------------------
-    import logging
-
-    from appfl_bio_suite.experiments.fine_mapping.aggregator import FineMappingAggregator
-
-    logging.basicConfig(
-        level=logging.INFO, format="[%(asctime)s %(levelname)s] %(message)s", datefmt="%H:%M:%S"
-    )
-    aggregator = FineMappingAggregator(
-        aggregator_configs=aggregator_kwargs, logger=logging.getLogger("fine-mapping")
-    )
-    aggregator.aggregate(local_models)
-
-    watcher.round_end(1)
-    watcher.finish()
-    print(f"\nresults in {out_root}", file=sys.stderr)
-    return 0
+        print(f"\nresults in {out_root}", file=sys.stderr)
+        return 0
+    finally:
+        watcher.finish()
 
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import deque
 from collections.abc import Callable
 from pathlib import Path
@@ -46,17 +47,26 @@ def spool_info(payload: Any) -> dict | None:
         return None
     blob = payload[SPOOL_KEY]
     raw = blob.numpy().tobytes() if hasattr(blob, "numpy") else bytes(blob)
-    info = json.loads(raw.decode("utf-8"))
+    try:
+        info = json.loads(raw.decode("utf-8"))
+    except ValueError as exc:
+        raise ValueError(f"malformed result-spool handle: {exc}") from exc
     if (
         not isinstance(info, dict)
         or set(info) != _FIELDS
         or info["format"] != SPOOL_FORMAT
-        or not str(info["path"]).startswith("/")
+        or not isinstance(info["path"], str)
+        or not info["path"].startswith("/")
+        or isinstance(info["size"], bool)
         or not isinstance(info["size"], int)
         or info["size"] <= 0
-        or len(str(info["sha256"])) != 64
+        # Exactly a sha-256, not merely 64 characters: part of it names a local file.
+        or not isinstance(info["sha256"], str)
+        or not re.fullmatch(r"[0-9a-f]{64}", info["sha256"])
+        or not isinstance(info["client_id"], str)
     ):
-        raise ValueError(f"malformed result-spool handle: {sorted(info)}")
+        described = sorted(info) if isinstance(info, dict) else type(info).__name__
+        raise ValueError(f"malformed result-spool handle: {described}")
     return info
 
 
@@ -124,7 +134,11 @@ def fetch_spooled(
 
     size, path = info["size"], info["path"]
     dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / f"{info['client_id']}-{info['sha256'][:16]}.pt"
+    # Named from the handle, which the SITE wrote. Reduced to a plain filename first: a
+    # client id of "../../x" would otherwise put this file -- which is overwritten and
+    # then deleted below -- anywhere the coordinator can write.
+    label = re.sub(r"[^A-Za-z0-9._-]", "_", str(info["client_id"])).strip(".") or "site"
+    dest = dest_dir / f"{label}-{info['sha256'][:16]}.pt"
     offsets = list(range(0, size, chunk_bytes))
     digest = hashlib.sha256()
     pending: deque = deque()
