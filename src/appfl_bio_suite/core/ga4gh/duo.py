@@ -474,8 +474,8 @@ def evaluate(
     reasons: list[dict[str, Any]] = []
 
     permission = str(profile.get("permission", "")).strip()
-    purposes = [str(p) for p in request.get("purposes", [])]
-    acknowledged = {str(a) for a in request.get("acknowledged", [])}
+    purposes = [str(p) for p in request.get("purposes") or []]
+    acknowledged = {str(a) for a in request.get("acknowledged") or []}
 
     def add(term_id: str, outcome: str, detail: str) -> None:
         labels = {**PERMISSIONS, **MODIFIERS, **PURPOSES}
@@ -497,7 +497,14 @@ def evaluate(
         add(permission, PERMITTED, "general research use permits any research purpose")
     elif permission == "DUO:0000006":
         outside = [p for p in purposes if p not in BIOMEDICAL_PURPOSES]
-        if outside:
+        if not purposes:
+            add(
+                permission,
+                DENIED,
+                "permits health/medical/biomedical research only, and the study declares "
+                "no research purpose",
+            )
+        elif outside:
             add(
                 permission,
                 DENIED,
@@ -507,7 +514,7 @@ def evaluate(
         else:
             add(permission, PERMITTED, "every declared purpose is biomedical research")
     elif permission == "DUO:0000007":
-        allowed = [str(v).strip().lower() for v in profile.get("permission_value", [])]
+        allowed = [str(v).strip().lower() for v in profile.get("permission_value") or []]
         disease = str(request.get("disease") or "").strip().lower()
         if not disease:
             add(
@@ -527,7 +534,14 @@ def evaluate(
             add(permission, PERMITTED, f"disease specific research, and the study is on {disease}")
     elif permission == "DUO:0000011":
         outside = [p for p in purposes if p not in ANCESTRY_PURPOSES]
-        if outside:
+        if not purposes:
+            add(
+                permission,
+                DENIED,
+                "permits population origins or ancestry research only, and the study "
+                "declares no research purpose",
+            )
+        elif outside:
             add(
                 permission,
                 DENIED,
@@ -538,9 +552,11 @@ def evaluate(
             add(permission, PERMITTED, "the study is population/ancestry research")
 
     # -- the modifiers ----------------------------------------------------
-    for entry in profile.get("modifiers", []):
+    for entry in profile.get("modifiers") or []:
         term_id = str(entry.get("id", "")).strip()
-        values = [str(v) for v in entry.get("value", [])]
+        # A blank is not a value. Left in, it would match a request that names no
+        # requester, project or institution, approving exactly the anonymous case.
+        values = [str(v) for v in entry.get("value") or [] if str(v).strip()]
         lowered = [v.strip().lower() for v in values]
         outcome, detail = _evaluate_modifier(term_id, values, lowered, request, purposes, today)
         if outcome == UNDETERMINED and term_id in acknowledged:
@@ -600,6 +616,8 @@ def _evaluate_modifier(
 
     if term_id == "DUO:0000016":  # genetic studies only
         outside = [p for p in purposes if p != "DUO:0000038"]
+        if not purposes:
+            return DENIED, "genetic studies only; the study declares no research purpose"
         if outside:
             return DENIED, "genetic studies only; the study also declares " + ", ".join(outside)
         return PERMITTED, "the study is genetic research"
@@ -661,7 +679,16 @@ def _evaluate_modifier(
         if not values:
             return UNDETERMINED, "a time limit applies, but no date was specified"
         limit = values[0].strip()
-        if today > limit:
+        # Compared as dates, never as text. "31-12-2020" sorts after any ISO date, so
+        # a string comparison reads an expiry years in the past as still running.
+        try:
+            expired = date.fromisoformat(today) > date.fromisoformat(limit)
+        except ValueError:
+            return UNDETERMINED, (
+                f"a time limit applies, but '{limit}' could not be compared with {today}: "
+                "both must be ISO dates (YYYY-MM-DD)"
+            )
+        if expired:
             return DENIED, f"use expired on {limit} (evaluating as of {today})"
         return PERMITTED, f"within the limit, which ends {limit}"
 

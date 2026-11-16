@@ -217,6 +217,74 @@ def test_time_limit_expires():
     assert evaluate(terms, request(), as_of="2027-01-01")["outcome"] == DENIED
 
 
+@pytest.mark.parametrize("limit", ["31-12-2020", "December 2020", "2020/12/31", "soon"])
+def test_a_time_limit_that_is_not_an_iso_date_is_undetermined_not_permitted(limit: str):
+    """Compared as text, every one of these sorts after today and reads as unexpired.
+
+    They all describe a limit that passed years ago. A date the matcher cannot read is a
+    term a person has to read, which is what `undetermined` is for.
+    """
+    terms = profile(modifiers=[{"id": "DUO:0000025", "value": [limit]}])
+    decision = evaluate(terms, request(), as_of="2026-06-01")
+    assert decision["outcome"] == UNDETERMINED
+    assert limit in decision["reasons"][-1]["detail"]
+    cleared = evaluate(terms, request(acknowledged=["DUO:0000025"]), as_of="2026-06-01")
+    assert cleared["outcome"] == PERMITTED
+
+
+def test_a_time_limit_is_compared_as_a_date_on_its_last_day():
+    terms = profile(modifiers=[{"id": "DUO:0000025", "value": [" 2026-06-01 "]}])
+    assert evaluate(terms, request(), as_of="2026-06-01")["outcome"] == PERMITTED
+    assert evaluate(terms, request(), as_of="2026-06-02")["outcome"] == DENIED
+
+
+@pytest.mark.parametrize(
+    "terms",
+    [
+        {"permission": "DUO:0000006"},
+        {"permission": "DUO:0000011"},
+        {"permission": "DUO:0000042", "modifiers": [{"id": "DUO:0000016"}]},
+    ],
+)
+@pytest.mark.parametrize("purposes", [[], None])
+def test_a_purpose_restriction_is_not_satisfied_by_declaring_no_purpose(terms, purposes):
+    """`every declared purpose is biomedical` must not be true of an empty list.
+
+    DataUseRequest refuses to be built without a purpose, but the matcher takes plain
+    dicts -- and the copy that runs at a site takes whatever the dispatched config held.
+    """
+    decision = evaluate({"dataset_id": "d", **terms}, {"requester": "me", "purposes": purposes})
+    assert decision["outcome"] == DENIED
+    assert "no research purpose" in decision["reasons"][-1]["detail"]
+
+
+@pytest.mark.parametrize(
+    ("term_id", "field"),
+    [("DUO:0000026", "requester"), ("DUO:0000027", "project"), ("DUO:0000028", "institution")],
+)
+def test_a_blank_approved_value_does_not_approve_an_anonymous_request(term_id, field):
+    """`value: [""]` used to match a request that left the field empty."""
+    terms = profile(modifiers=[{"id": term_id, "value": ["", "  "]}])
+    anonymous = {"purposes": ["DUO:0000038"], field: ""}
+    assert evaluate(terms, anonymous)["outcome"] == UNDETERMINED
+    listed = profile(modifiers=[{"id": term_id, "value": ["", "someone"]}])
+    assert evaluate(listed, anonymous)["outcome"] == DENIED
+
+
+def test_explicit_nulls_where_lists_belong_are_read_as_empty():
+    """A hand-written DATA_USE.json with `"value": null` is refused or decided, not crashed."""
+    terms = {
+        "dataset_id": "d",
+        "permission": "DUO:0000042",
+        "modifiers": [{"id": "DUO:0000028", "value": None}],
+    }
+    assert evaluate(terms, request())["outcome"] == UNDETERMINED
+    bare = {"dataset_id": "d", "permission": "DUO:0000042", "modifiers": None}
+    assert evaluate(bare, {"purposes": ["DUO:0000038"], "acknowledged": None})["outcome"] == (
+        PERMITTED
+    )
+
+
 def test_free_text_restrictions_are_undetermined_until_acknowledged():
     terms = profile(modifiers=[{"id": "DUO:0000012", "value": ["no use in studies of X"]}])
     assert evaluate(terms, request())["outcome"] == UNDETERMINED
