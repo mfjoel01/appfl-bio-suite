@@ -230,6 +230,8 @@ def test_cli_targets_adds_endpoints_and_copies_routes_not_secrets(tmp_path, monk
             "--federation", str(repo_root() / "website" / "federation.yaml"),
             "--endpoint", f"mbzuai={OWNED}",
             "--endpoint", f"covenant={UP}",
+            "--endpoint", f"anl={DOWN}",
+            "--skip", "anl",
             "--site-credentials", str(manifest),
             "--out", str(out),
         ],
@@ -243,6 +245,7 @@ def test_cli_targets_adds_endpoints_and_copies_routes_not_secrets(tmp_path, monk
         OWNED: {"client_id": SITE_CLIENT, "client_secret_env": "SITE_SECRET"}
     }
     assert "as the account in $SITE_SECRET" in result.output
+    assert "anl: left out (--skip)" in result.output
     assert (out.stat().st_mode & 0o777) == 0o600
 
 

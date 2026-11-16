@@ -784,6 +784,14 @@ def _pairs(values: tuple[str, ...], option: str, shape: str) -> list[tuple[str, 
     "does not name, such as one recorded only at registration. Repeatable.",
 )
 @click.option(
+    "--skip",
+    multiple=True,
+    metavar="SITE",
+    help="Leave this (published) site out -- one whose endpoint the prober cannot be "
+    "given an identity for, such as a coordinator endpoint owned by a personal login. "
+    "Repeatable.",
+)
+@click.option(
     "--site-credentials",
     type=click.Path(path_type=Path, exists=True, dir_okay=False),
     default=None,
@@ -802,6 +810,7 @@ def watch_targets(
     federation_path: str | None,
     rename: tuple[str, ...],
     extra: tuple[str, ...],
+    skip: tuple[str, ...],
     site_credentials: Path | None,
     out_path: Path,
 ) -> None:
@@ -832,6 +841,10 @@ def watch_targets(
         uuids = targets.setdefault(site_id, [])
         if uuid not in uuids:
             uuids.append(uuid)
+    for site_id in skip:
+        if targets.pop(site_id, None) is None:
+            raise click.UsageError(f"--skip {site_id}: no such site in the probe list")
+        notes.append(f"{site_id}: left out (--skip)")
     if not targets:
         raise click.ClickException("no site has a real endpoint to probe")
 
