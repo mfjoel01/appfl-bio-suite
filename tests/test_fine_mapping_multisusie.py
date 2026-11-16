@@ -15,6 +15,7 @@ from appfl_bio_suite.experiments.fine_mapping.fedfm.fed_fine_mapping import (
 from appfl_bio_suite.experiments.fine_mapping.multisusie import (
     MomentInputs,
     MultiSuSiEOptions,
+    credible_set_purity,
     fit_multisusie,
     prepare_inputs,
     run_multisusie,
@@ -182,6 +183,95 @@ def test_nonconvergence_is_retained_and_output_cannot_be_overwritten(tmp_path):
     assert (out / "posterior.npz").is_file()
     with pytest.raises(FileExistsError):
         run_multisusie(g, p, out)
+
+
+def _exchangeable_pair(rng, n):
+    """Two independent variants that are exchangeable row for row.
+
+    One causal effect therefore splits evenly between them: a two-variant credible set
+    whose members are uncorrelated, which is exactly what a purity filter exists to drop.
+    """
+    a = rng.binomial(2, 0.3, n).astype(float)
+    b = rng.binomial(2, 0.3, n).astype(float)
+    noise = rng.normal(size=n)
+    x = np.zeros((2 * n, 6))
+    x[:n, 0], x[:n, 1] = a, b
+    x[n:, 0], x[n:, 1] = b, a
+    x[:, 2:] = rng.binomial(2, 0.3, (2 * n, 4))
+    return x, 0.6 * (x[:, 0] + x[:, 1]) + np.concatenate([noise, noise])
+
+
+def _impure_two_ancestry_blocks(censor_in_afr):
+    rng = np.random.default_rng(7)
+    x, y = _exchangeable_pair(rng, 300)
+    geno, pheno = blocks(x, y, "EUR")
+    other, _ = _exchangeable_pair(rng, 300)
+    if censor_in_afr:
+        other[:, 1] = 0.0  # monomorphic in AFR, so censored there and zero-padded
+    other_g, other_p = blocks(other, rng.normal(size=len(other)), "AFR")
+    return geno + other_g, pheno + other_p
+
+
+def test_purity_ignores_an_ancestry_that_does_not_observe_the_pair():
+    """Censoring must neither hide a pair's linkage nor invent it."""
+    variants = pd.DataFrame({"snp_id": ["a", "b", "c"]})
+    seen_everywhere = np.array([[4.0, 1.0, 3.6], [1.0, 4.0, 1.0], [3.6, 1.0, 4.0]])
+    # The second ancestry does not observe variant c: its row and column are zero-padded.
+    censored = np.array([[4.0, 0.4, 0.0], [0.4, 4.0, 0.0], [0.0, 0.0, 0.0]])
+    inputs = MomentInputs(
+        variants,
+        ["AFR", "EUR"],
+        [100, 100],
+        [seen_everywhere, censored],
+        [np.zeros(3), np.zeros(3)],
+        [1.0, 1.0],
+        [np.array([True, True, True]), np.array([True, True, False])],
+    )
+    assert credible_set_purity(inputs, [0, 2]) == pytest.approx(0.9)
+    assert credible_set_purity(inputs, [0, 1]) == pytest.approx(0.25)
+    assert credible_set_purity(inputs, [2]) == pytest.approx(1.0)
+    # A pair no ancestry observes together has no evidence of linkage.
+    apart = MomentInputs(
+        variants.iloc[:2],
+        ["AFR", "EUR"],
+        [100, 100],
+        [np.diag([4.0, 0.0]), np.diag([0.0, 4.0])],
+        [np.zeros(2), np.zeros(2)],
+        [1.0, 1.0],
+        [np.array([True, False]), np.array([False, True])],
+    )
+    assert credible_set_purity(apart, [0, 1]) == 0.0
+
+
+@pytest.mark.parametrize("censor_in_afr", [False, True])
+def test_impure_credible_set_is_dropped_even_when_a_member_is_censored(tmp_path, censor_in_afr):
+    """The backend keeps an impure set once any member is censored in any ancestry.
+
+    Its correlation for a zero-padded variant is 0/0, and ``NaN < min_abs_corr`` is
+    False. Both arms here hold the same uncorrelated pair; only the censoring differs.
+    """
+    pytest.importorskip("MultiSuSiE")
+    geno, pheno = _impure_two_ancestry_blocks(censor_in_afr)
+    out = tmp_path / "fit"
+    record = run_multisusie(geno, pheno, out, MultiSuSiEOptions(n_signals=1, min_abs_corr=0.5))
+    assert record["fit_status"] == "converged_no_cs"
+    assert record["n_credible_sets"] == 0
+    assert pd.read_csv(out / "credible_sets.tsv", sep="\t").empty
+    if censor_in_afr:
+        # The set was formed, scored on the ancestry that observes both, and rejected.
+        assert record["n_credible_sets_below_purity"] == 1
+        assert max(record["credible_set_purity"].values()) < 0.5
+
+
+def test_censored_member_does_not_cost_a_pure_credible_set(tmp_path):
+    """The same pair, without a purity threshold, is reported as before."""
+    pytest.importorskip("MultiSuSiE")
+    geno, pheno = _impure_two_ancestry_blocks(censor_in_afr=True)
+    out = tmp_path / "fit"
+    record = run_multisusie(geno, pheno, out, MultiSuSiEOptions(n_signals=1))
+    assert record["fit_status"] == "converged_cs"
+    assert sorted(pd.read_csv(out / "credible_sets.tsv", sep="\t").snp_id) == ["rs0", "rs1"]
+    assert "credible_set_purity" not in record
 
 
 def test_pilot_runs_existing_site_stage_without_external_binaries(tmp_path):

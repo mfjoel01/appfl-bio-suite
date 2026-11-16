@@ -177,6 +177,32 @@ def fit_multisusie(inputs: MomentInputs, options: MultiSuSiEOptions):
     )
 
 
+def credible_set_purity(inputs: MomentInputs, members) -> float:
+    """Minimum over variant pairs of the largest ``|r|`` among ancestries observing both.
+
+    The backend's own purity is not usable on these inputs. A variant censored in one
+    ancestry is zero-padded there, the backend's correlation for that row is 0/0, and
+    its filter then compares ``NaN < min_abs_corr`` -- which is False, so a credible set
+    holding such a variant passes whatever its purity. Real cohorts censor per ancestry
+    routinely (a variant monomorphic in one population), so that is not a corner case.
+
+    Here an ancestry vouches for a pair only where it observes both variants. A pair no
+    ancestry observes together has no evidence of linkage at all and scores 0: a purity
+    threshold is a demand for that evidence, not a default that it exists.
+    """
+    members = np.asarray(members, dtype=np.int64)
+    best = np.zeros((len(members), len(members)), dtype=np.float64)
+    for xtx, eligible in zip(inputs.xtx, inputs.eligible, strict=True):
+        seen = np.asarray(eligible)[members]
+        block = xtx[np.ix_(members, members)]
+        scale = np.sqrt(np.diag(block))
+        with np.errstate(divide="ignore", invalid="ignore"):
+            corr = np.abs(block / np.outer(scale, scale))
+        corr[~np.outer(seen, seen)] = 0.0
+        best = np.maximum(best, np.nan_to_num(corr, nan=0.0, posinf=0.0))
+    return float(best.min()) if best.size else float("nan")
+
+
 def run_multisusie(geno, pheno, destination: Path, options=None) -> dict:
     """Write native PIPs, component probabilities, CS membership and fit provenance.
 
@@ -215,8 +241,24 @@ def run_multisusie(geno, pheno, destination: Path, options=None) -> dict:
         for pop, mask in zip(inputs.populations, inputs.eligible, strict=True):
             variants[f"eligible_{pop}"] = mask
         variants.to_csv(destination / "variants.tsv", sep="\t", index=False)
+        # The purity filter is applied here, on the censoring-aware definition, rather
+        # than trusted from the backend -- see credible_set_purity. Sets the backend
+        # itself rejected stay rejected: where it could compute a purity the two agree.
+        kept = [bool(keep) for keep in fit.sets[3]]
+        if options.min_abs_corr > 0:
+            purity = {}
+            for component, keep in enumerate(kept):
+                if not keep:
+                    continue
+                value = credible_set_purity(inputs, fit.sets[0][component])
+                purity[str(component + 1)] = value
+                kept[component] = value >= options.min_abs_corr
+            record["credible_set_purity"] = purity
+            record["n_credible_sets_below_purity"] = sum(
+                1 for value in purity.values() if value < options.min_abs_corr
+            )
         members = []
-        for component, keep in enumerate(fit.sets[3]):
+        for component, keep in enumerate(kept):
             if keep:
                 for idx in fit.sets[0][component]:
                     members.append(
@@ -239,7 +281,7 @@ def run_multisusie(geno, pheno, destination: Path, options=None) -> dict:
             coef_sd=fit.coef_sd,
             residual_variance=fit.sigma2,
         )
-        record["n_credible_sets"] = int(np.sum(fit.sets[3]))
+        record["n_credible_sets"] = int(sum(kept))
         record["fit_status"] = (
             ("converged_cs" if members else "converged_no_cs") if fit.converged else "nonconverged"
         )
