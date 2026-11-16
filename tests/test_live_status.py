@@ -21,7 +21,10 @@ from appfl_bio_suite.core.experiments import repo_root
 from appfl_bio_suite.core.live_status import (
     STATUS_FILENAME,
     LiveStatusError,
+    Route,
+    load_probe_list,
     load_targets,
+    missing_secrets,
     probe_targets,
     run,
     targets_from_federation,
@@ -113,6 +116,145 @@ def test_loop_survives_failures_and_replaces_a_dead_client(tmp_path):
         )
     assert seen == ["unknown", "online"]
     assert len(made) == 2, "a client whose every request failed is not reused"
+
+
+OWNED = "11111111-aaaa-4bbb-8ccc-000000000004"
+SITE_CLIENT = "22222222-aaaa-4bbb-8ccc-000000000001"
+
+
+class OwnerOnly(FakeClient):
+    """A single-user endpoint: its status answers only the service account that owns it."""
+
+    def __init__(self, identity: str | None):
+        super().__init__()
+        self.identity = identity
+
+    def get_endpoint_status(self, uuid: str) -> dict:
+        if uuid != OWNED:
+            return super().get_endpoint_status(uuid)
+        if self.identity != SITE_CLIENT:
+            raise RuntimeError("403 ENDPOINT_ACCESS_FORBIDDEN")
+        return {"status": "online"}
+
+
+def test_a_route_asks_as_the_owning_account(tmp_path):
+    out = tmp_path / STATUS_FILENAME
+    made: list[str | None] = []
+
+    def default():
+        made.append(None)
+        return OwnerOnly(None)
+
+    def routed(route: Route):
+        made.append(route.client_id)
+        return OwnerOnly(route.client_id)
+
+    targets = {"anl": [UP], "mbzuai": [OWNED]}
+    run(targets, out, once=True, client_factory=default)
+    assert json.loads(out.read_text())["sites"]["mbzuai"]["state"] == "unknown"
+
+    made.clear()
+    routes = {OWNED: Route(SITE_CLIENT, "SITE_SECRET")}
+    run(targets, out, routes=routes, once=True, client_factory=default, route_factory=routed)
+    sites = json.loads(out.read_text())["sites"]
+    assert sites["mbzuai"]["state"] == "online" and sites["anl"]["state"] == "online"
+    assert len(made) == 2 and set(made) == {None, SITE_CLIENT}, "one client per identity"
+
+
+def test_a_route_that_cannot_authenticate_is_unknown_for_its_site_only(tmp_path):
+    out = tmp_path / STATUS_FILENAME
+
+    def broken(route: Route):
+        raise ValueError(f"Set coordinator environment variable {route.client_secret_env}.")
+
+    run(
+        {"anl": [UP], "mbzuai": [OWNED]},
+        out,
+        routes={OWNED: Route(SITE_CLIENT, "SITE_SECRET")},
+        once=True,
+        client_factory=FakeClient,
+        route_factory=broken,
+    )
+    sites = json.loads(out.read_text())["sites"]
+    assert sites == {
+        "anl": {"state": "online", "endpoints": 1, "online": 1},
+        "mbzuai": {"state": "unknown", "endpoints": 1, "online": 0},
+    }
+
+
+def test_probe_list_routes(tmp_path):
+    path = tmp_path / "targets.json"
+    route = {"client_id": SITE_CLIENT, "client_secret_env": "SITE_SECRET"}
+    path.write_text(json.dumps({"sites": {"mbzuai": [OWNED]}, "routes": {OWNED: route}}))
+    targets, routes = load_probe_list(path)
+    assert targets == {"mbzuai": [OWNED]}
+    assert routes == {OWNED: Route(SITE_CLIENT, "SITE_SECRET")}
+    assert missing_secrets(routes, {}) == ["SITE_SECRET"]
+    assert missing_secrets(routes, {"SITE_SECRET": "x"}) == []
+
+    for bad in (
+        {**route, "client_secret": "s3"},  # the secret itself, inline
+        {"client_id": "nope", "client_secret_env": "SITE_SECRET"},
+        {"client_id": SITE_CLIENT, "client_secret_env": "not a name"},
+    ):
+        path.write_text(json.dumps({"sites": {"mbzuai": [OWNED]}, "routes": {OWNED: bad}}))
+        with pytest.raises(LiveStatusError):
+            load_probe_list(path)
+    path.write_text(json.dumps({"sites": {"anl": [UP]}, "routes": {OWNED: route}}))
+    with pytest.raises(LiveStatusError, match="not in `sites:`"):
+        load_probe_list(path)
+
+
+def test_cli_targets_adds_endpoints_and_copies_routes_not_secrets(tmp_path, monkeypatch):
+    monkeypatch.setenv("SITE_SECRET", "do-not-copy-me")
+    manifest = tmp_path / "site-credentials.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "endpoints": {
+                    OWNED: {
+                        "client_id": SITE_CLIENT,
+                        "client_secret_env": "SITE_SECRET",
+                        "expected_user": "finemap_svc",
+                    }
+                },
+            }
+        )
+    )
+    out = tmp_path / "targets.json"
+    result = CliRunner().invoke(
+        main,
+        [
+            "watch", "targets",
+            "--federation", str(repo_root() / "website" / "federation.yaml"),
+            "--endpoint", f"mbzuai={OWNED}",
+            "--endpoint", f"covenant={UP}",
+            "--site-credentials", str(manifest),
+            "--out", str(out),
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, result.output
+    text = out.read_text()
+    assert "do-not-copy-me" not in text and "expected_user" not in text
+    document = json.loads(text)
+    assert document["sites"] == {"mbzuai": [OWNED], "covenant": [UP]}
+    assert document["routes"] == {
+        OWNED: {"client_id": SITE_CLIENT, "client_secret_env": "SITE_SECRET"}
+    }
+    assert "as the account in $SITE_SECRET" in result.output
+    assert (out.stat().st_mode & 0o777) == 0o600
+
+
+def test_cli_live_refuses_a_route_whose_secret_is_unset(tmp_path, monkeypatch):
+    monkeypatch.delenv("SITE_SECRET", raising=False)
+    path = tmp_path / "targets.json"
+    route = {"client_id": SITE_CLIENT, "client_secret_env": "SITE_SECRET"}
+    path.write_text(json.dumps({"sites": {"mbzuai": [OWNED]}, "routes": {OWNED: route}}))
+    result = CliRunner().invoke(
+        main, ["watch", "live", "--targets", str(path), "--out", str(tmp_path), "--once"]
+    )
+    assert result.exit_code != 0 and "SITE_SECRET" in result.output
 
 
 def test_interval_has_a_floor(tmp_path):
@@ -214,11 +356,30 @@ def test_user_data_carries_no_secret_and_only_validated_values(live_map):
 def test_targets_are_checked_against_the_published_map(live_map, tmp_path):
     path = tmp_path / "targets.json"
     path.write_text(json.dumps({"sites": {"cdac": [UP], "nz": [DOWN]}}))
-    body, warnings = live_map.read_targets(path, live_map.public_site_ids())
+    body, warnings, secrets = live_map.read_targets(path, live_map.public_site_ids())
     assert json.loads(body) == {"sites": {"cdac": [UP], "nz": [DOWN]}}
     assert len(warnings) == 1 and "'nz'" in warnings[0]
+    assert secrets == []
     with pytest.raises(live_map.DeployError, match="watch targets"):
         live_map.read_targets(tmp_path / "missing.json")
+
+
+def test_routed_targets_carry_secret_names_and_never_secrets(live_map, tmp_path):
+    path = tmp_path / "targets.json"
+    route = {"client_id": SITE_CLIENT, "client_secret_env": "SITE_SECRET"}
+    path.write_text(json.dumps({"sites": {"mbzuai": [OWNED]}, "routes": {OWNED: route}}))
+    body, _, secrets = live_map.read_targets(path)
+    assert json.loads(body)["routes"] == {OWNED: route}
+    assert secrets == ["SITE_SECRET"]
+    with pytest.raises(live_map.DeployError, match="SITE_SECRET"):
+        live_map.read_site_secrets(secrets, {})
+    assert live_map.read_site_secrets(secrets, {"SITE_SECRET": "x"}) == {"SITE_SECRET": "x"}
+
+    path.write_text(
+        json.dumps({"sites": {"mbzuai": [OWNED]}, "routes": {OWNED: {**route, "secret": "x"}}})
+    )
+    with pytest.raises(live_map.DeployError, match="never the secret"):
+        live_map.read_targets(path)
 
 
 def test_globus_client_from_file_or_environment(live_map, tmp_path):

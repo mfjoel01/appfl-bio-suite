@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 """Start `appfl-bio-suite watch live` on the EC2 instance, with its secrets from SSM.
 
-The systemd unit written by instance_setup.sh runs this. It exists so that the two
-sensitive inputs -- the Globus service account's secret and the real endpoint UUIDs --
-are fetched with the instance's IAM role each time the service starts, and are never in
-user-data, in the unit file, or in the repository checkout. Rotating either is
+The systemd unit written by instance_setup.sh runs this. It exists so that the sensitive
+inputs -- the prober's Globus service-account secret, the real endpoint UUIDs, and the
+secret of any site service account the probe list routes an endpoint to -- are fetched
+with the instance's IAM role each time the service starts, and are never in user-data,
+in the unit file, or in the repository checkout. Rotating any of them is
 `live_map.py update`, which rewrites the parameters and restarts the service.
 
     live_map_prober.py <exported map directory>
@@ -15,6 +16,7 @@ Reads LIVE_MAP_REGION, LIVE_MAP_PARAMS and LIVE_MAP_INTERVAL from the environmen
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -43,6 +45,12 @@ def main(argv: list[str]) -> int:
     env = dict(os.environ)
     env["GLOBUS_COMPUTE_CLIENT_ID"] = parameter("globus-client-id")
     env["GLOBUS_COMPUTE_CLIENT_SECRET"] = parameter("globus-client-secret")
+    # The secrets of any sites the probe list asks about as their own service account,
+    # under the variable names its routes give. Absent when no route is used.
+    try:
+        env.update(json.loads(parameter("site-secrets")))
+    except ssm.exceptions.ParameterNotFound:
+        pass
 
     cli = Path(sys.executable).with_name("appfl-bio-suite")
     command = [

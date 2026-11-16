@@ -33,9 +33,16 @@ an endpoint can be online and still refuse or fail a task. `core/endpoint.py` li
 can be wrong behind an `online`.
 
 **Unknown is not offline.** Globus Compute does not let every identity read every
-endpoint's status: partners' multi-user endpoints have answered an identity that does not
-own them, and a single-user endpoint owned by a service account has refused one (403). A
-site the prober may not ask about is drawn as unknown. The same holds if the prober's
+endpoint's status. Partners' multi-user endpoints answer an identity that does not own
+them. A single-user endpoint owned by a site's service account answers only that account
+-- MBZUAI's refused the coordinator's own login with a 403 while it was running. A site
+the prober may not ask about is drawn as unknown.
+
+To show such a site, give its endpoint a **route** in the probe list: the client id of
+the account that owns it, and the name of the environment variable holding a secret for
+that client. That account can submit tasks to the endpoint, not only read its status, so
+mint a separate secret on the client for the prober. It is then revocable on its own, and
+the coordinator's secret never leaves Polaris. The same holds if the prober's
 credential expires -- the page says it does not know, rather than that every partner is
 down -- and if the prober stops altogether, the viewer retires its last answer after
 three intervals and the header reads "Status stale".
@@ -95,6 +102,12 @@ browser ── 80/443 ──> Caddy ── static files ── /opt/live-map/sit
    Read the file. Site ids must be the ones the *published* map uses
    (`website/partners.json`); `--rename LOCAL=PUBLIC` maps one that differs, and `deploy`
    warns about any id the map does not draw. Placeholder UUIDs are skipped.
+
+   `--endpoint SITE=UUID` adds an endpoint the federation file does not name, such as one
+   recorded only at registration. `--site-credentials MANIFEST` copies the route for each
+   probed endpoint your coordinator manifest routes to a service account -- the client id
+   and the variable *name*, never the secret. Before `deploy`, export that variable with
+   the prober's own secret for the client; it is stored encrypted beside the targets.
 
 4. **Push the commit.** The instance clones the public repository at the commit you
    deploy, so it has to be on GitHub.

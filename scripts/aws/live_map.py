@@ -35,6 +35,10 @@ WHAT YOU NEED ONCE
    them; an endpoint that refuses this one shows as "unknown" on the map, not offline.
 3. The probe list, from your real federation:
    ``appfl-bio-suite watch targets --out local/live-map/targets.json``
+   An endpoint owned by a site's own service account (single-user mode) answers status
+   requests only from that account. Give the list a route for it with
+   ``--site-credentials``, and export that client's secret before deploying -- a separate
+   secret minted for the prober, since that account can submit tasks, not only ask.
 
 The commit being served must be on GitHub: the instance clones the public repository.
 """
@@ -114,8 +118,13 @@ def public_site_ids(root: Path = ROOT) -> set[str]:
     }
 
 
-def read_targets(path: Path, known_ids: set[str] | None = None) -> tuple[str, list[str]]:
-    """The targets file as the compact JSON to store, and warnings about it."""
+def read_targets(path: Path, known_ids: set[str] | None = None) -> tuple[str, list[str], list[str]]:
+    """The targets file as compact JSON to store, warnings, and the secrets it names.
+
+    The last is the environment variables its credential routes read, sorted. The
+    values are read from this machine's environment at deploy time and stored
+    encrypted beside the targets; the file itself never holds one.
+    """
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -127,14 +136,32 @@ def read_targets(path: Path, known_ids: set[str] | None = None) -> tuple[str, li
         raise DeployError(f"{path} is not JSON: {exc}") from exc
 
     sites = raw.get("sites") if isinstance(raw, dict) else None
-    if not isinstance(sites, dict) or not sites:
-        raise DeployError(f"{path}: expected a non-empty `sites` object")
+    if not isinstance(sites, dict) or not sites or set(raw) - {"sites", "routes"}:
+        raise DeployError(f"{path}: expected a non-empty `sites` object, and optionally `routes`")
     for site, uuids in sites.items():
         if not isinstance(uuids, list) or not uuids:
             raise DeployError(f"{path}: site {site!r} needs a list of endpoint UUIDs")
         for uuid in uuids:
             if not isinstance(uuid, str) or not _UUID.match(uuid.lower()):
                 raise DeployError(f"{path}: site {site!r}: not an endpoint UUID: {uuid!r}")
+
+    probed = {uuid.lower() for uuids in sites.values() for uuid in uuids}
+    routes = raw.get("routes") or {}
+    if not isinstance(routes, dict):
+        raise DeployError(f"{path}: `routes` must map endpoint UUIDs to routes")
+    for uuid, route in routes.items():
+        if (
+            uuid.lower() not in probed
+            or not isinstance(route, dict)
+            or set(route) != {"client_id", "client_secret_env"}
+            or not _UUID.match(str(route["client_id"]).lower())
+            or not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", str(route["client_secret_env"]))
+        ):
+            raise DeployError(
+                f"{path}: route for {uuid} needs exactly client_id and client_secret_env, "
+                "for an endpoint listed under `sites` -- and never the secret itself"
+            )
+    secret_envs = sorted({route["client_secret_env"] for route in routes.values()})
 
     warnings = []
     if known_ids is not None:
@@ -143,10 +170,25 @@ def read_targets(path: Path, known_ids: set[str] | None = None) -> tuple[str, li
                 f"site {site!r} is not on the published map (website/partners.json), so its "
                 "status will never be shown. Rename it with `watch targets --rename`."
             )
-    body = json.dumps({"sites": sites}, separators=(",", ":"))
+    document = {"sites": sites, **({"routes": routes} if routes else {})}
+    body = json.dumps(document, separators=(",", ":"))
     if len(body) > 4096:
         raise DeployError(f"{path}: over the 4 KB a standard SSM parameter holds")
-    return body, warnings
+    return body, warnings, secret_envs
+
+
+def read_site_secrets(names: list[str], environ: dict | None = None) -> dict[str, str]:
+    """The secrets a probe list's routes name, from this machine's environment."""
+    environ = os.environ if environ is None else environ
+    missing = [name for name in names if not environ.get(name)]
+    if missing:
+        raise DeployError(
+            "the probe list asks about some endpoints as a site's own service account. "
+            f"Export the secret(s) first, in this shell only: {', '.join(missing)}\n"
+            "Generate a separate secret on that client for the prober, so it can be revoked "
+            "without touching the coordinator's."
+        )
+    return {name: environ[name] for name in names}
 
 
 def read_globus_client(path: Path, environ: dict | None = None) -> tuple[str, str] | None:
@@ -295,13 +337,25 @@ class Cloud:
 
     # -- parameters ---------------------------------------------------------
 
-    def put_inputs(self, targets: str | None, globus: tuple[str, str] | None) -> None:
+    def put_inputs(
+        self,
+        targets: str | None,
+        globus: tuple[str, str] | None,
+        site_secrets: dict[str, str] | None = None,
+    ) -> None:
         def put(key: str, value: str, kind: str = "String") -> None:
             self.ssm.put_parameter(Name=self.parameter(key), Value=value, Type=kind, Overwrite=True)
 
         if targets is not None:
             put("targets", targets, "SecureString")
             say("  stored probe targets")
+            if site_secrets:
+                put("site-secrets", json.dumps(site_secrets), "SecureString")
+                say(f"  stored {len(site_secrets)} site service-account secret(s)")
+            else:
+                # New targets with no routes: a secret left from an older list is one
+                # nobody is using, and the least useful thing to keep around.
+                self.ssm.delete_parameters(Names=[self.parameter("site-secrets")])
         if globus is not None:
             put("globus-client-id", globus[0])
             put("globus-client-secret", globus[1], "SecureString")
@@ -475,11 +529,12 @@ def wait_for_site(ip: str, host: str, minutes: int) -> bool:
 
 
 def gather_inputs(args, cloud: Cloud | None, *, required: bool):
-    targets = None
+    targets, site_secrets = None, None
     if args.targets.is_file() or (required and not (cloud and cloud.has_parameters("targets"))):
-        targets, warnings = read_targets(args.targets, public_site_ids())
+        targets, warnings, secret_envs = read_targets(args.targets, public_site_ids())
         for warning in warnings:
             say(f"  warning: {warning}")
+        site_secrets = read_site_secrets(secret_envs)
     globus = read_globus_client(args.globus_client)
     if globus is None and required:
         if not (cloud and cloud.has_parameters("globus-client-id", "globus-client-secret")):
@@ -489,7 +544,7 @@ def gather_inputs(args, cloud: Cloud | None, *, required: bool):
                 f'    {args.globus_client}:  {{"client_id": "...", "client_secret": "..."}}\n'
                 "or set LIVE_MAP_GLOBUS_CLIENT_ID and LIVE_MAP_GLOBUS_CLIENT_SECRET."
             )
-    return targets, globus
+    return targets, globus, site_secrets
 
 
 def cmd_deploy(args) -> int:
@@ -508,8 +563,8 @@ def cmd_deploy(args) -> int:
         say("already deployed -- refreshing it instead.")
         return cmd_update(args, cloud=cloud, sha=sha)
 
-    targets, globus = gather_inputs(args, cloud, required=True)
-    cloud.put_inputs(targets, globus)
+    targets, globus, site_secrets = gather_inputs(args, cloud, required=True)
+    cloud.put_inputs(targets, globus, site_secrets)
     role = cloud.ensure_role()
     group = cloud.ensure_security_group()
     address = cloud.ensure_address()
@@ -549,8 +604,8 @@ def cmd_update(args, cloud: Cloud | None = None, sha: str | None = None) -> int:
     if instance["State"]["Name"] != "running":
         raise DeployError(f"instance {instance['InstanceId']} is {instance['State']['Name']}")
 
-    targets, globus = gather_inputs(args, cloud, required=False)
-    cloud.put_inputs(targets, globus)
+    targets, globus, site_secrets = gather_inputs(args, cloud, required=False)
+    cloud.put_inputs(targets, globus, site_secrets)
 
     command = cloud.ssm.send_command(
         InstanceIds=[instance["InstanceId"]],
@@ -644,7 +699,8 @@ def cmd_destroy(args) -> int:
             pass
     say(f"  deleted role {role}")
 
-    names = [cloud.parameter(k) for k in ("targets", "globus-client-id", "globus-client-secret")]
+    keys = ("targets", "site-secrets", "globus-client-id", "globus-client-secret")
+    names = [cloud.parameter(k) for k in keys]
     cloud.ssm.delete_parameters(Names=names)
     say("  deleted stored parameters")
     say("gone.")
