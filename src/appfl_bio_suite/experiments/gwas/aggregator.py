@@ -55,6 +55,58 @@ def _to_numpy(value):
     return np.asarray(value)
 
 
+def _require_same_variants(first_id, first: pd.DataFrame, other_id, other: pd.DataFrame) -> None:
+    """Refuse to pool two sites whose variant axes are not the same axis.
+
+    A length check cannot see this. Two sites with equally many variants in a different
+    order, or with the effect allele swapped at some of them, stack without complaint;
+    the pooled estimate then averages effects of different variants, or of one variant
+    with opposite signs, and nothing downstream looks wrong. Per-site filesets recoded
+    by PLINK without `--keep-allele-order` are how the swap happens in practice.
+    """
+    if len(first) != len(other):
+        raise ValueError(
+            f"site {other_id} analyzed {len(other)} variants but {first_id} analyzed "
+            f"{len(first)}.\n"
+            "Every site must analyze the SAME variant set. The usual cause is sites "
+            "running with different variant_scaling values, or one site having been "
+            "sent a bundle built from a different simulation run."
+        )
+    columns = [c for c in ("CHR", "SNP", "BP", "EA", "NEA") if c in first and c in other]
+    left = first[columns].astype(str).to_numpy()
+    right = other[columns].astype(str).to_numpy()
+    differs = (left != right).any(axis=1)
+    if not differs.any():
+        return
+    row = int(np.flatnonzero(differs)[0])
+    swapped = 0
+    if {"SNP", "EA", "NEA"} <= set(columns):
+        same_variant = (first["SNP"].astype(str) == other["SNP"].astype(str)).to_numpy()
+        swapped = int(
+            (
+                same_variant
+                & (first["EA"].astype(str) == other["NEA"].astype(str)).to_numpy()
+                & (first["NEA"].astype(str) == other["EA"].astype(str)).to_numpy()
+                & differs
+            ).sum()
+        )
+    raise ValueError(
+        f"site {other_id} and site {first_id} disagree at {int(differs.sum())} of "
+        f"{len(first)} variants, first at row {row}:\n"
+        f"  {first_id}: {dict(zip(columns, left[row], strict=True))}\n"
+        f"  {other_id}: {dict(zip(columns, right[row], strict=True))}\n"
+        + (
+            f"{swapped} of them are the same variant with the effect allele swapped, so "
+            "their effects would be pooled with opposite signs.\n"
+            if swapped
+            else ""
+        )
+        + "Inverse-variance pooling is per row, so the rows must be the same variants "
+        "coded the same way. Re-cut the site bundles from one fileset, preserving "
+        "allele order."
+    )
+
+
 class MetaAnalysisAggregator(BaseAggregator):
     """Pools per-site summary statistics; writes tables and plots."""
 
@@ -87,10 +139,16 @@ class MetaAnalysisAggregator(BaseAggregator):
         self.logger.info(f"meta-analysis across {len(client_ids)} site(s)")
 
         # The variant axis comes from the first site's metadata. Every site must be on
-        # the same variant set for meta-analysis to mean anything; the shape check below
-        # is what enforces it.
+        # the same variant set, in the same order, counting the same allele, for
+        # meta-analysis to mean anything -- so every site's metadata is compared with it.
         meta_bytes = _to_numpy(local_models[client_ids[0]]["variant_meta"]).tobytes()
         variant_df = pd.DataFrame(json.loads(meta_bytes.decode("utf-8")))
+        for cid in client_ids[1:]:
+            theirs = _to_numpy(local_models[cid]["variant_meta"]).tobytes()
+            if theirs != meta_bytes:
+                _require_same_variants(
+                    client_ids[0], variant_df, cid, pd.DataFrame(json.loads(theirs.decode()))
+                )
 
         def stack(key):
             return np.vstack([_to_numpy(local_models[cid][key]) for cid in client_ids])
