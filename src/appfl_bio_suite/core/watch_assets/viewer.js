@@ -30,6 +30,60 @@
   const visible = () => Object.entries(state.clients).filter(([id, c]) => matches(id, c));
   const color = c => ({ '0': '#8d9eaa', '1': '#669fe0', '2': '#d89e42', '4': '#15b9a6', X: '#db717e' }
     [String(c.partnership_stage || '').slice(0, 1)] || { idle: '#f5bd66', dropped: '#f08085', failed: '#f08085' }[c.status] || '#50d9c7');
+  // Live endpoint status. The map is exported once; a prober beside it rewrites a small
+  // status file, named by the map's metadata, that this polls. An answer older than three
+  // intervals is shown as stale, never as the last thing it said.
+  const live = { url: null, data: null, timer: null };
+  const liveStates = { online: ['Endpoint online', '#2fbf71'], degraded: ['Partly online', '#d89e42'],
+    offline: ['Endpoint offline', '#db717e'], unknown: ['Endpoint status unknown', '#8d9eaa'] };
+  const liveAge = () => (Date.now() - Date.parse(live.data?.checked_at)) / 1000;
+  const liveStale = () => !(liveAge() <= 3 * (Number(live.data?.interval_sec) || 60) + 30);
+  const ago = s => s < 90 ? `${Math.max(0, Math.round(s))}s ago` : s < 5400 ? `${Math.round(s / 60)} min ago`
+    : `${Math.round(s / 3600)} h ago`;
+  function liveOf(id) {
+    const site = ui.runId === 'network' ? live.data?.sites?.[id] : null;
+    if (!site) return null;
+    const state = liveStale() || !liveStates[site.state] ? 'unknown' : site.state;
+    const total = Number(site.endpoints) || 0, up = Number(site.online) || 0;
+    const text = state === 'unknown' ? liveStates.unknown[0]
+      : total > 1 ? `${up} of ${total} endpoints online` : liveStates[state][0];
+    return { state, text, color: liveStates[state][1] };
+  }
+  const liveHtml = id => { const l = liveOf(id);
+    return l ? `<span class="bio-live ${l.state}" style="--live-color:${l.color}"><i></i>${esc(l.text)}</span>` : ''; };
+  function liveHeader() {
+    if (!live.data || ui.runId !== 'network') return;
+    const stale = liveStale();
+    $('status-text').textContent = `${stale ? 'Status stale' : 'Live'} · checked ${ago(liveAge())}`;
+    $('status-dot').classList.toggle('live', !stale);
+  }
+  async function livePoll() {
+    try {
+      const response = await fetch(live.url, { cache: 'no-store' });
+      if (!response.ok) return;
+      const data = await response.json();
+      const changed = data.checked_at !== live.data?.checked_at;
+      live.data = data;
+      if (changed) { renderSidebar(); refreshDetail(); }
+    } catch (error) { /* keep the last answer; liveStale() retires it */ }
+    liveHeader();
+  }
+  function startLive(name, metadataUrl) {
+    clearInterval(live.timer); live.url = null; live.data = null;
+    // A bare file name beside the metadata, and nothing else: map data does not get to
+    // point the page at another origin.
+    if (!metadataUrl || !/^[\w.-]+\.json$/.test(name || '')) return;
+    live.url = new URL(name, new URL(metadataUrl, location.href)).href;
+    let ticks = 0;
+    live.timer = setInterval(() => { if (++ticks % 15 === 0) livePoll(); else liveHeader(); }, 1000);
+    livePoll();
+  }
+  function refreshDetail() {
+    const c = state.clients[ui.focus], panel = $('bio-site-detail');
+    if (!c || panel.hidden) return;
+    panel.innerHTML = '<button class="bio-detail-close" aria-label="Close site details">×</button>' + detailsHtml(ui.focus, c);
+    panel.querySelector('button').onclick = () => { closeDetail(); renderSidebar(); };
+  }
   const statusLabel = c => c.partnership_stage || (ui.runId === 'network' ? `Member · ${c.status || 'active'}` : c.status || 'active');
 
   // ?theme=light and ?view=globe let an embedding page open the viewer already matching
@@ -218,7 +272,7 @@
       <span class="bio-site-location">${esc([c.city, c.country].filter(Boolean).join(', ') || 'Location not declared')}</span>
       <span class="bio-tags">${memberships(c).map(e => `<span>${esc(label(e))}</span>`).join('')}</span>
       ${c.partnership_stage ? `<span class="bio-partner-stage" style="--stage-color:${color(c)}">${esc(c.partnership_stage)}</span>` : ''}
-      <span class="bio-card-bottom"><span>${c.num_samples == null ? 'Samples not declared' : number(c.num_samples) + ' declared samples'}</span>
+      ${liveHtml(id)}<span class="bio-card-bottom"><span>${c.num_samples == null ? 'Samples not declared' : number(c.num_samples) + ' declared samples'}</span>
         <span>${placed(c) ? '↗' : 'Unplaced'}</span></span></button>`;
   }
   function detailsHtml(id, c) {
@@ -228,6 +282,8 @@
       <p class="bio-detail-location">${esc([c.city, c.country].filter(Boolean).join(', ') || 'Location not declared')}</p>
       ${experimentRows}<div class="bio-detail-row"><span>Samples across experiments</span><strong>${c.num_samples == null ? 'Not declared' : number(c.num_samples)}</strong></div>
       <div class="bio-detail-row"><span>${c.partnership_stage ? 'Project readiness' : 'Status'}</span><strong>${esc(statusLabel(c))}</strong></div>
+      ${liveOf(id) ? `<div class="bio-detail-row"><span>Globus Compute endpoint · checked ${esc(ago(liveAge()))}</span>
+        <strong>${liveHtml(id)}</strong></div>` : ''}
       ${Array.isArray(c.contacts) ? c.contacts.map(contact => `<div class="bio-detail-row"><span>${esc(contact.name)}</span>
         <a href="mailto:${esc(encodeURI(contact.email))}">${esc(contact.email)}</a></div>`).join('') : ''}
       ${c.notes ? `<div class="bio-detail-row"><span>Notes</span><strong>${esc(c.notes)}</strong></div>` : ''}
@@ -487,6 +543,7 @@
       $('bio-map-title').textContent = ui.runId === 'network' ? 'Federation footprint' : `Run · ${ui.runId}`;
       if (live) setMode('live');
       if (ui.source) $('status-text').textContent = 'Network snapshot';
+      startLive(ui.runId === 'network' ? metadata?.config?.live_status : null, metadataUrl);
       buildRoundTicks(); updateProgress(); fitNetwork();
     } catch (error) {
       if (token !== ui.loadToken) return;

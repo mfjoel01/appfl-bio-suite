@@ -1,0 +1,699 @@
+#!/usr/bin/env python
+"""Put the federation map on AWS, live, with one command -- and take it down with another.
+
+    python scripts/aws/live_map.py deploy     # create everything, print the URL
+    python scripts/aws/live_map.py status     # is it up, and what does it say
+    python scripts/aws/live_map.py update     # serve a newer commit / new targets / new secret
+    python scripts/aws/live_map.py destroy --yes
+
+WHAT IT STANDS UP
+-----------------
+One small EC2 instance serving the project site -- the same pages GitHub Pages serves,
+built by the same scripts/build_site.sh -- plus a prober that asks Globus Compute every
+minute whether each partner's endpoint is connected, and a map that shows the answer.
+docs/coordinator/live-map-aws.md has the design; core/live_status.py has the reasoning.
+
+Everything is created through the API and tagged ``Project=<name>``, so nothing here
+needs the AWS console, and ``destroy`` can find all of it again:
+
+  * an Elastic IP, so the address survives the instance being replaced;
+  * a security group open on 80 and 443 only -- there is no SSH and no key pair;
+    ``update`` reaches the instance through Systems Manager;
+  * an instance role that may read this deployment's three parameters and nothing else;
+  * three SSM parameters: the probe targets (real endpoint UUIDs), and the Globus service
+    account's id and secret (encrypted). They are the only sensitive inputs, and they go
+    from this machine to Parameter Store to the prober's memory -- never into user-data,
+    which anyone with ec2:DescribeInstanceAttribute can read.
+
+WHAT YOU NEED ONCE
+------------------
+1. AWS credentials in the environment or ~/.aws (``--profile`` to pick one).
+2. A Globus service account for the prober: app.globus.org -> Settings -> Developers ->
+   "Register a service account". Save its id and secret as
+   ``local/live-map/globus-client.json``: ``{"client_id": "...", "client_secret": "..."}``.
+   Multi-user endpoints have answered status requests from identities that do not own
+   them; an endpoint that refuses this one shows as "unknown" on the map, not offline.
+3. The probe list, from your real federation:
+   ``appfl-bio-suite watch targets --out local/live-map/targets.json``
+
+The commit being served must be on GitHub: the instance clones the public repository.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+REPO_URL = "https://github.com/mfjoel01/appfl-bio-suite.git"
+ROOT = Path(__file__).resolve().parents[2]
+
+DEFAULT_NAME = "appfl-bio-suite-live-map"
+DEFAULT_REGION = "us-east-1"
+# Graviton, 2 GB: the install is the full pinned suite, which wants the memory once and
+# then idles. arm64 also means PyPI's torch wheel is the small CPU one.
+DEFAULT_INSTANCE_TYPE = "t4g.small"
+DEFAULT_TARGETS = ROOT / "local" / "live-map" / "targets.json"
+DEFAULT_GLOBUS = ROOT / "local" / "live-map" / "globus-client.json"
+
+_NAME = re.compile(r"^[a-z][a-z0-9-]{2,40}$")
+_HOST = re.compile(r"^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$")
+_SHA = re.compile(r"^[0-9a-f]{40}$")
+_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
+class DeployError(RuntimeError):
+    """Something the operator has to fix. The message says what."""
+
+
+def say(message: str) -> None:
+    print(message, flush=True)
+
+
+# ---------------------------------------------------------------------------
+# inputs: pure, and tested without AWS
+# ---------------------------------------------------------------------------
+
+
+def resolve_ref(ref: str | None, root: Path = ROOT) -> str:
+    """The full commit to serve, checked to be one the instance can fetch from GitHub."""
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(root), *args], check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    try:
+        sha = git("rev-parse", "--verify", f"{ref or 'HEAD'}^{{commit}}")
+        published = git("branch", "-r", "--contains", sha)
+    except subprocess.CalledProcessError as exc:
+        raise DeployError(f"cannot resolve commit {ref or 'HEAD'}: {exc.stderr.strip()}") from exc
+    if not published:
+        raise DeployError(
+            f"commit {sha[:10]} is not on GitHub yet. The instance clones the public "
+            "repository, so push the branch first (git push -u origin HEAD)."
+        )
+    return sha
+
+
+def public_site_ids(root: Path = ROOT) -> set[str]:
+    """Every site id the published map draws."""
+    import yaml
+
+    partners = json.loads((root / "website" / "partners.json").read_text(encoding="utf-8"))
+    federation = yaml.safe_load((root / "website" / "federation.yaml").read_text(encoding="utf-8"))
+    return {p["id"] for p in partners.get("partners", [])} | {
+        s["id"] for s in federation.get("sites", [])
+    }
+
+
+def read_targets(path: Path, known_ids: set[str] | None = None) -> tuple[str, list[str]]:
+    """The targets file as the compact JSON to store, and warnings about it."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise DeployError(
+            f"no probe targets at {path}. Write them from your real federation:\n"
+            f"    appfl-bio-suite watch targets --out {path}"
+        ) from None
+    except json.JSONDecodeError as exc:
+        raise DeployError(f"{path} is not JSON: {exc}") from exc
+
+    sites = raw.get("sites") if isinstance(raw, dict) else None
+    if not isinstance(sites, dict) or not sites:
+        raise DeployError(f"{path}: expected a non-empty `sites` object")
+    for site, uuids in sites.items():
+        if not isinstance(uuids, list) or not uuids:
+            raise DeployError(f"{path}: site {site!r} needs a list of endpoint UUIDs")
+        for uuid in uuids:
+            if not isinstance(uuid, str) or not _UUID.match(uuid.lower()):
+                raise DeployError(f"{path}: site {site!r}: not an endpoint UUID: {uuid!r}")
+
+    warnings = []
+    if known_ids is not None:
+        for site in sorted(set(sites) - known_ids):
+            warnings.append(
+                f"site {site!r} is not on the published map (website/partners.json), so its "
+                "status will never be shown. Rename it with `watch targets --rename`."
+            )
+    body = json.dumps({"sites": sites}, separators=(",", ":"))
+    if len(body) > 4096:
+        raise DeployError(f"{path}: over the 4 KB a standard SSM parameter holds")
+    return body, warnings
+
+
+def read_globus_client(path: Path, environ: dict | None = None) -> tuple[str, str] | None:
+    """The prober's Globus service account, from the environment or a local file."""
+    environ = os.environ if environ is None else environ
+    client_id = environ.get("LIVE_MAP_GLOBUS_CLIENT_ID")
+    secret = environ.get("LIVE_MAP_GLOBUS_CLIENT_SECRET")
+    if not (client_id and secret):
+        if not path.is_file():
+            return None
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            client_id = raw["client_id"]
+            secret = raw.get("client_secret") or raw["secret"]
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            raise DeployError(
+                f'{path}: expected {{"client_id": "...", "client_secret": "..."}}'
+            ) from exc
+    if not _UUID.match(str(client_id).lower()) or not secret:
+        raise DeployError("the Globus client id must be a UUID, with a non-empty secret")
+    return str(client_id), str(secret)
+
+
+def sslip_host(ip: str) -> str:
+    """A name that resolves to ``ip`` with no DNS of ours, so the page can have HTTPS.
+
+    A public certificate needs a name, and EC2's own ``ec2-…amazonaws.com`` names are
+    refused by Let's Encrypt. sslip.io answers ``1-2-3-4.sslip.io`` with ``1.2.3.4``.
+    """
+    return ip.replace(".", "-") + ".sslip.io"
+
+
+def render_user_data(*, sha: str, host: str, region: str, name: str, interval: int) -> str:
+    """First-boot script: fetch the commit and hand over to scripts/aws/instance_setup.sh.
+
+    Holds no secret -- user-data is readable through the EC2 API and from the instance's
+    metadata service. Every interpolated value is validated here because this is a root
+    shell script assembled from command-line arguments.
+    """
+    if not _SHA.match(sha):
+        raise DeployError(f"not a full commit id: {sha!r}")
+    if host and not _HOST.match(host):
+        raise DeployError(f"not a host name: {host!r}")
+    if not _NAME.match(name):
+        raise DeployError(f"--name must match {_NAME.pattern}")
+    if not re.match(r"^[a-z]{2}(-[a-z]+)+-\d$", region):
+        raise DeployError(f"not an AWS region: {region!r}")
+    if not 15 <= int(interval) <= 3600:
+        raise DeployError("--interval must be between 15 and 3600 seconds")
+    return f"""#!/bin/bash
+set -euxo pipefail
+exec > >(tee -a /var/log/live-map-setup.log) 2>&1
+
+cat > /etc/live-map.env <<'EOF'
+LIVE_MAP_HOST={host}
+LIVE_MAP_REGION={region}
+LIVE_MAP_PARAMS=/{name}
+LIVE_MAP_INTERVAL={int(interval)}
+EOF
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -q
+apt-get install -y -q git
+
+git init -q /opt/live-map/repo
+cd /opt/live-map/repo
+git remote add origin {REPO_URL}
+git fetch -q --depth 1 origin {sha}
+git checkout -q FETCH_HEAD
+bash scripts/aws/instance_setup.sh
+"""
+
+
+def update_commands(sha: str) -> list[str]:
+    if not _SHA.match(sha):
+        raise DeployError(f"not a full commit id: {sha!r}")
+    return [
+        "set -euo pipefail",
+        "cd /opt/live-map/repo",
+        f"git fetch -q --depth 1 origin {sha}",
+        "git checkout -q -f FETCH_HEAD",
+        "bash scripts/aws/instance_setup.sh",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# AWS
+# ---------------------------------------------------------------------------
+
+
+class Cloud:
+    """This deployment's resources, found by tag."""
+
+    def __init__(self, name: str, region: str, profile: str | None):
+        if not _NAME.match(name):
+            raise DeployError(f"--name must match {_NAME.pattern}")
+        try:
+            import boto3
+            from botocore.exceptions import BotoCoreError, ClientError
+        except ImportError:
+            raise DeployError("boto3 is not installed: pip install boto3") from None
+
+        self.name, self.region = name, region
+        self.ClientError = ClientError
+        try:
+            session = boto3.Session(region_name=region, profile_name=profile)
+            self.ec2 = session.client("ec2")
+            self.iam = session.client("iam")
+            self.ssm = session.client("ssm")
+            self.account = session.client("sts").get_caller_identity()["Account"]
+        except (BotoCoreError, ClientError) as exc:
+            raise DeployError(
+                f"no usable AWS credentials ({exc}).\n"
+                "Set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (and AWS_SESSION_TOKEN for "
+                "temporary ones), or configure ~/.aws/credentials and pass --profile."
+            ) from exc
+        self.tags = [{"Key": "Project", "Value": name}, {"Key": "Name", "Value": name}]
+        self.filter = [{"Name": "tag:Project", "Values": [name]}]
+
+    def tagged(self, kind: str) -> list[dict]:
+        return [{"ResourceType": kind, "Tags": self.tags}]
+
+    # -- lookups ------------------------------------------------------------
+
+    def instance(self) -> dict | None:
+        states = ["pending", "running", "stopping", "stopped"]
+        pages = self.ec2.describe_instances(
+            Filters=[*self.filter, {"Name": "instance-state-name", "Values": states}]
+        )
+        found = [i for r in pages["Reservations"] for i in r["Instances"]]
+        if len(found) > 1:
+            ids = ", ".join(i["InstanceId"] for i in found)
+            raise DeployError(f"more than one instance is tagged Project={self.name}: {ids}")
+        return found[0] if found else None
+
+    def address(self) -> dict | None:
+        found = self.ec2.describe_addresses(Filters=self.filter)["Addresses"]
+        return found[0] if found else None
+
+    def parameter(self, key: str) -> str:
+        return f"/{self.name}/{key}"
+
+    def has_parameters(self, *keys: str) -> bool:
+        names = [self.parameter(k) for k in keys]
+        return not self.ssm.get_parameters(Names=names)["InvalidParameters"]
+
+    # -- parameters ---------------------------------------------------------
+
+    def put_inputs(self, targets: str | None, globus: tuple[str, str] | None) -> None:
+        def put(key: str, value: str, kind: str = "String") -> None:
+            self.ssm.put_parameter(Name=self.parameter(key), Value=value, Type=kind, Overwrite=True)
+
+        if targets is not None:
+            put("targets", targets, "SecureString")
+            say("  stored probe targets")
+        if globus is not None:
+            put("globus-client-id", globus[0])
+            put("globus-client-secret", globus[1], "SecureString")
+            say("  stored the Globus service account")
+
+    # -- pieces -------------------------------------------------------------
+
+    def ensure_role(self) -> str:
+        role = f"{self.name}-instance"
+        trust = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "ec2.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                }
+            ],
+        }
+        try:
+            self.iam.create_role(
+                RoleName=role,
+                AssumeRolePolicyDocument=json.dumps(trust),
+                Description="APPFL Bio Suite live map: read its own parameters, accept SSM",
+                Tags=self.tags,
+            )
+        except self.iam.exceptions.EntityAlreadyExistsException:
+            pass
+        # Lets `update` run a command on the instance, in place of SSH.
+        self.iam.attach_role_policy(
+            RoleName=role, PolicyArn="arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+        )
+        resource = f"arn:aws:ssm:{self.region}:{self.account}:parameter/{self.name}/*"
+        policy = {
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Allow", "Action": "ssm:GetParameter", "Resource": resource}],
+        }
+        self.iam.put_role_policy(
+            RoleName=role, PolicyName="read-own-parameters", PolicyDocument=json.dumps(policy)
+        )
+        try:
+            self.iam.create_instance_profile(InstanceProfileName=role, Tags=self.tags)
+        except self.iam.exceptions.EntityAlreadyExistsException:
+            pass
+        try:
+            self.iam.add_role_to_instance_profile(InstanceProfileName=role, RoleName=role)
+        except self.iam.exceptions.LimitExceededException:
+            pass  # already holds the role
+        return role
+
+    def ensure_security_group(self) -> str:
+        found = self.ec2.describe_security_groups(
+            Filters=[{"Name": "group-name", "Values": [self.name]}]
+        )["SecurityGroups"]
+        if found:
+            return found[0]["GroupId"]
+        vpcs = self.ec2.describe_vpcs(Filters=[{"Name": "is-default", "Values": ["true"]}])["Vpcs"]
+        if not vpcs:
+            raise DeployError(
+                f"{self.region} has no default VPC. Create one (aws ec2 create-default-vpc) "
+                "or choose another --region."
+            )
+        group = self.ec2.create_security_group(
+            GroupName=self.name,
+            Description="APPFL Bio Suite live map: HTTP and HTTPS in, nothing else",
+            VpcId=vpcs[0]["VpcId"],
+            TagSpecifications=self.tagged("security-group"),
+        )["GroupId"]
+        self.ec2.authorize_security_group_ingress(
+            GroupId=group,
+            IpPermissions=[
+                {
+                    "IpProtocol": "tcp",
+                    "FromPort": port,
+                    "ToPort": port,
+                    "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+                    "Ipv6Ranges": [{"CidrIpv6": "::/0"}],
+                }
+                for port in (80, 443)
+            ],
+        )
+        return group
+
+    def ensure_address(self) -> dict:
+        return self.address() or self.ec2.allocate_address(
+            Domain="vpc", TagSpecifications=self.tagged("elastic-ip")
+        )
+
+    def image(self, instance_type: str) -> str:
+        info = self.ec2.describe_instance_types(InstanceTypes=[instance_type])["InstanceTypes"][0]
+        arch = "arm64" if "arm64" in info["ProcessorInfo"]["SupportedArchitectures"] else "amd64"
+        # Canonical publishes the current image id here; no AMI id to go stale in this file.
+        name = (
+            f"/aws/service/canonical/ubuntu/server/24.04/stable/current/{arch}/hvm/ebs-gp3/ami-id"
+        )
+        return self.ssm.get_parameter(Name=name)["Parameter"]["Value"]
+
+    def launch(self, *, instance_type: str, role: str, group: str, user_data: str) -> str:
+        request = dict(
+            ImageId=self.image(instance_type),
+            InstanceType=instance_type,
+            MinCount=1,
+            MaxCount=1,
+            IamInstanceProfile={"Name": role},
+            SecurityGroupIds=[group],
+            UserData=user_data,
+            BlockDeviceMappings=[
+                {
+                    "DeviceName": "/dev/sda1",
+                    "Ebs": {"VolumeSize": 20, "VolumeType": "gp3", "Encrypted": True},
+                }
+            ],
+            MetadataOptions={"HttpTokens": "required", "HttpEndpoint": "enabled"},
+            TagSpecifications=self.tagged("instance") + self.tagged("volume"),
+        )
+        # A just-created instance profile takes a few seconds to exist everywhere.
+        for attempt in range(12):
+            try:
+                return self.ec2.run_instances(**request)["Instances"][0]["InstanceId"]
+            except self.ClientError as exc:
+                if "Invalid IAM Instance Profile" not in str(exc) or attempt == 11:
+                    raise
+                time.sleep(5)
+        raise AssertionError("unreachable")
+
+
+def fetch_status(base: str, timeout: float = 8.0) -> dict | None:
+    try:
+        with urllib.request.urlopen(f"{base}/map/endpoints.status.json", timeout=timeout) as reply:
+            return json.load(reply)
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+
+
+def print_status(status: dict) -> None:
+    say(f"  endpoints checked {status.get('checked_at')}:")
+    for site, entry in status.get("sites", {}).items():
+        say(f"    {site:16} {entry['state']:9} {entry['online']}/{entry['endpoints']}")
+
+
+def wait_for_site(ip: str, host: str, minutes: int) -> bool:
+    """Poll until the prober has published. Returns whether HTTPS is answering too."""
+    deadline = time.monotonic() + minutes * 60
+    status = None
+    while time.monotonic() < deadline:
+        status = fetch_status(f"http://{ip}")
+        if status:
+            break
+        say(f"  installing… ({int((deadline - time.monotonic()) / 60)} min left before giving up)")
+        time.sleep(30)
+    if not status:
+        raise DeployError(
+            f"the site did not come up within {minutes} minutes. The instance is still "
+            "there; its setup log is the EC2 console output:\n"
+            "    python scripts/aws/live_map.py status --log"
+        )
+    print_status(status)
+    if not host:
+        return False
+    # The certificate is requested on first start and usually lands within a minute.
+    for _ in range(12):
+        if fetch_status(f"https://{host}"):
+            return True
+        time.sleep(10)
+    return False
+
+
+# ---------------------------------------------------------------------------
+# commands
+# ---------------------------------------------------------------------------
+
+
+def gather_inputs(args, cloud: Cloud | None, *, required: bool):
+    targets = None
+    if args.targets.is_file() or (required and not (cloud and cloud.has_parameters("targets"))):
+        targets, warnings = read_targets(args.targets, public_site_ids())
+        for warning in warnings:
+            say(f"  warning: {warning}")
+    globus = read_globus_client(args.globus_client)
+    if globus is None and required:
+        if not (cloud and cloud.has_parameters("globus-client-id", "globus-client-secret")):
+            raise DeployError(
+                f"no Globus service account for the prober. Register one at app.globus.org "
+                f"(Settings -> Developers -> Register a service account) and save it as\n"
+                f'    {args.globus_client}:  {{"client_id": "...", "client_secret": "..."}}\n'
+                "or set LIVE_MAP_GLOBUS_CLIENT_ID and LIVE_MAP_GLOBUS_CLIENT_SECRET."
+            )
+    return targets, globus
+
+
+def cmd_deploy(args) -> int:
+    sha = resolve_ref(args.ref)
+    if args.dry_run:
+        gather_inputs(args, None, required=True)
+        host = args.domain or sslip_host("203.0.113.10")
+        say(f"would deploy commit {sha[:10]} to {args.instance_type} in {args.region}\n")
+        say(render_user_data(sha=sha, host=host, region=args.region, name=args.name,
+                             interval=args.interval))  # fmt: skip
+        return 0
+
+    cloud = Cloud(args.name, args.region, args.profile)
+    say(f"AWS account {cloud.account}, {args.region}")
+    if cloud.instance():
+        say("already deployed -- refreshing it instead.")
+        return cmd_update(args, cloud=cloud, sha=sha)
+
+    targets, globus = gather_inputs(args, cloud, required=True)
+    cloud.put_inputs(targets, globus)
+    role = cloud.ensure_role()
+    group = cloud.ensure_security_group()
+    address = cloud.ensure_address()
+    ip = address["PublicIp"]
+    host = "" if args.no_tls else (args.domain or sslip_host(ip))
+    say(f"  address {ip}" + (f"  ({host})" if host else ""))
+    if args.domain:
+        say(f"  point an A record for {args.domain} at {ip}; the certificate follows it")
+
+    instance = cloud.launch(
+        instance_type=args.instance_type,
+        role=role,
+        group=group,
+        user_data=render_user_data(
+            sha=sha, host=host, region=args.region, name=args.name, interval=args.interval
+        ),
+    )
+    say(f"  instance {instance} launching (commit {sha[:10]})")
+    cloud.ec2.get_waiter("instance_running").wait(InstanceIds=[instance])
+    cloud.ec2.associate_address(InstanceId=instance, AllocationId=address["AllocationId"])
+
+    say("  waiting for the install; the pinned suite takes several minutes")
+    https = wait_for_site(ip, host, args.wait)
+    say("")
+    say(f"live map: {'https://' + host if https else 'http://' + ip}/network.html")
+    if host and not https:
+        say(f"  (https://{host} is not answering yet; the certificate may still be issuing)")
+    return 0
+
+
+def cmd_update(args, cloud: Cloud | None = None, sha: str | None = None) -> int:
+    sha = sha or resolve_ref(args.ref)
+    cloud = cloud or Cloud(args.name, args.region, args.profile)
+    instance = cloud.instance()
+    if instance is None:
+        raise DeployError("nothing is deployed. Run `deploy`.")
+    if instance["State"]["Name"] != "running":
+        raise DeployError(f"instance {instance['InstanceId']} is {instance['State']['Name']}")
+
+    targets, globus = gather_inputs(args, cloud, required=False)
+    cloud.put_inputs(targets, globus)
+
+    command = cloud.ssm.send_command(
+        InstanceIds=[instance["InstanceId"]],
+        DocumentName="AWS-RunShellScript",
+        Comment=f"live map -> {sha[:10]}",
+        Parameters={"commands": update_commands(sha), "executionTimeout": ["1800"]},
+    )["Command"]["CommandId"]
+    say(f"  updating {instance['InstanceId']} to commit {sha[:10]}")
+    while True:
+        time.sleep(10)
+        try:
+            result = cloud.ssm.get_command_invocation(
+                CommandId=command, InstanceId=instance["InstanceId"]
+            )
+        except cloud.ssm.exceptions.InvocationDoesNotExist:
+            continue
+        if result["Status"] not in ("Pending", "InProgress", "Delayed"):
+            break
+    tail = (result.get("StandardOutputContent") or "").strip().splitlines()[-3:]
+    for line in tail:
+        say(f"    {line}")
+    if result["Status"] != "Success":
+        say((result.get("StandardErrorContent") or "").strip()[-2000:])
+        raise DeployError(f"the update {result['Status'].lower()}; the previous site is still up")
+    return cmd_status(args, cloud=cloud)
+
+
+def cmd_status(args, cloud: Cloud | None = None) -> int:
+    cloud = cloud or Cloud(args.name, args.region, args.profile)
+    instance = cloud.instance()
+    if instance is None:
+        say("nothing is deployed.")
+        return 1
+    ip = instance.get("PublicIpAddress")
+    say(f"instance {instance['InstanceId']}  {instance['InstanceType']}  "
+        f"{instance['State']['Name']}  {ip or 'no address'}")  # fmt: skip
+    if getattr(args, "log", False):
+        output = cloud.ec2.get_console_output(InstanceId=instance["InstanceId"], Latest=True)
+        say(output.get("Output", "(no console output yet)")[-6000:])
+    if not ip:
+        return 1
+    status = fetch_status(f"http://{ip}")
+    if not status:
+        say("  the site is not answering")
+        return 1
+    print_status(status)
+    host = sslip_host(ip)
+    base = f"https://{host}" if fetch_status(f"https://{host}", timeout=4) else f"http://{ip}"
+    say(f"live map: {base}/network.html")
+    return 0
+
+
+def cmd_destroy(args) -> int:
+    cloud = Cloud(args.name, args.region, args.profile)
+    if not args.yes:
+        raise DeployError(
+            f"this deletes the instance, its address, role, security group and stored "
+            f"parameters tagged Project={args.name} in {args.region}. Re-run with --yes."
+        )
+    instance = cloud.instance()
+    if instance:
+        cloud.ec2.terminate_instances(InstanceIds=[instance["InstanceId"]])
+        say(f"  terminating {instance['InstanceId']}")
+        cloud.ec2.get_waiter("instance_terminated").wait(InstanceIds=[instance["InstanceId"]])
+    for address in cloud.ec2.describe_addresses(Filters=cloud.filter)["Addresses"]:
+        cloud.ec2.release_address(AllocationId=address["AllocationId"])
+        say(f"  released {address['PublicIp']}")
+    for group in cloud.ec2.describe_security_groups(
+        Filters=[{"Name": "group-name", "Values": [cloud.name]}]
+    )["SecurityGroups"]:
+        cloud.ec2.delete_security_group(GroupId=group["GroupId"])
+        say(f"  deleted security group {group['GroupId']}")
+
+    role = f"{cloud.name}-instance"
+    missing = cloud.iam.exceptions.NoSuchEntityException
+    steps = [
+        lambda: cloud.iam.remove_role_from_instance_profile(
+            InstanceProfileName=role, RoleName=role
+        ),
+        lambda: cloud.iam.delete_instance_profile(InstanceProfileName=role),
+        lambda: cloud.iam.detach_role_policy(
+            RoleName=role, PolicyArn="arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+        ),
+        lambda: cloud.iam.delete_role_policy(RoleName=role, PolicyName="read-own-parameters"),
+        lambda: cloud.iam.delete_role(RoleName=role),
+    ]
+    for step in steps:
+        try:
+            step()
+        except missing:
+            pass
+    say(f"  deleted role {role}")
+
+    names = [cloud.parameter(k) for k in ("targets", "globus-client-id", "globus-client-secret")]
+    cloud.ssm.delete_parameters(Names=names)
+    say("  deleted stored parameters")
+    say("gone.")
+    return 0
+
+
+def parser() -> argparse.ArgumentParser:
+    top = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--region", default=os.environ.get("AWS_REGION", DEFAULT_REGION))
+    common.add_argument("--profile", default=None, help="AWS profile in ~/.aws")
+    common.add_argument("--name", default=DEFAULT_NAME, help="tags and names every resource")
+
+    inputs = argparse.ArgumentParser(add_help=False)
+    inputs.add_argument("--ref", default=None, help="commit to serve (default: HEAD)")
+    inputs.add_argument("--targets", type=Path, default=DEFAULT_TARGETS)
+    inputs.add_argument("--globus-client", type=Path, default=DEFAULT_GLOBUS)
+
+    commands = top.add_subparsers(dest="command", required=True)
+    deploy = commands.add_parser("deploy", parents=[common, inputs], help="create it")
+    deploy.add_argument("--instance-type", default=DEFAULT_INSTANCE_TYPE)
+    deploy.add_argument("--domain", default=None, help="your own host name, for the certificate")
+    deploy.add_argument("--no-tls", action="store_true", help="plain HTTP on the address only")
+    deploy.add_argument("--interval", type=int, default=60, help="seconds between probes")
+    deploy.add_argument("--wait", type=int, default=25, help="minutes to wait for the install")
+    deploy.add_argument("--dry-run", action="store_true", help="check inputs, call nothing")
+    deploy.set_defaults(run=cmd_deploy)
+
+    update = commands.add_parser("update", parents=[common, inputs], help="refresh it in place")
+    update.set_defaults(run=cmd_update)
+
+    status = commands.add_parser("status", parents=[common], help="is it up")
+    status.add_argument("--log", action="store_true", help="print the instance's console log")
+    status.set_defaults(run=cmd_status)
+
+    destroy = commands.add_parser("destroy", parents=[common], help="delete all of it")
+    destroy.add_argument("--yes", action="store_true")
+    destroy.set_defaults(run=cmd_destroy)
+    return top
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parser().parse_args(argv)
+    try:
+        return args.run(args)
+    except DeployError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

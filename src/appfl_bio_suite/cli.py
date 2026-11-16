@@ -561,6 +561,7 @@ def watch() -> None:
       appfl-bio-suite watch build            refresh it from federation.yaml
       appfl-bio-suite watch serve            open it locally, live
       appfl-bio-suite watch export --out DIR a static copy anyone can host
+      appfl-bio-suite watch live             keep a hosted copy's endpoint status current
 
     Needs the coordinator-only extra:  pip install 'appfl-bio-suite[watch]'
     """
@@ -697,6 +698,12 @@ def watch_serve(host: str, port: int | None, runs_dir: Path | None) -> None:
     help="Directory to write the static site into.",
 )
 @click.option("--title", default="APPFL federation network", show_default=True)
+@click.option(
+    "--live-status",
+    is_flag=True,
+    help="Tell the viewer to poll endpoints.status.json beside the map for endpoint "
+    "liveness. Something has to keep that file current: `watch live`.",
+)
 def watch_export(
     catalog_path: Path | None,
     experiment: str | None,
@@ -705,6 +712,7 @@ def watch_export(
     federation_path: str | None,
     out_dir: Path,
     title: str,
+    live_status: bool,
 ) -> None:
     """Write a static copy of the network map that anyone can host.
 
@@ -718,6 +726,7 @@ def watch_export(
     accounts, cluster paths, your Globus identity and (unless you pass
     --include-endpoint-uuids) full endpoint UUIDs are not.
     """
+    from appfl_bio_suite.core.live_status import STATUS_FILENAME
     from appfl_bio_suite.core.watch import WatchError, export_site, unplaced_report
 
     fed = _load(federation_path)
@@ -730,6 +739,7 @@ def watch_export(
             experiment=experiment,
             statuses=_statuses(fed, experiment, probe),
             include_endpoint_uuids=include_endpoint_uuids,
+            live_status=STATUS_FILENAME if live_status else None,
         )
     except WatchError as exc:
         raise click.ClickException(str(exc)) from exc
@@ -745,6 +755,101 @@ def watch_export(
     if report:
         click.echo("")
         click.echo(report)
+
+
+@watch.command("targets")
+@click.option("--federation", "federation_path", default=None, help=_FEDERATION_HELP)
+@click.option(
+    "--rename",
+    multiple=True,
+    metavar="LOCAL=PUBLIC",
+    help="A site whose id on the published map differs from its id in this federation. Repeatable.",
+)
+@click.option(
+    "--out",
+    "out_path",
+    type=click.Path(path_type=Path, dir_okay=False),
+    required=True,
+    help="Where to write the probe list. Keep it under local/: it holds real endpoint UUIDs.",
+)
+def watch_targets(federation_path: str | None, rename: tuple[str, ...], out_path: Path) -> None:
+    """Write the probe list `watch live` reads, from your real federation.yaml.
+
+    The list is site id -> endpoint UUIDs and nothing else, so the host that keeps a
+    public map live never needs the federation config itself. Read it before using it:
+    the ids must be the ones the published map draws.
+    """
+    import json
+
+    from appfl_bio_suite.core.live_status import targets_from_federation
+
+    renames = {}
+    for pair in rename:
+        local, sep, public = pair.partition("=")
+        if not (local and sep and public):
+            raise click.UsageError(f"--rename takes LOCAL=PUBLIC, not {pair!r}")
+        renames[local] = public
+
+    targets, notes = targets_from_federation(_load(federation_path), renames)
+    if not targets:
+        raise click.ClickException("no site has a real endpoint to probe")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps({"sites": targets}, indent=2) + "\n", encoding="utf-8")
+    out_path.chmod(0o600)
+
+    click.echo(f"probe targets: {out_path}")
+    for site_id, uuids in targets.items():
+        click.echo(f"  {site_id:16} {len(uuids)} endpoint(s)")
+    for note in notes:
+        click.echo(f"  skipped  {note}")
+
+
+@watch.command("live")
+@click.option(
+    "--targets",
+    "targets_path",
+    type=click.Path(path_type=Path, exists=True, dir_okay=False),
+    required=True,
+    help="The probe list: site id -> endpoint UUIDs. Write one with `watch targets`.",
+)
+@click.option(
+    "--out",
+    "out_path",
+    type=click.Path(path_type=Path),
+    required=True,
+    help="The exported map's directory, or the status file itself.",
+)
+@click.option("--interval", default=60.0, show_default=True, help="Seconds between probes.")
+@click.option("--once", is_flag=True, help="Probe once and exit.")
+def watch_live(targets_path: Path, out_path: Path, interval: float, once: bool) -> None:
+    """Keep an exported map's endpoint status current. Runs until stopped.
+
+    Asks Globus Compute whether each endpoint's daemon is connected and rewrites
+    endpoints.status.json beside the map; a map exported with `--live-status` polls it.
+    One API call per endpoint per interval, as whatever Globus identity this process
+    has -- your login, or GLOBUS_COMPUTE_CLIENT_ID / GLOBUS_COMPUTE_CLIENT_SECRET for a
+    service account on an unattended host. A site whose endpoint will not answer that
+    identity's status request is published as `unknown`, not as offline.
+
+    \b
+    This is the daemon's status, not `endpoint smoke`: an endpoint can be online and
+    still refuse or fail a task.
+    """
+    from appfl_bio_suite.core.live_status import STATUS_FILENAME, LiveStatusError, load_targets, run
+
+    if out_path.is_dir():
+        out_path = out_path / STATUS_FILENAME
+
+    def report(status: dict) -> None:
+        line = "  ".join(f"{name}={entry['state']}" for name, entry in status["sites"].items())
+        click.echo(f"{status['checked_at']}  {line}")
+
+    try:
+        run(load_targets(targets_path), out_path, interval=interval, once=once, report=report)
+    except LiveStatusError as exc:
+        raise click.ClickException(str(exc)) from exc
+    except KeyboardInterrupt:
+        pass
 
 
 # ---------------------------------------------------------------------------

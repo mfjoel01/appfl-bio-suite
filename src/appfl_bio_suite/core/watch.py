@@ -336,6 +336,7 @@ def build_network_events(
     statuses: dict[str, str] | None = None,
     include_endpoint_uuids: bool = False,
     generated_at: datetime | None = None,
+    live_status: str | None = None,
 ) -> list[dict[str, Any]]:
     """The network view as a hivewatch event stream.
 
@@ -348,6 +349,9 @@ def build_network_events(
     ``statuses`` maps site id to a hivewatch client status (``active``, ``idle``,
     ``dropped``, ``failed``). Omitted, every site is ``active`` -- the map then states
     membership, not liveness, which is the honest reading when nothing has been probed.
+
+    ``live_status`` names a file published beside the map that ``watch live`` keeps
+    current; the viewer polls it. See :mod:`appfl_bio_suite.core.live_status`.
     """
     active = participations(federation, experiment)
     if not active:
@@ -379,6 +383,8 @@ def build_network_events(
         "generated_at": now,
         "source": str(federation.source_path) if federation.source_path else "federation config",
     }
+    if live_status:
+        config["live_status"] = live_status
 
     return [
         {

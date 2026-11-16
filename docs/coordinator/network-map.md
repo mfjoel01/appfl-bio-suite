@@ -290,6 +290,19 @@ A site with two endpoints and one of them down is neither up nor down; it is dra
 `idle`, distinct from both, because a site half-online is exactly the state worth being
 able to see at a glance.
 
+`--probe` asks once, at build time, so an exported page keeps saying what was true then.
+For a hosted copy that keeps asking:
+
+```bash
+appfl-bio-suite watch export --live-status --out site/
+appfl-bio-suite watch targets --out local/live-map/targets.json
+appfl-bio-suite watch live --targets local/live-map/targets.json --out site/
+```
+
+`watch live` rewrites `endpoints.status.json` beside the map every minute and the viewer
+polls it. [live-map-aws.md](live-map-aws.md) covers what the states mean, why the probe
+list is its own file, and a one-command deployment of the whole site to EC2.
+
 ---
 
 ## Command reference
@@ -297,7 +310,9 @@ able to see at a glance.
 ```
 appfl-bio-suite watch build   [--experiment X] [--probe] [--include-endpoint-uuids]
 appfl-bio-suite watch serve   [--host 127.0.0.1] [--port 7070] [--runs-dir DIR]
-appfl-bio-suite watch export  --out DIR [--experiment X] [--probe] [--title "..."]
+appfl-bio-suite watch export  --out DIR [--experiment X] [--probe] [--live-status] [--title "..."]
+appfl-bio-suite watch targets --out FILE [--rename LOCAL=PUBLIC]
+appfl-bio-suite watch live    --targets FILE --out DIR [--interval 60] [--once]
 appfl-bio-suite run EXPERIMENT --watch
 ```
 

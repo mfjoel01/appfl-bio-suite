@@ -208,6 +208,10 @@
 .bio-viewer #theme-btn { font-size: 0; }
 .bio-viewer #theme-btn::before { content: '◐'; font-size: 20px; }
 .bio-partner-stage { display: block; margin-top: 10px; color: var(--stage-color, var(--muted)); font-size: 9px; line-height: 1.6; }
+.bio-live { display: flex; align-items: center; gap: 7px; margin-top: 8px; color: var(--live-color, var(--muted)); font-size: 9px; line-height: 1.6; }
+.bio-live i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.bio-live.online i { box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 22%, transparent); }
+.bio-detail-row .bio-live { margin-top: 0; font-size: 10px; }
 .bio-detail-row a { color: var(--accent); text-decoration: none; font-size: 10px; }
 .bio-detail-row a:hover { text-decoration: underline; }
 .bio-viewer select, .bio-viewer input { font: inherit; }

@@ -76,6 +76,7 @@ def test_shared_partner_doc_exists():
         "reference-deployment.md",
         "releasing.md",
         "network-map.md",
+        "live-map-aws.md",
         "ga4gh.md",
     ],
 )
