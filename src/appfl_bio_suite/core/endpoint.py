@@ -21,6 +21,7 @@ ignores its identity mapping entirely.
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -206,7 +207,17 @@ def explain_submit_failure(exc: BaseException) -> str:
     """
     text = f"{type(exc).__name__}: {exc}"
 
-    if "422" in text or "Identity failed to map" in text:
+    def status(code: int) -> bool:
+        """The HTTP status the service returned, not the same digits somewhere else.
+
+        These messages quote the endpoint UUID, and a UUID is hex: one in fifty contains
+        "403", "404" or "422" and used to select that diagnosis whatever had failed.
+        """
+        if getattr(exc, "http_status", None) == code:
+            return True
+        return re.search(rf"(?<![0-9A-Za-z-]){code}(?![0-9A-Za-z-])", text) is not None
+
+    if status(422) or "Identity failed to map" in text:
         return (
             "422 -- the endpoint is privileged and its mapping IS being read; the\n"
             "expression just did not resolve your identity.\n"
@@ -225,7 +236,7 @@ def explain_submit_failure(exc: BaseException) -> str:
             "within about five seconds."
         )
 
-    if "403" in text or "ENDPOINT_ACCESS_FORBIDDEN" in text:
+    if status(403) or "ENDPOINT_ACCESS_FORBIDDEN" in text:
         return (
             "403 -- this is NOT a mapping-expression problem. Do not start editing the\n"
             "JSON.\n"
@@ -240,7 +251,7 @@ def explain_submit_failure(exc: BaseException) -> str:
             "the one they sent you is a different, now-dead endpoint."
         )
 
-    if "404" in text:
+    if status(404):
         return (
             "404 -- no such endpoint. The UUID is wrong or the endpoint was deleted.\n"
             "Note that `delete` + `configure` issues a NEW UUID; stop/start/restart\n"

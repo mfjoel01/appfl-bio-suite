@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import base64
 
-from appfl_bio_suite.core.endpoint import smoke_test, where_am_i
+import pytest
+
+from appfl_bio_suite.core.endpoint import explain_submit_failure, smoke_test, where_am_i
 
 
 def _decoded(payload: str) -> bytes:
@@ -90,3 +92,37 @@ def test_smoke_test_installs_the_source_shipping_serializer(monkeypatch):
     executor = executors[0]
     assert executor.submitted is where_am_i
     assert isinstance(executor.serializer.code_serializer, CombinedCode)
+
+
+@pytest.mark.parametrize(
+    ("message", "diagnosis"),
+    [
+        ("422 SEMANTICALLY_INVALID -- Identity failed to map to a local user name", "422 --"),
+        ("('POST', 'https://compute/v3/x', None, 403, 'ENDPOINT_ACCESS_FORBIDDEN')", "403 --"),
+        ("the service returned 404: no such endpoint", "404 --"),
+    ],
+)
+def test_a_status_code_selects_its_diagnosis(message: str, diagnosis: str):
+    assert explain_submit_failure(RuntimeError(message)).startswith(diagnosis)
+
+
+@pytest.mark.parametrize("digits", ["403", "404", "422"])
+def test_digits_inside_an_endpoint_uuid_are_not_a_status_code(digits: str):
+    """These messages quote the endpoint UUID, and a UUID is hex.
+
+    About one in fifty contains one of the three codes, and that used to pick the
+    diagnosis: a scheduler timeout at such a site was explained as an identity-mapping
+    failure, sending the partner to edit a file that was correct.
+    """
+    uuid = f"0a1b2c3d-{digits}0-4e5f-8a9b-0c1d2e3f{digits}a"
+    timed_out = TimeoutError(f"no result from endpoint {uuid} within 300 seconds")
+    assert explain_submit_failure(timed_out).startswith("Timed out waiting")
+    unknown = RuntimeError(f"endpoint {uuid} rejected the task")
+    assert explain_submit_failure(unknown).startswith("Unrecognized failure")
+
+
+def test_the_status_attribute_is_used_when_the_message_does_not_carry_it():
+    class ApiError(Exception):
+        http_status = 403
+
+    assert explain_submit_failure(ApiError("forbidden")).startswith("403 --")

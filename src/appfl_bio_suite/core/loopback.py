@@ -298,7 +298,8 @@ def localize_for_loopback(
     # The GA4GH fields point at the simulated data too, for the same reason the paths do:
     # a real federation's `drs_uri` names an object in the coordinator's registry and its
     # `data_use_profile` a copy of a partner's terms, neither of which describes the
-    # bundle sitting in --data-root. Only filled in where the coordinator left them unset.
+    # bundle sitting in --data-root. The study's own declaration (`data_use_request`) is
+    # kept where the coordinator made one.
     if experiment == "fine-mapping" and data_root is not None:
         _localize_ga4gh(federation, exp, Path(data_root))
 
@@ -327,10 +328,22 @@ def _localize_ga4gh(federation: Federation, exp, data_root: Path) -> None:
     if exp.ga4gh is None:
         object.__setattr__(exp, "ga4gh", ExperimentGA4GH.model_validate(_loopback_ga4gh(data_root)))
 
+    # The registry moves with the objects. Each site's `drs_uri` is about to name an
+    # object in the simulated data's registry, so that is the registry it has to be
+    # resolved in. Leaving the federation's own in place looked the simulated bundles up
+    # in a registry that has never heard of them -- or, for a config started from the
+    # shipped example, in one that does not exist -- and the loopback run failed on a
+    # file that has nothing to do with what it tests. TRS and TES settings are kept.
     services = _loopback_drs_service(data_root)
-    if services is not None and federation.ga4gh is None:
-        object.__setattr__(federation, "ga4gh", GA4GHServices.model_validate(services))
+    if services is not None:
+        merged = federation.ga4gh.model_dump() if federation.ga4gh is not None else {}
+        object.__setattr__(
+            federation, "ga4gh", GA4GHServices.model_validate({**merged, **services})
+        )
 
     for entry in exp.sites:
-        for key, value in _loopback_site_ga4gh(data_root, entry.client_id).items():
-            object.__setattr__(entry, key, value)
+        local = _loopback_site_ga4gh(data_root, entry.client_id)
+        # Set or cleared, never left: a real `drs_uri` or profile that survived here
+        # would be checked against a bundle it does not describe.
+        for key in ("drs_uri", "data_use_profile"):
+            object.__setattr__(entry, key, local.get(key))

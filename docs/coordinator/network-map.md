@@ -138,9 +138,12 @@ only a fictional partner and an empty results group ready for your selected file
 
 ## Giving everyone the same page
 
-`watch serve` binds a port on the machine you run it on. On an HPC login node that means
-you can see it and nobody else can — partners cannot reach inbound ports on your cluster,
-and the cluster is right not to let them.
+`watch serve` binds a port on the machine you run it on — by default on `127.0.0.1`
+only, because the server has no login of its own. On an HPC login node, forward it to
+your laptop (`ssh -L 7070:localhost:7070 <login node>`) and open `http://localhost:7070`
+there. `--host 0.0.0.0` offers the page to every machine that can reach the node, which
+on a shared cluster is every other user of it. Partners cannot reach it either way:
+inbound ports on your cluster are closed to them, and the cluster is right to keep them so.
 
 What you hand out is a static export:
 
@@ -293,7 +296,7 @@ able to see at a glance.
 
 ```
 appfl-bio-suite watch build   [--experiment X] [--probe] [--include-endpoint-uuids]
-appfl-bio-suite watch serve   [--port 7070] [--runs-dir DIR]
+appfl-bio-suite watch serve   [--host 127.0.0.1] [--port 7070] [--runs-dir DIR]
 appfl-bio-suite watch export  --out DIR [--experiment X] [--probe] [--title "..."]
 appfl-bio-suite run EXPERIMENT --watch
 ```

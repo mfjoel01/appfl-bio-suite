@@ -46,6 +46,7 @@ never reach the map at all. Those describe the inside of a partner's cluster.
 from __future__ import annotations
 
 import base64
+import html
 import json
 import logging
 import queue
@@ -137,7 +138,9 @@ class Participation:
 
     experiment: str
     client_id: str
-    endpoint_uuid: str
+    # None between `experiment package` and `experiment register`: the site is a member
+    # of the federation, and on the map, before it has an endpoint to name.
+    endpoint_uuid: str | None
     data_kind: str
     samples: int | None = None
 
@@ -277,7 +280,7 @@ def _site_client(
         # Chips, in the order they should read.
         "institution": site.name,
         "experiments": ", ".join(p.experiment for p in parts),
-        "endpoints": len(parts),
+        "endpoints": sum(1 for p in parts if p.endpoint_uuid),
         "scheduler": site.scheduler,
     }
 
@@ -287,7 +290,11 @@ def _site_client(
         client[part.experiment] = part.label
 
     for part in parts:
-        if include_endpoint_uuids:
+        if part.endpoint_uuid is None:
+            # Said on the card, in either mode: a site still onboarding is the one whose
+            # state a coordinator opens the map to check.
+            client[f"endpoint · {part.experiment}"] = "not registered yet"
+        elif include_endpoint_uuids:
             # Opted in: a visible chip, for an internal deployment where the map is the
             # convenient place to look one up.
             client[f"endpoint · {part.experiment}"] = part.endpoint_uuid
@@ -564,9 +571,14 @@ def _patched_viewer() -> str:
 
 @contextmanager
 def map_server(
-    *, host: str = "0.0.0.0", port: int = DEFAULT_PORT, runs_dir: Path | str = DEFAULT_RUNS_DIR
+    *, host: str = "127.0.0.1", port: int = DEFAULT_PORT, runs_dir: Path | str = DEFAULT_RUNS_DIR
 ) -> Iterator[Any]:
     """Keep the same viewer used by export available for the server's lifetime.
+
+    Loopback by default, unlike upstream's 0.0.0.0. The server has no authentication and
+    answers any origin, and the runs directory holds site names, sample counts and live
+    run telemetry; on a shared login node "all interfaces" is every other user of the
+    cluster. Widening it is the caller's explicit choice.
 
     The temporary file belongs to this process; concurrent servers and exports never
     overwrite each other's viewer or the installed package. The context always stops
@@ -634,7 +646,9 @@ def export_site(
         json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
     )
     (out_dir / "map.html").write_text(_patched_viewer(), encoding="utf-8")
-    (out_dir / "index.html").write_text(_INDEX.format(title=title), encoding="utf-8")
+    (out_dir / "index.html").write_text(
+        _INDEX.format(title=html.escape(title, quote=False)), encoding="utf-8"
+    )
     return out_dir
 
 
@@ -682,7 +696,8 @@ def write_sidecar(
                 "country": site.country,
                 "num_samples": part.samples,
             }
-            clients[part.endpoint_uuid] = entry
+            if part.endpoint_uuid:
+                clients[part.endpoint_uuid] = entry
             clients[part.client_id] = entry
 
     payload = {

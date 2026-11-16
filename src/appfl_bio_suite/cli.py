@@ -36,7 +36,24 @@ def _load(path: str | None, required: bool = True):
         raise click.ClickException(str(exc)) from exc
 
 
-@click.group(context_settings={"help_option_names": ["-h", "--help"]})
+class _SuiteGroup(click.Group):
+    """Report a federation-config problem as its message, from every command.
+
+    ``FederationError`` messages are written to name the fix, and ``_load`` already shows
+    them that way. But the lookups a command makes *after* loading -- an experiment the
+    file does not declare, a site not in it, a `ga4gh` block it lacks -- raise the same
+    error, and from there it surfaced as a traceback with the useful sentence on its
+    last line. Caught once here rather than at each of those call sites.
+    """
+
+    def invoke(self, ctx: click.Context):
+        try:
+            return super().invoke(ctx)
+        except FederationError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+
+@click.group(cls=_SuiteGroup, context_settings={"help_option_names": ["-h", "--help"]})
 @click.version_option(__version__, prog_name="appfl-bio-suite")
 def main() -> None:
     """Federated learning experiments in computational biology.
@@ -124,6 +141,10 @@ def endpoint_status(
     any_down = False
     credentials = _endpoint_credentials(site_credentials, targets)
     for label, uuid in targets:
+        if uuid is None:
+            click.echo(_unregistered_line(label))
+            any_down = True
+            continue
         kwargs = {"client": credentials[uuid].client()} if credentials else {}
         status = get_status(uuid, label=label, **kwargs)
         click.echo(status.render())
@@ -171,11 +192,16 @@ def endpoint_smoke(
     expected = {}
     for exp in fed.experiments.values():
         for entry in exp.sites:
-            expected[entry.endpoint_uuid] = exp.service_account_for(entry)
+            if entry.endpoint_uuid:
+                expected[entry.endpoint_uuid] = exp.service_account_for(entry)
 
     credentials = _endpoint_credentials(site_credentials, targets)
     failed = False
     for label, uuid in targets:
+        if uuid is None:
+            click.echo(_unregistered_line(label) + "\n")
+            failed = True
+            continue
         click.echo(f"submitting to {label} ({uuid}) ...")
         kwargs = {"client": credentials[uuid].client()} if credentials else {}
         result = smoke_test(uuid, label=label, timeout=timeout, **kwargs)
@@ -205,13 +231,26 @@ def _endpoint_credentials(path, targets):
     from appfl_bio_suite.core.site_credentials import load_site_credentials
 
     try:
-        return load_site_credentials(path, [uuid for _, uuid in targets])
+        return load_site_credentials(path, [uuid for _, uuid in targets if uuid])
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
 
 
-def _resolve_targets(fed, experiment: str | None, site: str | None) -> list[tuple[str, str]]:
-    """Turn --experiment/SITE into (label, uuid) pairs."""
+def _unregistered_line(label: str) -> str:
+    """What to say about a site that is in the federation but has no endpoint yet."""
+    return (
+        f"  {label:24} no endpoint registered yet -- the site has not finished onboarding\n"
+        f"  {'':24} (`experiment register` records its endpoint_uuid in federation.yaml)"
+    )
+
+
+def _resolve_targets(fed, experiment: str | None, site: str | None) -> list[tuple[str, str | None]]:
+    """Turn --experiment/SITE into (label, uuid) pairs.
+
+    The uuid is None for a site that has been added to an experiment but has not
+    registered an endpoint -- the state every site is in between `experiment package`
+    and `experiment register`. It is reported, never probed.
+    """
     names = [experiment] if experiment else list(fed.enabled_experiments())
     targets: list[tuple[str, str]] = []
     for name in names:
@@ -456,7 +495,11 @@ def run_cmd(
             watch=watch,
             site_credentials=site_credentials,
         )
-    except ValueError as exc:
+    except (ValueError, RuntimeError, OSError) as exc:
+        # Everything `launch` raises itself is a problem with what it was asked to
+        # resolve -- a variant with no template, an unfilled placeholder, a DRS object
+        # that is not in the registry -- and each message names its fix. The driver
+        # runs in a child process, so nothing from the run itself arrives here.
         raise click.ClickException(str(exc)) from exc
     sys.exit(code)
 
@@ -536,6 +579,9 @@ def _statuses(fed, experiment: str | None, probe: bool) -> dict[str, str] | None
         online = 0
         for part in parts:
             label = f"{part.experiment}/{part.client_id}"
+            if part.endpoint_uuid is None:
+                click.echo(_unregistered_line(label))
+                continue
             status = get_status(part.endpoint_uuid, label=label)
             click.echo(status.render())
             online += int(status.online)
@@ -593,7 +639,14 @@ def watch_build(
 
 
 @watch.command("serve")
-@click.option("--host", default="0.0.0.0", show_default=True)
+@click.option(
+    "--host",
+    default="127.0.0.1",
+    show_default=True,
+    help="Address to bind. The default is this machine only; reach it from your laptop "
+    "with `ssh -L 7070:localhost:7070 <host>`. 0.0.0.0 offers the map, unauthenticated, "
+    "to every machine that can reach this one.",
+)
 @click.option("--port", default=None, type=int, help="Defaults to 7070.")
 @click.option(
     "--runs-dir",
@@ -608,9 +661,9 @@ def watch_serve(host: str, port: int | None, runs_dir: Path | None) -> None:
     happens without restarting anything.
 
     \b
-    THIS IS THE LOCAL VIEW. It binds a port on the machine you run it on, which on an
-    HPC login node is reachable by you and by nobody else -- partners cannot open it, and
-    the cluster is right not to let them. `watch export` is what you hand out.
+    THIS IS THE LOCAL VIEW. It binds to this machine only (127.0.0.1) and has no login
+    of its own, so on a shared login node forward the port over SSH rather than widening
+    --host. Partners cannot open it either way; `watch export` is what you hand out.
     """
     from appfl_bio_suite.core.watch import DEFAULT_PORT, DEFAULT_RUNS_DIR, WatchError, map_server
 
@@ -826,7 +879,10 @@ def partner_bundle_cmd(
             f"'{experiment}' is a serial simulation; partner bundles are unavailable"
         )
     fed = _load(federation_path)
-    destination = generate_bundle(fed, experiment, site, out_dir)
+    try:
+        destination = generate_bundle(fed, experiment, site, out_dir)
+    except (ValueError, RuntimeError, OSError) as exc:
+        raise click.ClickException(str(exc)) from exc
     click.echo(f"\nBundle written to: {destination}")
     click.echo("\nContents:")
     for path in sorted(destination.rglob("*")):
@@ -1031,6 +1087,22 @@ def ga4gh_drs_register(
     click.echo("path as `ga4gh.drs.registry`.")
 
 
+def _configured_registry(fed) -> Path:
+    """The registry path federation.yaml names, or a message saying it names none.
+
+    `ga4gh.drs` can be present with only a hostname. An empty path used to be loaded
+    as the current directory and fail on that instead.
+    """
+    registry = fed.drs_service().registry
+    if not registry:
+        raise click.ClickException(
+            f"`ga4gh.drs` in {fed.source_path} names no `registry`. Pass --registry, or "
+            "build one with `appfl-bio-suite ga4gh drs register --data-root <dir>` and "
+            "record its path there."
+        )
+    return Path(registry)
+
+
 @ga4gh_drs.command("resolve")
 @click.argument("uri")
 @click.option("--registry", "registry_path", type=click.Path(path_type=Path), default=None)
@@ -1050,8 +1122,7 @@ def ga4gh_drs_resolve(
     registry = None
     if base_url is None:
         if registry_path is None:
-            fed = _load(federation_path)
-            registry_path = Path(fed.drs_service().registry or "")
+            registry_path = _configured_registry(_load(federation_path))
         try:
             registry = DrsRegistry.load(registry_path)
         except DrsError as exc:
@@ -1099,8 +1170,7 @@ def ga4gh_drs_serve(
     from appfl_bio_suite.core.ga4gh.drs import DrsError, DrsRegistry, serve
 
     if registry_path is None:
-        fed = _load(federation_path)
-        registry_path = Path(fed.drs_service().registry or "")
+        registry_path = _configured_registry(_load(federation_path))
     try:
         registry = DrsRegistry.load(registry_path)
     except DrsError as exc:

@@ -100,3 +100,74 @@ def test_qq_expected_quantiles_use_the_full_test_count_when_downsampling(tmp_pat
 
     # The most significant p-value's expected quantile is set by the FULL test count.
     assert float(expected.max()) == pytest.approx(-np.log10(0.5 / n_tests))
+
+
+# ---------------------------------------------------------------------------
+# the variant axis is one axis
+# ---------------------------------------------------------------------------
+
+
+def _meta_tensor(frame):
+    import json
+
+    import torch
+
+    blob = json.dumps({column: frame[column].tolist() for column in frame}).encode()
+    return torch.frombuffer(bytearray(blob), dtype=torch.uint8)
+
+
+@pytest.fixture
+def pooling(aggregator):
+    """The aggregator with a logger, as APPFL constructs it, for calls through `aggregate`."""
+    import logging
+
+    aggregator.logger = logging.getLogger("test-gwas-aggregator")
+    return aggregator
+
+
+def _axis(n=4):
+    import pandas as pd
+
+    return pd.DataFrame(
+        {
+            "CHR": [1] * n,
+            "SNP": [f"rs{i}" for i in range(n)],
+            "BP": [100 * (i + 1) for i in range(n)],
+            "EA": ["A"] * n,
+            "NEA": ["G"] * n,
+        }
+    )
+
+
+def test_sites_coding_the_effect_allele_differently_are_not_pooled(pooling):
+    """Equal lengths stack without complaint; the effects then cancel instead of adding."""
+    swapped = _axis()
+    swapped.loc[2, ["EA", "NEA"]] = ["G", "A"]
+    models = {
+        "Site1": {"variant_meta": _meta_tensor(_axis())},
+        "Site2": {"variant_meta": _meta_tensor(swapped)},
+    }
+    with pytest.raises(ValueError) as raised:
+        pooling.aggregate(models)
+    message = str(raised.value)
+    assert "Site2" in message and "row 2" in message
+    assert "effect allele swapped" in message and "opposite signs" in message
+
+
+def test_sites_with_the_same_variants_in_another_order_are_not_pooled(pooling):
+    reordered = _axis().iloc[[0, 2, 1, 3]].reset_index(drop=True)
+    models = {
+        "Site1": {"variant_meta": _meta_tensor(_axis())},
+        "Site2": {"variant_meta": _meta_tensor(reordered)},
+    }
+    with pytest.raises(ValueError, match="disagree at 2 of 4 variants"):
+        pooling.aggregate(models)
+
+
+def test_a_site_with_a_different_number_of_variants_is_named(pooling):
+    models = {
+        "Site1": {"variant_meta": _meta_tensor(_axis(4))},
+        "Site2": {"variant_meta": _meta_tensor(_axis(3))},
+    }
+    with pytest.raises(ValueError, match="Site2 analyzed 3 variants but Site1 analyzed 4"):
+        pooling.aggregate(models)

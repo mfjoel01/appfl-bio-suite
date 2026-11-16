@@ -110,7 +110,8 @@ def _resolve_binary(name: str, repo_root: Path) -> str:
         return str(vendored)
     raise FileNotFoundError(
         f"{name} not found on PATH or in vendor/bin. "
-        f"For SuSiEx run scripts/install_susiex.sh; for plink run scripts/install_plink.sh."
+        "For SuSiEx run scripts/fine-mapping/install_susiex.sh; for plink run "
+        "scripts/fine-mapping/install_plink.sh."
     )
 
 

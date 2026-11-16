@@ -334,3 +334,62 @@ def test_results_can_be_addressed_too(tmp_path):
     registry = registry_for_files([results], "drs.test.org")
     obj = registry.by_name("fed_fm_results.tsv")
     assert obj is not None and obj.self_uri.startswith("drs://drs.test.org/")
+
+
+# ---------------------------------------------------------------------------
+# a registry or a service that is not what it should be
+# ---------------------------------------------------------------------------
+
+
+def test_a_registry_that_is_not_one_is_a_drs_error(tmp_path):
+    """Every caller handles DrsError, and only that.
+
+    The loopback run reads it as "run without DRS verification"; the CLI prints it. A
+    file that parsed as JSON but was not a registry escaped both as a validation error.
+    """
+    wrong = tmp_path / "drs_registry.json"
+    wrong.write_text(json.dumps({"hostname": "drs.test.org", "objects": {"x": {"id": 1}}}))
+    with pytest.raises(DrsError, match="is not a DRS registry"):
+        DrsRegistry.load(wrong)
+    with pytest.raises(DrsError, match="could not read the DRS registry"):
+        DrsRegistry.load(tmp_path)  # a directory
+
+
+def test_verify_reports_a_directory_where_a_file_was_registered(registry, tmp_path):
+    answer_key = registry.by_name("causal_manifest.tsv")
+    path = tmp_path / "ground_truth" / "causal_manifest.tsv"
+    path.unlink()
+    path.mkdir()
+    (problem,) = verify_object(answer_key)
+    assert "single file" in problem
+
+
+@pytest.mark.parametrize("base_url", ["drs.example.org", "http://127.0.0.1:1"])
+def test_a_client_pointed_at_nothing_usable_raises_drs_error(base_url):
+    """A URL with no scheme is the natural slip for a field that sits beside `hostname`."""
+    with pytest.raises(DrsError):
+        DrsClient(base_url=base_url).get("abc")
+
+
+def test_a_service_that_answers_with_something_else_is_a_drs_error():
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class NotJson(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            body = b"<html>502 Bad Gateway</html>"
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            return
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), NotJson)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        url = f"http://127.0.0.1:{httpd.server_address[1]}"
+        with pytest.raises(DrsError, match="no usable response"):
+            DrsClient(base_url=url).get("abc")
+    finally:
+        httpd.shutdown()

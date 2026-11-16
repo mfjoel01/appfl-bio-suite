@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-shot installer for SuSiEx (cross-ancestry fine-mapping).
 # Clones the repo into <repo>/vendor/SuSiEx and drops the prebuilt STATIC
-# binary into <repo>/vendor/bin/, which scripts/_env.sh prepends to PATH.
+# binary into <repo>/vendor/bin/, which appfl_bio_suite puts on PATH at import.
 #
 # SuSiEx is NOT a Python library — it is a C++ CLI we shell out to (like plink).
 # The upstream repo ships a fully-static linux_x86_64 binary in bin_static/,

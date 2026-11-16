@@ -646,3 +646,88 @@ def test_participations_are_keyed_by_site_not_by_client_id(federation):
     active = participations(federation)
     assert set(active) == {"site-north", "site-south", "site-east"}
     assert {p.client_id for p in active["site-north"]} == {"Site1", "anl"}
+
+
+# ---------------------------------------------------------------------------
+# a site that is in the federation but has no endpoint yet
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def onboarding(tmp_path):
+    """The example federation with one GWAS site packaged but not yet registered."""
+    text = EXAMPLE.read_text(encoding="utf-8")
+    line = "        endpoint_uuid: cccccccc-0000-0000-0000-000000000002\n"
+    assert line in text
+    path = tmp_path / "federation.yaml"
+    path.write_text(text.replace(line, ""), encoding="utf-8")
+    return load_federation(path)
+
+
+@pytest.mark.parametrize("include_endpoint_uuids", [False, True])
+def test_a_site_still_onboarding_is_drawn_and_says_so(onboarding, include_endpoint_uuids):
+    """Building the map failed on the missing UUID -- for the very site worth looking at."""
+    site = _clients(onboarding, include_endpoint_uuids=include_endpoint_uuids)["site-south"]
+    assert site["endpoint · gwas"] == "not registered yet"
+    # Its other two experiments have endpoints, and those are still counted and shown.
+    assert site["endpoints"] == 2
+    assert "gwas" in site["experiments"]
+    shown = (
+        "endpoint · flamby-heart-disease"
+        if include_endpoint_uuids
+        else ("_endpoint_flamby-heart-disease")
+    )
+    assert site[shown].startswith("bbbbbbbb")
+
+
+def test_the_map_and_the_sidecar_are_written_for_a_federation_still_onboarding(
+    onboarding, tmp_path
+):
+    _, mapjson = write_network_run(onboarding, tmp_path / "runs")
+    assert "not registered yet" in mapjson.read_text(encoding="utf-8")
+    sidecar = json.loads(write_sidecar(onboarding, "gwas", tmp_path / "gwas.json").read_text())
+    assert "Site2" in sidecar["clients"]
+    assert "null" not in sidecar["clients"] and None not in sidecar["clients"]
+
+
+# ---------------------------------------------------------------------------
+# who can reach the live view, and what the export's title may contain
+# ---------------------------------------------------------------------------
+
+
+def test_the_live_view_binds_to_this_machine_unless_told_otherwise(tmp_path, monkeypatch):
+    """It has no login and answers any origin; a shared login node is not a private one."""
+    bound = []
+
+    class Server:
+        def __init__(self, **kwargs):
+            bound.append(kwargs["host"])
+
+        def start(self):
+            pass
+
+        def serve_forever(self):
+            pass
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(hivewatch.map, "MapServer", Server)
+    with map_server(runs_dir=tmp_path):
+        pass
+    from appfl_bio_suite.cli import main
+
+    result = CliRunner().invoke(main, ["watch", "serve", "--runs-dir", str(tmp_path / "runs")])
+    assert result.exit_code == 0, result.output
+    result = CliRunner().invoke(
+        main, ["watch", "serve", "--host", "0.0.0.0", "--runs-dir", str(tmp_path / "runs")]
+    )
+    assert result.exit_code == 0, result.output
+    assert bound == ["127.0.0.1", "127.0.0.1", "0.0.0.0"]
+
+
+def test_the_export_title_is_text_not_markup(federation, tmp_path):
+    out = export_site(federation, tmp_path / "site", title="Genomics & Health <beta>")
+    index = (out / "index.html").read_text(encoding="utf-8")
+    assert "<title>Genomics &amp; Health &lt;beta&gt;</title>" in index
+    assert "<beta>" not in index

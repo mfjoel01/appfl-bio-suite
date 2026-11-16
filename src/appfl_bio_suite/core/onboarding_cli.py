@@ -9,6 +9,7 @@ from functools import wraps
 from pathlib import Path
 
 import click
+import yaml
 
 from appfl_bio_suite.core import onboarding as api
 
@@ -26,6 +27,9 @@ def errors(function):
             subprocess.CalledProcessError,
             zipfile.BadZipFile,
             TimeoutError,
+            # A site.yaml or profile that is not valid YAML is the commonest thing a
+            # partner gets wrong here, and deserves the same one-line answer.
+            yaml.YAMLError,
         ) as exc:
             raise click.ClickException(str(exc)) from exc
 

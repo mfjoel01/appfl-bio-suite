@@ -147,7 +147,10 @@ class TesTask(_Model):
 
     executors: list[TesExecutor]
     id: str | None = None
-    state: TesState | None = None
+    # Read as text, not as `TesState`: this is the server's word, and a service that
+    # reports a state outside the 1.1 list (TERMINAL_STATES already allows for the
+    # British "CANCELLED") must not make the task document unreadable.
+    state: str | None = None
     name: str | None = None
     description: str | None = None
     inputs: list[TesInput] = Field(default_factory=list)
@@ -334,18 +337,19 @@ class TesClient:
     # -- transport --------------------------------------------------------
 
     def _request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
+        import http.client
         import urllib.error
         import urllib.request
 
         url = f"{self.base_url}{path}"
         data = json.dumps(payload).encode("utf-8") if payload is not None else None
-        request = urllib.request.Request(url, data=data, method=method)
-        request.add_header("Accept", "application/json")
-        if data is not None:
-            request.add_header("Content-Type", "application/json")
-        if self.token:
-            request.add_header("Authorization", f"Bearer {self.token}")
         try:
+            request = urllib.request.Request(url, data=data, method=method)
+            request.add_header("Accept", "application/json")
+            if data is not None:
+                request.add_header("Content-Type", "application/json")
+            if self.token:
+                request.add_header("Authorization", f"Bearer {self.token}")
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 body = response.read().decode("utf-8")
                 return json.loads(body) if body else {}
@@ -366,6 +370,11 @@ class TesClient:
                 "Check the service URL in federation.yaml (`ga4gh.tes.url`) and that it "
                 "is reachable from the machine running the driver."
             ) from exc
+        except (OSError, ValueError, http.client.HTTPException) as exc:
+            # A timeout or dropped connection mid-read, a URL with no scheme, or a body
+            # that is not JSON. Raised as TesError so `wait` retries it like any other
+            # failed poll instead of abandoning a two-hour task over one bad response.
+            raise TesError(f"no usable response from {method} {url}: {exc}") from exc
 
     # -- the API ----------------------------------------------------------
 

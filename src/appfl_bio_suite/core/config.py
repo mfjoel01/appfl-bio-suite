@@ -250,9 +250,6 @@ class Coordinator(_Strict):
                 "authorizes in their endpoint's identity mapping. Find it with "
                 "`globus whoami`."
             )
-        if value.startswith("<") or "example" in value and "example-university" not in value:
-            # Only a nudge; the shipped example deliberately uses example-university.edu.
-            pass
         return value
 
     @field_validator("identity_id")
