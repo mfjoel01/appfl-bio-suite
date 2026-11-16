@@ -39,7 +39,12 @@ from appfl_bio_suite.experiments.fine_mapping.fedfm.utils import (
 from appfl_bio_suite.experiments.fine_mapping.inference import (
     parse_outputs,
 )
-from appfl_bio_suite.experiments.fine_mapping.multisusie import MultiSuSiEOptions
+from appfl_bio_suite.experiments.fine_mapping.multisusie import (
+    MomentInputs,
+    MultiSuSiEOptions,
+    credible_set_purity,
+    fit_multisusie,
+)
 from appfl_bio_suite.experiments.fine_mapping.trainer import (
     SiteFineMappingTrainer,
     harmonize_bim,
@@ -328,9 +333,12 @@ def _fit_multisusie_central_direct(
     destination: Path,
     options: MultiSuSiEOptions,
 ) -> dict:
-    """Fit MultiSuSiE directly from centered pooled genotypes/phenotypes (no moment-pooling)."""
-    from MultiSuSiE.susiepy_ss import susie_multi_ss
+    """Fit MultiSuSiE directly from centered pooled genotypes/phenotypes (no moment-pooling).
 
+    The fit and the purity filter are the federated path's own (``fit_multisusie`` and
+    ``credible_set_purity``), so the two arms can differ only in how the moments were
+    formed -- which is the comparison this arm exists for.
+    """
     destination.mkdir(parents=True, exist_ok=True)
     metadata = ["chrom", "snp_id", "bp", "a1", "a2"]
     frames = [
@@ -370,30 +378,20 @@ def _fit_multisusie_central_direct(
         n_list.append(int(Xp.shape[0]))
         elig_list.append(emask)
 
-    rho = np.full((len(ms_pops), len(ms_pops)), options.rho, dtype=np.float64)
-    np.fill_diagonal(rho, 1.0)
+    inputs = MomentInputs(union, ms_pops, n_list, xtx_list, xty_list, yty_list, elig_list)
     t0 = time.perf_counter()
-    fit = susie_multi_ss(
-        XTX_list=xtx_list,
-        XTY_list=xty_list,
-        YTY_list=yty_list,
-        population_sizes=n_list,
-        rho=rho,
-        L=options.n_signals,
-        standardize=False,
-        estimate_residual_variance=True,
-        estimate_prior_variance=True,
-        estimate_prior_method="early_EM",
-        pop_spec_effect_priors=True,
-        max_iter=options.max_iter,
-        tol=options.tol,
-        coverage=options.coverage,
-        min_abs_corr=options.min_abs_corr,
-        float_type=np.float64,
-        low_memory_mode=True,
-        variant_ids=None,
-    )
+    fit = fit_multisusie(inputs, options)
     runtime_s = time.perf_counter() - t0
+    # The backend's own purity filter passes any set holding a variant censored in some
+    # ancestry (its correlation there is 0/0). Filter on the censoring-aware purity, as
+    # run_multisusie does; see multisusie.credible_set_purity.
+    kept = [bool(keep) for keep in fit.sets[3]]
+    purity: dict[str, float] = {}
+    if options.min_abs_corr > 0:
+        for comp, keep in enumerate(kept):
+            if keep:
+                purity[str(comp + 1)] = credible_set_purity(inputs, fit.sets[0][comp])
+                kept[comp] = purity[str(comp + 1)] >= options.min_abs_corr
     variants = union.copy()
     variants["pip"] = fit.pip
     for pop, emask in zip(ms_pops, elig_list, strict=True):
@@ -401,7 +399,7 @@ def _fit_multisusie_central_direct(
     variants.to_csv(destination / "variants.tsv", sep="\t", index=False)
 
     members = []
-    for comp, keep in enumerate(fit.sets[3]):
+    for comp, keep in enumerate(kept):
         if keep:
             for i in fit.sets[0][comp]:
                 members.append(
@@ -427,12 +425,17 @@ def _fit_multisusie_central_direct(
         "sample_sizes": n_list,
         "converged": bool(fit.converged),
         "niter": int(fit.niter),
-        "n_credible_sets": int(np.sum(fit.sets[3])),
+        "n_credible_sets": int(sum(kept)),
         "fit_status": fit_status,
         "runtime_s": runtime_s,
     }
+    if options.min_abs_corr > 0:
+        rec["credible_set_purity"] = purity
+        rec["n_credible_sets_below_purity"] = sum(
+            1 for value in purity.values() if value < options.min_abs_corr
+        )
     (destination / "fit.json").write_text(json.dumps(rec, indent=2) + "\n", encoding="utf-8")
-    sizes = [len(fit.sets[0][c]) for c, k in enumerate(fit.sets[3]) if k]
+    sizes = [len(fit.sets[0][c]) for c, k in enumerate(kept) if k]
     return {
         "converged": bool(fit.converged),
         "fit_status": fit_status,

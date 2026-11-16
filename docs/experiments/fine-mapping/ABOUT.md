@@ -264,7 +264,7 @@ end-to-end validation on **MAGE v1.0** (`N = 730` clean donors across 5 continen
 26 populations after removing the documented `NA11919` / `HG00237` sample swap) paired with
 regional 1000 Genomes NYGC 30x GRCh38 slices across 16 eQTL loci. Federated SuSiEx and
 Federated MultiSuSiE match centralized pooled genotypes (`max |ΔPIP| = 0.0` and `4.64e-12`,
-respectively), while MultiSuSiE captures `38/46` (`83%`) published MAGE credible sets compared
+respectively), while MultiSuSiE captures `27/46` (`59%`) published MAGE credible sets compared
 against solo biobanks (`17–22%`) and single-ancestry subsets (`2–17%`).
 
 ## Running it

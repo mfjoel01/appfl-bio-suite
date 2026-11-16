@@ -45,12 +45,25 @@ MHC, ±250 kb TSS cis-windows, totaling 46 published MAGE credible sets across 4
 | Comparison / Arm | Result |
 | --- | --- |
 | **SuSiEx: Federated vs Pooled** (`14/16` converged; same 2 loci `nonconverged`) | `worst_max_pip_abs_diff = 0.0`, `mean_pip_pearson_r = 1.0`, `frac_exact_cs_identical = 1.0`, `mean_cs_union_jaccard = 1.0` |
-| **MultiSuSiE: Federated vs Pooled** (`16/16` converged) | `worst_max_pip_abs_diff = 4.64e-12` (median `1.46e-14`), `mean_pip_pearson_r = 1.0`, `frac_top_snp_identical = 1.0`, `frac_exact_cs_identical = 0.9375` (`mean_cs_union_jaccard = 0.999962`) |
+| **MultiSuSiE: Federated vs Pooled** (`16/16` converged) | `worst_max_pip_abs_diff = 4.64e-12` (median `1.46e-14`), `mean_pip_pearson_r = 1.0`, `frac_top_snp_identical = 1.0`, `frac_exact_cs_identical = 1.0`, `mean_cs_union_jaccard = 1.0` |
 | **Failure mode: site-local standardization** (`naive_site_standardized`) | Distorts within-ancestry LD (`max \|ΔLD\| = 0.597–0.806`) and Z-scores (`max \|ΔZ\| = 1.14–1.89`), driving `worst_max_pip_abs_diff = 0.9985` |
 | **Covariate orthogonalization check** (`FWL (X_perp, Y_perp)` vs `Y_resid + raw X`) | Diverges up to `worst_max_pip_abs_diff = 0.9796` (`r = 0.9135`, `exact CS match = 0.357`) when global PCs/PEER factors correlate with ancestry structure |
 | **Sample-swap sensitivity** (`N = 731` vs `730`) | `worst_max_pip_abs_diff = 0.01351`, `mean_pip_pearson_r = 0.9999`, top-SNP match `100%`, exact CS match `78.6%` (`11/14`) |
-| **Federated MultiSuSiE resolution & MAGE concordance** | `16/16` converged, `74` CS (`19` singletons, `35` CS ≤ 5 variants, median min CS size `2.0`), **`38/46` (83%)** published CS captured (`100%` of published leads inside CS, mean best CS Jaccard `0.8190`) |
+| **Federated MultiSuSiE resolution & MAGE concordance** | `16/16` converged, `51` CS at purity ≥ 0.5 (`19` singletons, `35` CS ≤ 5 variants, median min CS size `2.0`), **`27/46` (59%)** published CS captured (`14/16` published leads inside a CS, mean best CS Jaccard `0.8189`) |
 | **Federated SuSiEx resolution & single-cohort baselines** | Fed SuSiEx captures `15/46` (33%); solo sites capture `8–10/46` (17–22%); single-ancestry pooled arms capture `1–8/46` (2–17%) |
+
+### Credible-set purity across ancestries
+
+MultiSuSiE credible sets are filtered at `min_abs_corr = 0.5`. A variant that is not
+eligible in one ancestry (monomorphic or below the MAF floor there) is censored in that
+ancestry only, and purity is computed over the ancestries that observe both variants of a
+pair (`multisusie.credible_set_purity`). The backend's own filter cannot do this: its
+correlation for a censored variant is undefined, and a set holding one passed regardless
+of purity. An earlier run of this benchmark relied on that filter and reported `74` credible
+sets and `38/46` published sets captured; `23` of those sets were impure (purity `0.00`–`0.34`,
+`9` to `3,296` variants, median about `2,000`), and a published set counts as captured when it
+intersects any reported set. Singleton and small-set counts, PIPs, and the
+federated-versus-pooled agreement are unaffected.
 
 ## Reproduction
 
