@@ -28,8 +28,13 @@
   const inExperiment = (id, c, name) => isCoordinator(id) || memberships(c).includes(name);
   const matches = (id, c) => ui.selected === null || [...ui.selected].some(e => inExperiment(id, c, e));
   const visible = () => Object.entries(state.clients).filter(([id, c]) => matches(id, c));
-  const color = c => ({ '0': '#8d9eaa', '1': '#669fe0', '2': '#d89e42', '4': '#15b9a6', X: '#db717e' }
+  const stageColor = c => ({ '0': '#8d9eaa', '1': '#669fe0', '2': '#d89e42', '4': '#15b9a6', X: '#db717e' }
     [String(c.partnership_stage || '').slice(0, 1)] || { idle: '#f5bd66', dropped: '#f08085', failed: '#f08085' }[c.status] || '#50d9c7');
+  // A site whose endpoint is answering is green whatever stage its partnership is at: the
+  // dot says whether it is up, the stage line beneath says how far along it is. Without a
+  // current answer (none published, or stale), the stage colours the site as before.
+  const liveKnown = id => { const l = id == null ? null : liveOf(id); return l && l.state !== 'unknown' ? l : null; };
+  const color = (c, id = c?.client_id) => liveKnown(id)?.color || stageColor(c);
   // Live endpoint status. The map is exported once; a prober beside it rewrites a small
   // status file, named by the map's metadata, that this polls. An answer older than three
   // intervals is shown as stale, never as the last thing it said.
@@ -51,9 +56,19 @@
   }
   const liveHtml = id => { const l = liveOf(id);
     return l ? `<span class="bio-live ${l.state}" style="--live-color:${l.color}"><i></i>${esc(l.text)}</span>` : ''; };
+  let liveWasStale = null;
+  function recolorSites() {
+    for (const [id, c] of Object.entries(state.clients)) {
+      dressMarker(id);
+      lines[id]?.setStyle({ color: color(c, id) });
+    }
+  }
   function liveHeader() {
     if (!live.data || ui.runId !== 'network') return;
     const stale = liveStale();
+    // Going stale changes every site's colour back to its stage, and coming back the reverse.
+    if (liveWasStale !== null && stale !== liveWasStale) { recolorSites(); renderSidebar(); refreshDetail(); }
+    liveWasStale = stale;
     $('status-text').textContent = `${stale ? 'Status stale' : 'Live'} · checked ${ago(liveAge())}`;
     $('status-dot').classList.toggle('live', !stale);
   }
@@ -64,7 +79,7 @@
       const data = await response.json();
       const changed = data.checked_at !== live.data?.checked_at;
       live.data = data;
-      if (changed) { renderSidebar(); refreshDetail(); }
+      if (changed) { recolorSites(); renderSidebar(); refreshDetail(); }
     } catch (error) { /* keep the last answer; liveStale() retires it */ }
     liveHeader();
   }
@@ -84,6 +99,8 @@
     panel.innerHTML = '<button class="bio-detail-close" aria-label="Close site details">×</button>' + detailsHtml(ui.focus, c);
     panel.querySelector('button').onclick = () => { closeDetail(); renderSidebar(); };
   }
+  const liveWord = { online: 'Online', degraded: 'Partly online', offline: 'Offline' };
+  const siteSummary = (id, c) => [liveWord[liveKnown(id)?.state], statusLabel(c)].filter(Boolean).join(' · ');
   const statusLabel = c => c.partnership_stage || (ui.runId === 'network' ? `Member · ${c.status || 'active'}` : c.status || 'active');
 
   // ?theme=light and ?view=globe let an embedding page open the viewer already matching
@@ -323,10 +340,10 @@
   function cardHtml(id, c) {
     return `<button class="bio-site-card${ui.focus === id ? ' selected' : ''}" data-site="${esc(id)}">
       ${isCoordinator(id) ? coordinatorLabel : ''}<span class="bio-card-top"><span class="bio-site-name">${esc(c.institution || id)}</span>
-        <span class="bio-dot" style="background:${color(c)}" title="${esc(statusLabel(c))}"></span></span>
+        <span class="bio-dot" style="background:${color(c, id)}" title="${esc(siteSummary(id, c))}"></span></span>
       <span class="bio-site-location">${esc([c.city, c.country].filter(Boolean).join(', ') || 'Location not declared')}</span>
       <span class="bio-tags">${memberships(c).map(e => `<span>${esc(label(e))}</span>`).join('')}</span>
-      ${c.partnership_stage ? `<span class="bio-partner-stage" style="--stage-color:${color(c)}">${esc(c.partnership_stage)}</span>` : ''}
+      ${c.partnership_stage ? `<span class="bio-partner-stage" style="--stage-color:${stageColor(c)}">${esc(c.partnership_stage)}</span>` : ''}
       ${liveHtml(id)}${c.num_samples == null && placed(c) ? '' : `<span class="bio-card-bottom">
         <span>${c.num_samples == null ? '' : number(c.num_samples) + ' declared samples'}</span>
         <span>${placed(c) ? '↗' : 'Unplaced'}</span></span>`}</button>`;
@@ -385,7 +402,8 @@
       toggle(packets[id]?.downlink, show && !!ui.server && ui.runId !== 'network');
     }
     if (ui.view === 'globe' || ui.runId === 'network' || ui.tab === 'results') stopNetworkAnimation();
-    if (ui.globe) ui.globe.setData(visible().map(([id, c]) => ({ ...c, client_id: id })), ui.server);
+    if (ui.globe) ui.globe.setData(visible().map(([id, c]) =>
+      ({ ...c, client_id: id, live_color: liveKnown(id)?.color, live_summary: siteSummary(id, c) })), ui.server);
   }
 
   renderSidebar = () => {
@@ -427,11 +445,11 @@
   function siteIcon(id, c) {
     const size = isCoordinator(id) ? 36 : 20;
     return L.divIcon({ className: `bio-leaflet-marker${isCoordinator(id) ? ' bio-coordinator' : ''}`,
-      html: `<span style="--site-color:${c ? color(c) : '#8d9eaa'}"></span>`,
+      html: `<span style="--site-color:${c ? color(c, id) : '#8d9eaa'}"></span>`,
       iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
   }
   const hoverHtml = (id, c) => `${isCoordinator(id) ? coordinatorLabel : ''}<strong>${esc(c.institution || id)}</strong>
-    <div>${esc(c.partnership_stage || c.status || 'Site')} · Select to inspect</div>`;
+    <div>${esc(siteSummary(id, c) || 'Site')} · Select to inspect</div>`;
   // Marker, popup and hover all depend on which site is the coordinator, which a run can
   // announce before or after its sites. Every marker is redressed whenever either changes.
   function dressMarker(id) {
@@ -485,7 +503,7 @@
     const c = state.clients[id] = { ...state.clients[id], ...data };
     c.lat = coordinate(c.lat); c.lng = coordinate(c.lng);
     if (!placed(c)) return;
-    const col = color(c);
+    const col = color(c, id);
     const ll = [c.lat, c.lng];
     if (markers[id]) markers[id].setLatLng(ll);
     else markers[id] = L.marker(ll, { icon: siteIcon(id, c) }).bindPopup('').bindTooltip('', tipOptions).addTo(map);
