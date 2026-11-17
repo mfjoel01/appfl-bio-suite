@@ -348,16 +348,22 @@ def dns_request(alias: str, cloudfront: str, validation: dict | None) -> str:
     return "\n".join(lines)
 
 
-def update_commands(sha: str, host: str = "") -> list[str]:
+def update_commands(sha: str, host: str | None = None) -> list[str]:
+    """The update script. ``host`` None keeps the name the instance serves HTTPS for;
+    a name sets it, and "" clears it (CloudFront or plain HTTP in front instead)."""
     if not _SHA.match(sha):
         raise DeployError(f"not a full commit id: {sha!r}")
     if host and not _HOST.match(host):
         raise DeployError(f"not a host name: {host!r}")
     # AWS-RunShellScript runs these with /bin/sh (dash on Ubuntu): no bash-only options.
+    serve = (
+        []
+        if host is None
+        else [f"sed -i 's/^LIVE_MAP_HOST=.*/LIVE_MAP_HOST={host}/' /etc/live-map.env"]
+    )
     return [
         "set -eu",
-        # The name the instance itself serves HTTPS for: yours with --domain, else none.
-        f"sed -i 's/^LIVE_MAP_HOST=.*/LIVE_MAP_HOST={host}/' /etc/live-map.env",
+        *serve,
         "cd /opt/live-map/repo",
         f"git fetch -q --depth 1 origin {sha}",
         "git checkout -q -f FETCH_HEAD",
@@ -857,7 +863,7 @@ def finish(cloud: Cloud, args, ip: str, host: str, https: bool) -> int:
     elif host and not https:
         say(f"  (https://{host} is not answering yet; the certificate may still be issuing)")
     say("")
-    say(f"live map: {url}/network.html")
+    say(f"live map: {url}/")
     return 0
 
 
@@ -920,7 +926,8 @@ def cmd_update(args, cloud: Cloud | None = None, sha: str | None = None) -> int:
     targets, globus, site_secrets = gather_inputs(args, cloud, required=False)
     cloud.put_inputs(targets, globus, site_secrets)
 
-    host = args.domain or ""
+    # A plain update leaves how the site is served alone; only an explicit choice changes it.
+    host = args.domain if args.domain else "" if (args.alias or args.no_cloudfront) else None
     say(f"  updating {instance['InstanceId']} to commit {sha[:10]}")
     result = run_remote(
         cloud, instance["InstanceId"], update_commands(sha, host), f"live map -> {sha[:10]}"
@@ -965,7 +972,7 @@ def cmd_status(args, cloud: Cloud | None = None) -> int:
             base = f"https://{answering[0]}"
         else:
             say(f"  CloudFront {domain} is not answering yet ({distribution['Status']})")
-    say(f"live map: {base}/network.html")
+    say(f"live map: {base}/")
     return 0
 
 

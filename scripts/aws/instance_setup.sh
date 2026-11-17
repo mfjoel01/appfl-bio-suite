@@ -63,7 +63,7 @@ PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cpu \
 rm -rf "$home/site.new"
 (
   cd "$repo"
-  SITE_LIVE_STATUS=1 APPFL_BIO_SUITE="$home/venv/bin/appfl-bio-suite" PYTHON="$home/venv/bin/python" \
+  SITE_LIVE_STATUS=1 SITE_MAP_FIRST=1 APPFL_BIO_SUITE="$home/venv/bin/appfl-bio-suite" PYTHON="$home/venv/bin/python" \
     scripts/build_site.sh "$home/site.new"
 )
 chown -R livemap: "$home/site.new"

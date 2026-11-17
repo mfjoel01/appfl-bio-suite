@@ -503,6 +503,14 @@ def _network_artifacts(federation: Federation, catalog_path=None, **kwargs) -> t
 # static export, including the globe's geography and rendering dependencies.
 _VIEWER_ASSETS = Path(__file__).parent / "watch_assets"
 _UPSTREAM_STARTUP = "initDraggableLogPanel();\nif (METADATA_URL || EVENTS_URL)"
+# Upstream reads its data only from ?metadata_url=. A page can name a default instead
+# (<html data-bio-default-metadata=...>), which is how the project site serves the map at
+# its bare root address.
+_UPSTREAM_METADATA = 'const METADATA_URL = params.get("metadata_url");'
+_PATCHED_METADATA = (
+    'const METADATA_URL = params.get("metadata_url")'
+    " || document.documentElement.dataset.bioDefaultMetadata || null;"
+)
 
 _INDEX = """<!doctype html>
 <meta charset="utf-8">
@@ -553,6 +561,7 @@ def _patched_viewer() -> str:
         or script_end == -1
         or "</head>" not in html
         or "</body>" not in html
+        or html.count(_UPSTREAM_METADATA) != 1
     ):
         raise WatchError(
             "The installed hivewatch viewer has an unsupported layout. "
@@ -563,6 +572,7 @@ def _patched_viewer() -> str:
         + "// appfl-bio-suite: viewer.js initializes the federation view.\n"
         + html[script_end:]
     )
+    html = html.replace(_UPSTREAM_METADATA, _PATCHED_METADATA, 1)
     html = re.sub(r'<img class="logo-img"[^>]*>\s*', "", html, count=1)
     css = (_VIEWER_ASSETS / "viewer.css").read_text(encoding="utf-8")
     html = html.replace("</head>", f'<style id="bio-viewer-style">\n{css}\n</style>\n</head>', 1)

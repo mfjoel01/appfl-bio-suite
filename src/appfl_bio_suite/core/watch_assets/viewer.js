@@ -57,6 +57,45 @@
   const liveHtml = id => { const l = liveOf(id);
     return l ? `<span class="bio-live ${l.state}" style="--live-color:${l.color}"><i></i>${esc(l.text)}</span>` : ''; };
   let liveWasStale = null;
+  // The ping, drawn: while the prober is asking, pulses run out from the coordinator along
+  // each probed site's line; when the answers land they run back for a moment. The prober
+  // starts asking about PING_LEAD seconds before its timestamp, which marks the end of a
+  // pass. Nothing moves for a visitor who asked for reduced motion.
+  const PING_LEAD = 2;
+  const PING_BACK_MS = 2500;
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let pingState = null, pingTimer = 0;
+  function setPing(state, ids = null) {
+    if (reducedMotion.matches) state = null;
+    if (state === pingState) return;
+    pingState = state;
+    clearTimeout(pingTimer);
+    const probed = new Set(state ? ids || Object.keys(live.data?.sites || {}) : []);
+    for (const [id, line] of Object.entries(lines)) {
+      const path = line?.getElement?.();
+      if (!path) continue;
+      path.classList.toggle('bio-ping-out', state === 'out' && probed.has(id));
+      path.classList.toggle('bio-ping-back', state === 'back' && probed.has(id));
+    }
+    ui.globe?.setPing?.(probed, state);
+    if (state === 'back') pingTimer = setTimeout(() => setPing(null), PING_BACK_MS);
+  }
+  // A map with no live status behind it (a static copy, such as GitHub Pages) still shows
+  // the network moving: the same out-and-back trace, on a timer, along every site's line.
+  // It asserts nothing about any endpoint; the site colours stay those of the stages.
+  let ambientTimer = 0, ambientKick = 0;
+  function stopAmbient() { clearInterval(ambientTimer); clearTimeout(ambientKick); }
+  function startAmbient() {
+    stopAmbient();
+    const pulse = () => {
+      if (ui.runId !== 'network' || live.url) return;
+      const ids = Object.keys(state.clients).filter(id => !isCoordinator(id));
+      setPing('out', ids);
+      setTimeout(() => { if (pingState === 'out') setPing('back', ids); }, 2000);
+    };
+    ambientKick = setTimeout(pulse, 3000);
+    ambientTimer = setInterval(pulse, 60000);
+  }
   function recolorSites() {
     for (const [id, c] of Object.entries(state.clients)) {
       dressMarker(id);
@@ -71,8 +110,11 @@
     liveWasStale = stale;
     // Past one interval the next check is due: say so rather than counting on, until it lands.
     const age = liveAge(), interval = Number(live.data?.interval_sec) || 60;
+    const checking = !stale && age >= interval - PING_LEAD;
     $('status-text').textContent = stale ? `Status stale · checked ${ago(age)}`
-      : age >= interval ? 'Live · checking…' : `Live · checked ${ago(age)}`;
+      : checking ? 'Live · checking…' : `Live · checked ${ago(age)}`;
+    if (checking && pingState !== 'back') setPing('out');
+    else if (!checking && pingState === 'out') setPing(null);
     $('status-dot').classList.toggle('live', !stale);
   }
   // Fetch when the next answer is due rather than on a fixed beat. The file says when the
@@ -87,8 +129,12 @@
       if (!response.ok) return;
       const data = await response.json();
       const changed = data.checked_at !== live.data?.checked_at;
+      const previous = live.data;
       live.data = data;
-      if (changed) { recolorSites(); renderSidebar(); refreshDetail(); }
+      if (changed) {
+        recolorSites(); renderSidebar(); refreshDetail();
+        if (previous) setPing('back');
+      }
       const due = Date.parse(data.checked_at) + 1000 * (Number(data.interval_sec) || 60) + 1000;
       live.nextPoll = liveStale() ? Date.now() + 15000
         : due > Date.now() ? due : Date.now() + 2000;
@@ -96,9 +142,13 @@
   }
   function startLive(name, metadataUrl) {
     clearInterval(live.timer); live.url = null; live.data = null; live.nextPoll = 0;
+    stopAmbient(); setPing(null);
     // A bare file name beside the metadata, and nothing else: map data does not get to
     // point the page at another origin.
-    if (!metadataUrl || !/^[\w.-]+\.json$/.test(name || '')) return;
+    if (!metadataUrl || !/^[\w.-]+\.json$/.test(name || '')) {
+      if (ui.runId === 'network') startAmbient();
+      return;
+    }
     live.url = new URL(name, new URL(metadataUrl, location.href)).href;
     live.timer = setInterval(() => { if (Date.now() >= live.nextPoll) livePoll(); else liveHeader(); }, 1000);
     livePoll();
@@ -117,7 +167,17 @@
   // itself, rather than flashing the default and then being corrected. Neither is
   // remembered: the viewer's own controls own the state from here on.
   const params = new URLSearchParams(location.search);
-  document.documentElement.dataset.theme = params.get('theme') === 'light' ? 'light' : 'dark';
+  const themeKey = 'appfl-bio-suite:theme';
+  const isTheme = value => value === 'light' || value === 'dark';
+  const savedTheme = (() => { try { return localStorage.getItem(themeKey); } catch (e) { return null; } })();
+  const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+  const chosenTheme = isTheme(params.get('theme')) ? params.get('theme') : isTheme(savedTheme) ? savedTheme : null;
+  document.documentElement.dataset.theme = chosenTheme || (systemDark.matches ? 'dark' : 'light');
+  // Until the visitor picks one, the page follows the system setting as it changes.
+  systemDark.addEventListener?.('change', event => {
+    let saved = null; try { saved = localStorage.getItem(themeKey); } catch (e) {}
+    if (!isTheme(params.get('theme')) && !isTheme(saved)) document.documentElement.dataset.theme = event.matches ? 'dark' : 'light';
+  });
   document.body.classList.add('bio-viewer');
   document.title = 'Federation network · Hive Watch';
   const branding = JSON.parse($('bio-branding-data')?.textContent || '{}');
@@ -155,6 +215,10 @@
     <div class="stat"><div class="stat-val" id="bio-experiment-count">0</div><div class="stat-label">Experiments</div></div>
     <div class="stat"><div class="stat-val" id="bio-country-count">0</div><div class="stat-label">Countries</div></div>`);
   $('theme-btn').textContent = '◐';
+  // The upstream button flips the theme; remember the choice, as the docs pages do.
+  $('theme-btn').addEventListener('click', () => setTimeout(() => {
+    try { localStorage.setItem(themeKey, document.documentElement.dataset.theme); } catch (e) {}
+  }));
   $('theme-btn').setAttribute('aria-label', 'Toggle color theme');
   $('theme-btn').title = 'Toggle color theme';
   $('play-btn').setAttribute('aria-label', 'Play or pause run');
@@ -621,7 +685,7 @@
     dressMarker(id);
     const style = { color: col, weight: 1.4, opacity: 0.5, dashArray: '4 8' };
     if (lines[id]) lines[id].setLatLngs([ll, SERVER_LL]).setStyle(style);
-    else lines[id] = L.polyline([ll, SERVER_LL], style).addTo(map);
+    else lines[id] = L.polyline([ll, SERVER_LL], { ...style, className: 'bio-route' }).addTo(map);
     ensureClientPackets(id, getPacketClientLL(id, c), col);
   };
   // JSONL fallback includes canonical round_end clients, even with no client_update events.
@@ -827,8 +891,8 @@
   // Kept small and read-only for browser regression tests and downstream integrations.
   window.bioWatch = { memberships, placed, getState: () => ({ view: ui.view, tab: ui.tab,
     selected: ui.selected === null ? null : [...ui.selected], runId: ui.runId,
-    visibleSites: visible().map(([id]) => id), experiments: [...ui.experiments] }) };
-  if (params.get('view') === 'globe') setView('globe');
+    visibleSites: visible().map(([id]) => id), experiments: [...ui.experiments], ping: pingState }) };
+  if (params.get('view') !== 'flat') setView('globe');
   renderSidebar();
   if (ui.source) {
     loadRuns();
