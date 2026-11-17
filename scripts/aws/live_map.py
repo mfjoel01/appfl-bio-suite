@@ -857,7 +857,7 @@ def finish(cloud: Cloud, args, ip: str, host: str, https: bool) -> int:
     elif host and not https:
         say(f"  (https://{host} is not answering yet; the certificate may still be issuing)")
     say("")
-    say(f"live map: {url}/network.html")
+    say(f"live map: {url}/")
     return 0
 
 
@@ -965,7 +965,7 @@ def cmd_status(args, cloud: Cloud | None = None) -> int:
             base = f"https://{answering[0]}"
         else:
             say(f"  CloudFront {domain} is not answering yet ({distribution['Status']})")
-    say(f"live map: {base}/network.html")
+    say(f"live map: {base}/")
     return 0
 
 

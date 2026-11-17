@@ -18,7 +18,7 @@
     try { stored = localStorage.getItem('appfl-bio-suite:theme'); } catch (e) {}
     document.documentElement.dataset.theme =
       stored === 'light' || stored === 'dark' ? stored
-        : window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   })();
 </script>
 <script src="./assets/site.js" defer></script>

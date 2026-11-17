@@ -3,7 +3,11 @@
 #
 #     scripts/build_site.sh [OUTDIR]          # default: _site
 #
-# The pages in website/ are hand-written. The network-map preview under OUTDIR/map is
+# Layout: the network map is the front page (OUTDIR/index.html, a copy of map/map.html);
+# the hand-written pages in website/ become docs/ (About) and docs/<section>/, one per
+# section of website/index.html, plus docs/network-map/ -- see scripts/build_docs.py.
+#
+# The network-map preview under OUTDIR/map is
 # exported here, from website/federation.yaml and website/partners.json -- the real
 # partners, reduced to institution, location and stage -- never local/federation.yaml,
 # which carries partner contacts and endpoint identifiers.
@@ -43,19 +47,23 @@ cd "$root"
 rm -rf "$out"
 mkdir -p "$out"
 
-cp -R website/. "$out"/
-# The map inputs are published through the export, reduced; not as raw files. That
-# includes results/: the export embeds the files partners.json selects into the map.
-rm -rf "$out"/federation.yaml "$out"/partners.json "$out"/results
+# Only the assets are copied as they are. The map inputs (federation.yaml, partners.json,
+# results/) are published through the export, reduced, and the pages through
+# build_docs.py, which lays them out under docs/.
+cp -R website/assets "$out"/assets
 cp src/appfl_bio_suite/core/watch_assets/suite-logo.png "$out"/assets/suite-logo.png
 
+# --home-url is relative to the map data in map/: the viewer's logo leads to docs/.
 "$cli" watch export \
   --federation website/federation.yaml \
   --catalog website/partners.json \
   --out "$out/map" \
   ${SITE_LIVE_STATUS:+--live-status} \
-  --home-url ../ \
+  --home-url ../docs/ \
   --title "APPFL Bio Suite federation network" >/dev/null
+
+# The map at the root, the documentation one page per section under docs/.
+"$python" scripts/build_docs.py --site website --out "$out" >/dev/null
 
 # Serve the tree as-is. Redundant under the Actions deployment, and the thing that keeps
 # docs/ from being rewritten if Pages is ever pointed at a branch instead.

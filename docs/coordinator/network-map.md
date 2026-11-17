@@ -166,7 +166,7 @@ This repository does exactly that for its own partners. `scripts/build_site.sh`
 exports `website/federation.yaml` with the catalogue `website/partners.json` -- each
 partner reduced to institution, country, a representative location and partnership
 stage -- and `.github/workflows/pages.yml` runs that script on every push to `main`, publishing
-the result at <https://mfjoel01.github.io/appfl-bio-suite/network.html>. Run the same
+the result at <https://mfjoel01.github.io/appfl-bio-suite/> (the map; the documentation is under `docs/`). Run the same
 script to preview locally.
 
 The committed configs are the only ones the build is ever given:

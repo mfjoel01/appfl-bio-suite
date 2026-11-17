@@ -64,14 +64,15 @@
   // on the page's theme rather than the one baked into its src.
   if (frame) frame.addEventListener('load', () => applyToFrame(root.dataset.theme));
 
-  // Follow the OS only while the visitor has never chosen for themselves.
-  const scheme = window.matchMedia('(prefers-color-scheme: light)');
+  // Follow the OS only while the visitor has never chosen for themselves. With no OS
+  // preference at all the page is light.
+  const scheme = window.matchMedia('(prefers-color-scheme: dark)');
   const listen = scheme.addEventListener ? scheme.addEventListener.bind(scheme, 'change')
     : scheme.addListener.bind(scheme);
   listen(event => {
     let stored = null;
     try { stored = localStorage.getItem(STORE_KEY); } catch (error) { /* private mode */ }
-    if (stored !== 'light' && stored !== 'dark') setTheme(event.matches ? 'light' : 'dark', false);
+    if (stored !== 'light' && stored !== 'dark') setTheme(event.matches ? 'dark' : 'light', false);
   });
 
   // --- which section am I reading ------------------------------------------

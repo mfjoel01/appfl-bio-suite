@@ -86,6 +86,14 @@
 .bio-coordinator-label { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; color: var(--coordinator); font-size: 9px; font-weight: 600; letter-spacing: 1.6px; line-height: 1.4; text-transform: uppercase; }
 .bio-coordinator-label::before { content: ''; width: 5px; height: 5px; border: 1.5px solid currentColor; transform: rotate(45deg); }
 .bio-viewer .map-area { min-width: 0; overflow: hidden; background: #08131d; }
+/* The ping on the flat map. Each line runs from its site to the coordinator, so a growing
+   dash offset moves the dashes outward (coordinator -> site) and a shrinking one back. */
+.bio-route.bio-ping-out, .bio-route.bio-ping-back { stroke-opacity: .95; stroke-width: 2.2px; }
+.bio-route.bio-ping-out { animation: bio-ping-out .6s linear infinite; }
+.bio-route.bio-ping-back { animation: bio-ping-back .6s linear infinite; }
+@keyframes bio-ping-out { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 24; } }
+@keyframes bio-ping-back { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -24; } }
+@media (prefers-reduced-motion: reduce) { .bio-route.bio-ping-out, .bio-route.bio-ping-back { animation: none; } }
 /* A 10px grab area centred on the sidebar's border, taking no width of its own. */
 .bio-sidebar-resizer { flex: 0 0 10px; margin: 0 -5px; position: relative; z-index: 1001; cursor: col-resize; touch-action: none; }
 .bio-sidebar-resizer::after { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px; background: transparent; transition: background .15s; }

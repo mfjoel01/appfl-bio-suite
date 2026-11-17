@@ -19,7 +19,7 @@ VPN, or inbound network access.
 
 **→ [mfjoel01.github.io/appfl-bio-suite](https://mfjoel01.github.io/appfl-bio-suite/)** —
 the project site, with a live preview of the [federation network
-map](https://mfjoel01.github.io/appfl-bio-suite/network.html).
+map](https://mfjoel01.github.io/appfl-bio-suite/).
 
 ```
     YOU (coordinator)                          PARTNER SITES
