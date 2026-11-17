@@ -399,7 +399,8 @@ def test_alias_attaches_with_its_certificate_and_asks_for_both_records(live_map)
 
 
 def test_update_resets_the_served_host_name(live_map):
-    commands = live_map.update_commands(SHA)
+    assert not any("LIVE_MAP_HOST" in c for c in live_map.update_commands(SHA)), "kept"
+    commands = live_map.update_commands(SHA, "")
     assert any("LIVE_MAP_HOST=/' /etc/live-map.env" in c for c in commands)
     assert any(
         "LIVE_MAP_HOST=map.example.org/'" in c
