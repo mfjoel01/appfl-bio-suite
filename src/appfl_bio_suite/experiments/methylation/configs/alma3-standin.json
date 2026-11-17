@@ -1,0 +1,14 @@
+{
+  "seeds": [42, 43, 44],
+  "depths": ["heads", "trunk"],
+  "noise_multipliers": [0.0, 2.0, 8.0],
+  "site_sizes": [36, 36, 36, 12],
+  "validation_size": 24,
+  "test_size": 24,
+  "rounds": 3,
+  "local_steps": 2,
+  "learning_rate": 0.15,
+  "coverage": [0.5, 1.0],
+  "min_calibration": 20,
+  "secure": true
+}

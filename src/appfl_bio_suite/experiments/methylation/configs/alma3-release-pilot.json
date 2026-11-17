@@ -1,0 +1,15 @@
+{
+  "seeds": [42],
+  "depths": ["heads", "trunk"],
+  "noise_multipliers": [0.0, 2.0],
+  "site_sizes": [3, 2],
+  "validation_size": 4,
+  "test_size": 4,
+  "rounds": 1,
+  "local_steps": 1,
+  "coverage": [0.25],
+  "bins": 10,
+  "min_calibration": 4,
+  "secure": true,
+  "threads": 1
+}

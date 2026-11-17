@@ -199,6 +199,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 appfl_bio_suite = [
     "experiments/*/configs/*.yaml",
+    "experiments/methylation/configs/alma3-*.json",
     "experiments/fine_mapping/fedfm/UPSTREAM.json",
     "experiments/*/configs/**/*.yaml",
     # The vendored DUO release. Package data rather than a download: a partner's worker

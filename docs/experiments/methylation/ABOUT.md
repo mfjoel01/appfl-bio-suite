@@ -210,3 +210,11 @@ rounds are identical to the tested run.
 - The Cancer Genome Atlas, TCGA-LAML, via the
   [NCI Genomic Data Commons](https://portal.gdc.cancer.gov/projects/TCGA-LAML).
 - Nordlund et al. *Genome Biology* 14:r105, 2013 (GSE49031; data since withdrawn).
+
+## ALMA3 adaptation extension
+
+The separate [ALMA3 research workflow](ALMA3.md) extends this module with released
+neural-member fine-tuning, FedAvg/FedProx, synthetic profile-anchored cohorts,
+aggregate-only research recalibration, DP accounting and secure aggregation.
+It uses an isolated ALMA3 runtime and does not change the from-scratch results
+above. Its tiny stand-in figures are pipeline demonstrations, not ALMA3 results.

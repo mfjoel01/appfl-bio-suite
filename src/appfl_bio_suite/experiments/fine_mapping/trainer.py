@@ -404,7 +404,7 @@ def mask_moments(payload, manifest, client_id, config, secrets):
                 encoded = encoded + mask
             else:
                 encoded = encoded - mask
-        masked[name] = torch.from_numpy(encoded.view(np.int64).copy())
+        masked[name] = torch.from_numpy(np.asarray(encoded).view(np.int64).copy())
     manifest["secure_aggregation"] = {**public, "layout": layout, "confirmations": confirmations}
     masked[KEY_MANIFEST] = torch.frombuffer(
         bytearray(json.dumps(manifest).encode()), dtype=torch.uint8

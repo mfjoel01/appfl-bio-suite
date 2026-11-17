@@ -59,7 +59,9 @@ def pool_secure_payloads(local_models, config):
         total = np.zeros(tuple(first[name].shape), dtype=np.uint64)
         for cid in roster:
             total += local_models[cid][name].detach().cpu().numpy().view(np.uint64)
-        pooled[name] = torch.from_numpy(total.view(np.int64).astype(np.float64) / SECURE_SCALE)
+        pooled[name] = torch.from_numpy(
+            np.asarray(total.view(np.int64).astype(np.float64) / SECURE_SCALE)
+        )
     manifest = copy.deepcopy(manifests[roster[0]])
     del manifest["secure_aggregation"]
     manifest["client_id"] = "secure-pooled"

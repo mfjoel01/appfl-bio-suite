@@ -1,0 +1,85 @@
+{
+  "seeds": [
+    42,
+    43,
+    44
+  ],
+  "depths": [
+    "heads"
+  ],
+  "noise_multipliers": [
+    0.0
+  ],
+  "site_sizes": [
+    100,
+    100,
+    100,
+    100,
+    100
+  ],
+  "validation_size": 100,
+  "test_size": 100,
+  "rounds": 10,
+  "local_steps": 2,
+  "learning_rate": 0.3,
+  "coverage": [
+    0.25
+  ],
+  "batch_shift": 0.6,
+  "subtype_drift": 0.15,
+  "bins": 10,
+  "min_calibration": 12,
+  "secure": true,
+  "threads": 1,
+  "class_indices": [
+    5,
+    8,
+    58,
+    76
+  ],
+  "minimum_per_class": 1,
+  "arms": [
+    "zero-shot",
+    "pooled",
+    "fedavg",
+    "fedprox",
+    "local-S0",
+    "local-S1",
+    "local-S2",
+    "local-S3",
+    "local-S4"
+  ],
+  "signature_rotation_degrees": 70.0,
+  "site_class_proportions": [
+    [
+      0.9,
+      0.06,
+      0.03,
+      0.01
+    ],
+    [
+      0.01,
+      0.9,
+      0.06,
+      0.03
+    ],
+    [
+      0.03,
+      0.01,
+      0.9,
+      0.06
+    ],
+    [
+      0.06,
+      0.03,
+      0.01,
+      0.9
+    ],
+    [
+      0.47,
+      0.01,
+      0.01,
+      0.51
+    ]
+  ]
+}

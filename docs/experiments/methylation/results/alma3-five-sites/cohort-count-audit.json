@@ -1,0 +1,43 @@
+{
+  "evaluation_records_checked": 270,
+  "every_record_matches_configured_counts": true,
+  "class_indices": [
+    5,
+    8,
+    58,
+    76
+  ],
+  "counts_per_site": [
+    [
+      90,
+      6,
+      3,
+      1
+    ],
+    [
+      1,
+      90,
+      6,
+      3
+    ],
+    [
+      3,
+      1,
+      90,
+      6
+    ],
+    [
+      6,
+      3,
+      1,
+      90
+    ],
+    [
+      47,
+      1,
+      1,
+      51
+    ]
+  ],
+  "test_evaluated": false
+}
