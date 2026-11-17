@@ -73,10 +73,16 @@ browser ── 80/443 ──> Caddy ── static files ── /opt/live-map/sit
   machine to Parameter Store (encrypted) to the prober's memory. They are not in
   user-data, which is readable through the EC2 API.
 * **No SSH.** The security group opens 80 and 443. `update` runs through Systems Manager.
-* **HTTPS** needs a name. With `--domain map.example.org`, point an A record at the
-  address `deploy` prints. Without one the deployment uses `<address>.sslip.io`, a public
-  DNS service that resolves such names to the address in them; `--no-tls` serves plain
-  HTTP on the address instead.
+* **HTTPS** comes from CloudFront, AWS's content network, which `deploy` puts in front of
+  the instance: the page gets an `https://…cloudfront.net` address with AWS's
+  certificate, and no domain or DNS record of ours. CloudFront fetches from the instance
+  over plain HTTP; the page is public, and the status file carries no identifiers.
+  Caching is off, because a cached status file is the stale page this exists to avoid.
+  `--domain map.example.org` instead serves HTTPS from the instance for a name you
+  control (point an A record at the address `deploy` prints), and `--no-cloudfront`
+  serves plain HTTP on the address only. Not a wildcard-DNS name such as
+  `<address>.sslip.io`: Argonne's resolvers sinkhole those, so the page would not open
+  from the lab network.
 
 ## Before the first deploy
 
@@ -126,6 +132,7 @@ python -m http.server -d local/site-preview 8000
 
 ## Cost and teardown
 
-One `t3.small`, a 20 GB volume and one public IPv4 address: under 20 USD a month at
+One `t3.small`, a 20 GB volume, one public IPv4 address and a CloudFront distribution
+(within its free tier at this traffic): under 20 USD a month at
 on-demand prices in us-east-1 at the time of writing. `destroy --yes` removes the
-instance, the address, the security group, the role and the stored parameters.
+CloudFront distribution, the instance, the address, the security group, the role and the stored parameters.

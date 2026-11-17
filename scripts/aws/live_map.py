@@ -16,6 +16,11 @@ docs/coordinator/live-map-aws.md has the design; core/live_status.py has the rea
 Everything is created through the API and tagged ``Project=<name>``, so nothing here
 needs the AWS console, and ``destroy`` can find all of it again:
 
+  * a CloudFront distribution in front of the instance, which is what gives the page an
+    ``https://…cloudfront.net`` address with a valid certificate and no domain of ours
+    (``--domain`` serves your own name from the instance instead; ``--no-cloudfront``
+    serves plain HTTP on the address only). Caching is off: the status file changes
+    every minute, and a cached copy is exactly the stale page this exists to avoid;
   * an Elastic IP, so the address survives the instance being replaced;
   * a security group open on 80 and 443 only -- there is no SSH and no key pair;
     ``update`` reaches the instance through Systems Manager;
@@ -214,13 +219,59 @@ def read_globus_client(path: Path, environ: dict | None = None) -> tuple[str, st
     return str(client_id), str(secret)
 
 
-def sslip_host(ip: str) -> str:
-    """A name that resolves to ``ip`` with no DNS of ours, so the page can have HTTPS.
+def ec2_public_dns(ip: str, region: str) -> str:
+    """EC2's public name for an address: the origin CloudFront fetches from.
 
-    A public certificate needs a name, and EC2's own ``ec2-…amazonaws.com`` names are
-    refused by Let's Encrypt. sslip.io answers ``1-2-3-4.sslip.io`` with ``1.2.3.4``.
+    CloudFront needs a name, not an address. Not sslip.io and its kind: Argonne's resolvers
+    answer those with a sinkhole, so a page on one does not open from the lab network.
     """
-    return ip.replace(".", "-") + ".sslip.io"
+    dashed = ip.replace(".", "-")
+    if region == "us-east-1":
+        return f"ec2-{dashed}.compute-1.amazonaws.com"
+    return f"ec2-{dashed}.{region}.compute.amazonaws.com"
+
+
+def distribution_config(
+    *, name: str, origin: str, cache_policy: str, request_policy: str, reference: str
+) -> dict:
+    """CloudFront in front of the instance: HTTPS to viewers, plain HTTP to the origin.
+
+    The origin leg carries nothing but the public page. Caching is disabled and every
+    viewer header but Host is forwarded, so the instance compresses as usual and answers
+    to its own name.
+    """
+    methods = {"Quantity": 2, "Items": ["GET", "HEAD"]}
+    return {
+        "CallerReference": reference,
+        "Comment": name,
+        "Enabled": True,
+        "Origins": {
+            "Quantity": 1,
+            "Items": [
+                {
+                    "Id": "instance",
+                    "DomainName": origin,
+                    "CustomOriginConfig": {
+                        "HTTPPort": 80,
+                        "HTTPSPort": 443,
+                        "OriginProtocolPolicy": "http-only",
+                    },
+                }
+            ],
+        },
+        "DefaultCacheBehavior": {
+            "TargetOriginId": "instance",
+            "ViewerProtocolPolicy": "redirect-to-https",
+            "CachePolicyId": cache_policy,
+            "OriginRequestPolicyId": request_policy,
+            "AllowedMethods": {**methods, "CachedMethods": methods},
+            "Compress": False,
+        },
+        "PriceClass": "PriceClass_All",
+        "HttpVersion": "http2and3",
+        "IsIPV6Enabled": True,
+        "ViewerCertificate": {"CloudFrontDefaultCertificate": True},
+    }
 
 
 def render_user_data(*, sha: str, host: str, region: str, name: str, interval: int) -> str:
@@ -264,11 +315,15 @@ bash scripts/aws/instance_setup.sh
 """
 
 
-def update_commands(sha: str) -> list[str]:
+def update_commands(sha: str, host: str = "") -> list[str]:
     if not _SHA.match(sha):
         raise DeployError(f"not a full commit id: {sha!r}")
+    if host and not _HOST.match(host):
+        raise DeployError(f"not a host name: {host!r}")
     return [
         "set -euo pipefail",
+        # The name the instance itself serves HTTPS for: yours with --domain, else none.
+        f"sed -i 's/^LIVE_MAP_HOST=.*/LIVE_MAP_HOST={host}/' /etc/live-map.env",
         "cd /opt/live-map/repo",
         f"git fetch -q --depth 1 origin {sha}",
         "git checkout -q -f FETCH_HEAD",
@@ -300,6 +355,7 @@ class Cloud:
             self.ec2 = session.client("ec2")
             self.iam = session.client("iam")
             self.ssm = session.client("ssm")
+            self.cloudfront = session.client("cloudfront")
             self.account = session.client("sts").get_caller_identity()["Account"]
         except (BotoCoreError, ClientError) as exc:
             raise DeployError(
@@ -325,6 +381,59 @@ class Cloud:
             ids = ", ".join(i["InstanceId"] for i in found)
             raise DeployError(f"more than one instance is tagged Project={self.name}: {ids}")
         return found[0] if found else None
+
+    def distribution(self) -> dict | None:
+        """This deployment's CloudFront distribution, found by its comment."""
+        for page in self.cloudfront.get_paginator("list_distributions").paginate():
+            for item in page["DistributionList"].get("Items", []):
+                if item.get("Comment") == self.name:
+                    return item
+        return None
+
+    def _managed_policy(self, kind: str, name: str) -> str:
+        # Looked up by name rather than written in as ids, so nothing here goes stale.
+        if kind == "cache":
+            listing = self.cloudfront.list_cache_policies(Type="managed")["CachePolicyList"]
+            pairs = [(i["CachePolicy"]["CachePolicyConfig"]["Name"], i["CachePolicy"]["Id"])
+                     for i in listing.get("Items", [])]  # fmt: skip
+        else:
+            listing = self.cloudfront.list_origin_request_policies(Type="managed")[
+                "OriginRequestPolicyList"
+            ]
+            pairs = [
+                (i["OriginRequestPolicy"]["OriginRequestPolicyConfig"]["Name"],
+                 i["OriginRequestPolicy"]["Id"])
+                for i in listing.get("Items", [])
+            ]  # fmt: skip
+        for found, policy in pairs:
+            if found == name:
+                return policy
+        raise DeployError(f"CloudFront has no managed policy named {name}")
+
+    def ensure_distribution(self, origin: str) -> dict:
+        found = self.distribution()
+        if found is not None:
+            if found["Origins"]["Items"][0]["DomainName"] != origin:
+                current = self.cloudfront.get_distribution_config(Id=found["Id"])
+                config = current["DistributionConfig"]
+                config["Origins"]["Items"][0]["DomainName"] = origin
+                self.cloudfront.update_distribution(
+                    Id=found["Id"], IfMatch=current["ETag"], DistributionConfig=config
+                )
+            return found
+        config = distribution_config(
+            name=self.name,
+            origin=origin,
+            cache_policy=self._managed_policy("cache", "Managed-CachingDisabled"),
+            request_policy=self._managed_policy("request", "Managed-AllViewerExceptHostHeader"),
+            reference=f"{self.name}-{int(time.time())}",
+        )
+        return self.cloudfront.create_distribution_with_tags(
+            DistributionConfigWithTags={
+                "DistributionConfig": config,
+                "Tags": {"Items": self.tags},
+            }
+        )["Distribution"]
 
     def address(self) -> dict | None:
         found = self.ec2.describe_addresses(Filters=self.filter)["Addresses"]
@@ -525,6 +634,25 @@ def wait_for_site(ip: str, host: str, minutes: int) -> bool:
     return False
 
 
+def wait_for_distribution(domain: str, minutes: int = 25) -> bool:
+    """Poll the page through CloudFront until it answers. New distributions take minutes."""
+    deadline = time.monotonic() + minutes * 60
+    while time.monotonic() < deadline:
+        if fetch_status(f"https://{domain}"):
+            return True
+        say(f"  CloudFront deploying… ({int((deadline - time.monotonic()) / 60)} min left)")
+        time.sleep(30)
+    return False
+
+
+def serve_through_cloudfront(cloud: Cloud, ip: str) -> str | None:
+    """Create (or find) the distribution and wait for it. Returns its domain if answering."""
+    distribution = cloud.ensure_distribution(ec2_public_dns(ip, cloud.region))
+    domain = distribution["DomainName"]
+    say(f"  CloudFront {domain}")
+    return domain if wait_for_distribution(domain) else None
+
+
 # ---------------------------------------------------------------------------
 # commands
 # ---------------------------------------------------------------------------
@@ -553,8 +681,12 @@ def cmd_deploy(args) -> int:
     sha = resolve_ref(args.ref)
     if args.dry_run:
         gather_inputs(args, None, required=True)
-        host = args.domain or sslip_host("203.0.113.10")
-        say(f"would deploy commit {sha[:10]} to {args.instance_type} in {args.region}\n")
+        host = args.domain or ""
+        front = (
+            "your domain" if args.domain else "plain HTTP" if args.no_cloudfront else "CloudFront"
+        )
+        target = f"{args.instance_type} in {args.region}"
+        say(f"would deploy commit {sha[:10]} to {target}, via {front}\n")
         say(render_user_data(sha=sha, host=host, region=args.region, name=args.name,
                              interval=args.interval))  # fmt: skip
         return 0
@@ -571,7 +703,7 @@ def cmd_deploy(args) -> int:
     group = cloud.ensure_security_group()
     address = cloud.ensure_address()
     ip = address["PublicIp"]
-    host = "" if args.no_tls else (args.domain or sslip_host(ip))
+    host = args.domain or ""
     say(f"  address {ip}" + (f"  ({host})" if host else ""))
     if args.domain:
         say(f"  point an A record for {args.domain} at {ip}; the certificate follows it")
@@ -590,10 +722,22 @@ def cmd_deploy(args) -> int:
 
     say("  waiting for the install; the pinned suite takes several minutes")
     https = wait_for_site(ip, host, args.wait)
-    say("")
-    say(f"live map: {'https://' + host if https else 'http://' + ip}/network.html")
-    if host and not https:
+    return finish(cloud, args, ip, host, https)
+
+
+def finish(cloud: Cloud, args, ip: str, host: str, https: bool) -> int:
+    """Put CloudFront in front if wanted, and print the address to use."""
+    url = f"https://{host}" if https else f"http://{ip}"
+    if not (args.domain or args.no_cloudfront):
+        domain = serve_through_cloudfront(cloud, ip)
+        if domain:
+            url = f"https://{domain}"
+        else:
+            say("  CloudFront is not answering yet; run `status` in a few minutes")
+    elif host and not https:
         say(f"  (https://{host} is not answering yet; the certificate may still be issuing)")
+    say("")
+    say(f"live map: {url}/network.html")
     return 0
 
 
@@ -656,9 +800,10 @@ def cmd_update(args, cloud: Cloud | None = None, sha: str | None = None) -> int:
     targets, globus, site_secrets = gather_inputs(args, cloud, required=False)
     cloud.put_inputs(targets, globus, site_secrets)
 
+    host = args.domain or ""
     say(f"  updating {instance['InstanceId']} to commit {sha[:10]}")
     result = run_remote(
-        cloud, instance["InstanceId"], update_commands(sha), f"live map -> {sha[:10]}"
+        cloud, instance["InstanceId"], update_commands(sha, host), f"live map -> {sha[:10]}"
     )
     tail = (result.get("StandardOutputContent") or "").strip().splitlines()[-3:]
     for line in tail:
@@ -666,6 +811,8 @@ def cmd_update(args, cloud: Cloud | None = None, sha: str | None = None) -> int:
     if result["Status"] != "Success":
         say((result.get("StandardErrorContent") or "").strip()[-2000:])
         raise DeployError(f"the update {result['Status'].lower()}; the previous site is still up")
+    if not (args.domain or args.no_cloudfront):
+        serve_through_cloudfront(cloud, instance["PublicIpAddress"])
     return cmd_status(args, cloud=cloud)
 
 
@@ -688,8 +835,14 @@ def cmd_status(args, cloud: Cloud | None = None) -> int:
         say("  the site is not answering")
         return 1
     print_status(status)
-    host = sslip_host(ip)
-    base = f"https://{host}" if fetch_status(f"https://{host}", timeout=4) else f"http://{ip}"
+    base = f"http://{ip}"
+    distribution = cloud.distribution()
+    if distribution is not None:
+        domain = distribution["DomainName"]
+        if fetch_status(f"https://{domain}", timeout=8):
+            base = f"https://{domain}"
+        else:
+            say(f"  CloudFront {domain} is not answering yet ({distribution['Status']})")
     say(f"live map: {base}/network.html")
     return 0
 
@@ -698,9 +851,23 @@ def cmd_destroy(args) -> int:
     cloud = Cloud(args.name, args.region, args.profile)
     if not args.yes:
         raise DeployError(
-            f"this deletes the instance, its address, role, security group and stored "
-            f"parameters tagged Project={args.name} in {args.region}. Re-run with --yes."
+            f"this deletes the CloudFront distribution, the instance, its address, role, "
+            f"security group and stored parameters tagged Project={args.name} in "
+            f"{args.region}. Re-run with --yes."
         )
+    # A distribution can only be deleted once disabled, and disabling takes AWS minutes;
+    # start it first so it runs while everything else is torn down.
+    distribution = cloud.distribution()
+    if distribution is not None:
+        current = cloud.cloudfront.get_distribution_config(Id=distribution["Id"])
+        if current["DistributionConfig"]["Enabled"]:
+            current["DistributionConfig"]["Enabled"] = False
+            cloud.cloudfront.update_distribution(
+                Id=distribution["Id"],
+                IfMatch=current["ETag"],
+                DistributionConfig=current["DistributionConfig"],
+            )
+        say(f"  disabling CloudFront {distribution['DomainName']}")
     instance = cloud.instance()
     if instance:
         cloud.ec2.terminate_instances(InstanceIds=[instance["InstanceId"]])
@@ -739,6 +906,20 @@ def cmd_destroy(args) -> int:
     names = [cloud.parameter(k) for k in keys]
     cloud.ssm.delete_parameters(Names=names)
     say("  deleted stored parameters")
+
+    if distribution is not None:
+        say("  waiting for CloudFront to finish disabling (often 5-15 minutes)")
+        deadline = time.monotonic() + 40 * 60
+        while True:
+            reply = cloud.cloudfront.get_distribution(Id=distribution["Id"])
+            if reply["Distribution"]["Status"] == "Deployed":
+                cloud.cloudfront.delete_distribution(Id=distribution["Id"], IfMatch=reply["ETag"])
+                say(f"  deleted CloudFront {distribution['DomainName']}")
+                break
+            if time.monotonic() > deadline:
+                say("  CloudFront is still disabling; run `destroy --yes` again later to delete it")
+                break
+            time.sleep(30)
     say("gone.")
     return 0
 
@@ -755,17 +936,26 @@ def parser() -> argparse.ArgumentParser:
     inputs.add_argument("--targets", type=Path, default=DEFAULT_TARGETS)
     inputs.add_argument("--globus-client", type=Path, default=DEFAULT_GLOBUS)
 
+    serving = argparse.ArgumentParser(add_help=False)
+    front = serving.add_mutually_exclusive_group()
+    front.add_argument(
+        "--domain", default=None, help="serve HTTPS for your own host name from the instance"
+    )
+    front.add_argument(
+        "--no-cloudfront", action="store_true", help="plain HTTP on the address only"
+    )
+
     commands = top.add_subparsers(dest="command", required=True)
-    deploy = commands.add_parser("deploy", parents=[common, inputs], help="create it")
+    deploy = commands.add_parser("deploy", parents=[common, inputs, serving], help="create it")
     deploy.add_argument("--instance-type", default=DEFAULT_INSTANCE_TYPE)
-    deploy.add_argument("--domain", default=None, help="your own host name, for the certificate")
-    deploy.add_argument("--no-tls", action="store_true", help="plain HTTP on the address only")
     deploy.add_argument("--interval", type=int, default=60, help="seconds between probes")
     deploy.add_argument("--wait", type=int, default=25, help="minutes to wait for the install")
     deploy.add_argument("--dry-run", action="store_true", help="check inputs, call nothing")
     deploy.set_defaults(run=cmd_deploy)
 
-    update = commands.add_parser("update", parents=[common, inputs], help="refresh it in place")
+    update = commands.add_parser(
+        "update", parents=[common, inputs, serving], help="refresh it in place"
+    )
     update.set_defaults(run=cmd_update)
 
     status = commands.add_parser("status", parents=[common], help="is it up")

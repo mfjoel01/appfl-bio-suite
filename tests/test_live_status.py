@@ -356,6 +356,36 @@ def test_user_data_carries_no_secret_and_only_validated_values(live_map):
             live_map.render_user_data(**{**args, **bad})
 
 
+def test_cloudfront_fronts_the_instance_over_https_without_caching(live_map):
+    origin = live_map.ec2_public_dns("52.22.193.198", "us-east-1")
+    assert origin == "ec2-52-22-193-198.compute-1.amazonaws.com"
+    assert live_map.ec2_public_dns("3.4.5.6", "us-west-2") == (
+        "ec2-3-4-5-6.us-west-2.compute.amazonaws.com"
+    )
+    config = live_map.distribution_config(
+        name="live-map", origin=origin, cache_policy="C", request_policy="R", reference="x"
+    )
+    behaviour = config["DefaultCacheBehavior"]
+    assert config["Comment"] == "live-map", "destroy and status find it by this"
+    assert behaviour["ViewerProtocolPolicy"] == "redirect-to-https"
+    assert (behaviour["CachePolicyId"], behaviour["OriginRequestPolicyId"]) == ("C", "R")
+    assert config["Origins"]["Items"][0]["DomainName"] == origin
+    assert config["Origins"]["Items"][0]["CustomOriginConfig"]["OriginProtocolPolicy"] == (
+        "http-only"
+    )
+
+
+def test_update_resets_the_served_host_name(live_map):
+    commands = live_map.update_commands(SHA)
+    assert any("LIVE_MAP_HOST=/' /etc/live-map.env" in c for c in commands)
+    assert any(
+        "LIVE_MAP_HOST=map.example.org/'" in c
+        for c in live_map.update_commands(SHA, "map.example.org")
+    )
+    with pytest.raises(live_map.DeployError):
+        live_map.update_commands(SHA, "x/; rm -rf /")
+
+
 def test_targets_are_checked_against_the_published_map(live_map, tmp_path):
     path = tmp_path / "targets.json"
     path.write_text(json.dumps({"sites": {"cdac": [UP], "nz": [DOWN]}}))
