@@ -35,14 +35,14 @@ can be wrong behind an `online`.
 **Unknown is not offline.** Globus Compute does not let every identity read every
 endpoint's status. Partners' multi-user endpoints answer an identity that does not own
 them. A single-user endpoint owned by a site's service account answers only that account
--- MBZUAI's refused the coordinator's own login with a 403 while it was running. A site
+-- one partner's refused the coordinator's own login with a 403 while it was running. A site
 the prober may not ask about is drawn as unknown.
 
 To show such a site, give its endpoint a **route** in the probe list: the client id of
 the account that owns it, and the name of the environment variable holding a secret for
 that client. That account can submit tasks to the endpoint, not only read its status, so
 mint a separate secret on the client for the prober. It is then revocable on its own, and
-the coordinator's secret never leaves Polaris. The same holds if the prober's
+the coordinator's secret never leaves the coordinator's machine. The same holds if the prober's
 credential expires -- the page says it does not know, rather than that every partner is
 down -- and if the prober stops altogether, the viewer retires its last answer after
 three intervals and the header reads "Status stale".
@@ -81,8 +81,8 @@ browser ── 80/443 ──> Caddy ── static files ── /opt/live-map/sit
   `--alias map.appfl.ai` gives the CloudFront address a name of your own: the first run
   requests a free AWS certificate and prints the two DNS records to ask for (one proves
   the name to AWS, one points it at CloudFront); run it again once they exist and it
-  attaches the name. `appfl.ai`'s DNS is run by Argonne IT (`dns1.anl.gov`), so for an
-  `appfl.ai` or `anl.gov` name that is one ticket to them.
+  attaches the name. When the name's DNS is run by your institution's IT, as `appfl.ai`'s is,
+  that is one ticket to them.
   `--domain map.example.org` instead serves HTTPS from the instance for a name you
   control (point an A record at the address `deploy` prints), and `--no-cloudfront`
   serves plain HTTP on the address only. Not a wildcard-DNS name such as

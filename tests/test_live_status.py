@@ -29,6 +29,7 @@ from appfl_bio_suite.core.live_status import (
     run,
     targets_from_federation,
 )
+from appfl_bio_suite.core.watch import participations
 
 UP = "11111111-aaaa-4bbb-8ccc-000000000001"
 DOWN = "11111111-aaaa-4bbb-8ccc-000000000002"
@@ -149,15 +150,15 @@ def test_a_route_asks_as_the_owning_account(tmp_path):
         made.append(route.client_id)
         return OwnerOnly(route.client_id)
 
-    targets = {"anl": [UP], "mbzuai": [OWNED]}
+    targets = {"site-a": [UP], "site-b": [OWNED]}
     run(targets, out, once=True, client_factory=default)
-    assert json.loads(out.read_text())["sites"]["mbzuai"]["state"] == "unknown"
+    assert json.loads(out.read_text())["sites"]["site-b"]["state"] == "unknown"
 
     made.clear()
     routes = {OWNED: Route(SITE_CLIENT, "SITE_SECRET")}
     run(targets, out, routes=routes, once=True, client_factory=default, route_factory=routed)
     sites = json.loads(out.read_text())["sites"]
-    assert sites["mbzuai"]["state"] == "online" and sites["anl"]["state"] == "online"
+    assert sites["site-b"]["state"] == "online" and sites["site-a"]["state"] == "online"
     assert len(made) == 2 and set(made) == {None, SITE_CLIENT}, "one client per identity"
 
 
@@ -168,7 +169,7 @@ def test_a_route_that_cannot_authenticate_is_unknown_for_its_site_only(tmp_path)
         raise ValueError(f"Set coordinator environment variable {route.client_secret_env}.")
 
     run(
-        {"anl": [UP], "mbzuai": [OWNED]},
+        {"site-a": [UP], "site-b": [OWNED]},
         out,
         routes={OWNED: Route(SITE_CLIENT, "SITE_SECRET")},
         once=True,
@@ -177,17 +178,17 @@ def test_a_route_that_cannot_authenticate_is_unknown_for_its_site_only(tmp_path)
     )
     sites = json.loads(out.read_text())["sites"]
     assert sites == {
-        "anl": {"state": "online", "endpoints": 1, "online": 1},
-        "mbzuai": {"state": "unknown", "endpoints": 1, "online": 0},
+        "site-a": {"state": "online", "endpoints": 1, "online": 1},
+        "site-b": {"state": "unknown", "endpoints": 1, "online": 0},
     }
 
 
 def test_probe_list_routes(tmp_path):
     path = tmp_path / "targets.json"
     route = {"client_id": SITE_CLIENT, "client_secret_env": "SITE_SECRET"}
-    path.write_text(json.dumps({"sites": {"mbzuai": [OWNED]}, "routes": {OWNED: route}}))
+    path.write_text(json.dumps({"sites": {"site-b": [OWNED]}, "routes": {OWNED: route}}))
     targets, routes = load_probe_list(path)
-    assert targets == {"mbzuai": [OWNED]}
+    assert targets == {"site-b": [OWNED]}
     assert routes == {OWNED: Route(SITE_CLIENT, "SITE_SECRET")}
     assert missing_secrets(routes, {}) == ["SITE_SECRET"]
     assert missing_secrets(routes, {"SITE_SECRET": "x"}) == []
@@ -197,10 +198,10 @@ def test_probe_list_routes(tmp_path):
         {"client_id": "nope", "client_secret_env": "SITE_SECRET"},
         {"client_id": SITE_CLIENT, "client_secret_env": "not a name"},
     ):
-        path.write_text(json.dumps({"sites": {"mbzuai": [OWNED]}, "routes": {OWNED: bad}}))
+        path.write_text(json.dumps({"sites": {"site-b": [OWNED]}, "routes": {OWNED: bad}}))
         with pytest.raises(LiveStatusError):
             load_probe_list(path)
-    path.write_text(json.dumps({"sites": {"anl": [UP]}, "routes": {OWNED: route}}))
+    path.write_text(json.dumps({"sites": {"site-a": [UP]}, "routes": {OWNED: route}}))
     with pytest.raises(LiveStatusError, match="not in `sites:`"):
         load_probe_list(path)
 
@@ -228,10 +229,10 @@ def test_cli_targets_adds_endpoints_and_copies_routes_not_secrets(tmp_path, monk
         [
             "watch", "targets",
             "--federation", str(repo_root() / "website" / "federation.yaml"),
-            "--endpoint", f"mbzuai={OWNED}",
-            "--endpoint", f"covenant={UP}",
-            "--endpoint", f"anl={DOWN}",
-            "--skip", "anl",
+            "--endpoint", f"site-b={OWNED}",
+            "--endpoint", f"site-c={UP}",
+            "--endpoint", f"site-a={DOWN}",
+            "--skip", "site-a",
             "--site-credentials", str(manifest),
             "--out", str(out),
         ],
@@ -240,12 +241,12 @@ def test_cli_targets_adds_endpoints_and_copies_routes_not_secrets(tmp_path, monk
     text = out.read_text()
     assert "do-not-copy-me" not in text and "expected_user" not in text
     document = json.loads(text)
-    assert document["sites"] == {"mbzuai": [OWNED], "covenant": [UP]}
+    assert document["sites"] == {"site-b": [OWNED], "site-c": [UP]}
     assert document["routes"] == {
         OWNED: {"client_id": SITE_CLIENT, "client_secret_env": "SITE_SECRET"}
     }
     assert "as the account in $SITE_SECRET" in result.output
-    assert "anl: left out (--skip)" in result.output
+    assert "site-a: left out (--skip)" in result.output
     assert (out.stat().st_mode & 0o777) == 0o600
 
 
@@ -253,7 +254,7 @@ def test_cli_live_refuses_a_route_whose_secret_is_unset(tmp_path, monkeypatch):
     monkeypatch.delenv("SITE_SECRET", raising=False)
     path = tmp_path / "targets.json"
     route = {"client_id": SITE_CLIENT, "client_secret_env": "SITE_SECRET"}
-    path.write_text(json.dumps({"sites": {"mbzuai": [OWNED]}, "routes": {OWNED: route}}))
+    path.write_text(json.dumps({"sites": {"site-b": [OWNED]}, "routes": {OWNED: route}}))
     result = CliRunner().invoke(
         main, ["watch", "live", "--targets", str(path), "--out", str(tmp_path), "--once"]
     )
@@ -288,20 +289,22 @@ def test_targets_from_federation_renames_and_dedupes(tmp_path):
     text = (repo_root() / "website" / "federation.yaml").read_text(encoding="utf-8")
     path = tmp_path / "federation.yaml"
     path.write_text(text.replace("bbbbbbbb-0000-0000-0000-000000000004", UP))
-    targets, _ = targets_from_federation(load_federation(path), {"cdac": "cdac-pune"})
-    assert targets == {"cdac-pune": [UP]}
+    federation = load_federation(path)
+    (site,) = participations(federation)
+    targets, _ = targets_from_federation(federation, {site: "renamed"})
+    assert targets == {"renamed": [UP]}
 
 
 def test_cli_probes_once_into_an_export_directory(tmp_path, monkeypatch):
     monkeypatch.setattr("appfl_bio_suite.core.endpoint._client", FakeClient)
     targets = tmp_path / "targets.json"
-    targets.write_text(json.dumps({"sites": {"anl": [UP], "cdac": [DOWN]}}))
+    targets.write_text(json.dumps({"sites": {"site-a": [UP], "site-d": [DOWN]}}))
     result = CliRunner().invoke(
         main, ["watch", "live", "--targets", str(targets), "--out", str(tmp_path), "--once"]
     )
     assert result.exit_code == 0, result.output
-    assert "anl=online  cdac=offline" in result.output
-    assert json.loads((tmp_path / STATUS_FILENAME).read_text())["sites"]["cdac"]["online"] == 0
+    assert "site-a=online  site-d=offline" in result.output
+    assert json.loads((tmp_path / STATUS_FILENAME).read_text())["sites"]["site-d"]["online"] == 0
 
 
 def test_export_names_the_status_file_only_when_asked(tmp_path):
@@ -406,10 +409,11 @@ def test_update_resets_the_served_host_name(live_map):
 
 def test_targets_are_checked_against_the_published_map(live_map, tmp_path):
     path = tmp_path / "targets.json"
-    path.write_text(json.dumps({"sites": {"cdac": [UP], "nz": [DOWN]}}))
+    known = sorted(live_map.public_site_ids())[0]
+    path.write_text(json.dumps({"sites": {known: [UP], "not-on-the-map": [DOWN]}}))
     body, warnings, secrets = live_map.read_targets(path, live_map.public_site_ids())
-    assert json.loads(body) == {"sites": {"cdac": [UP], "nz": [DOWN]}}
-    assert len(warnings) == 1 and "'nz'" in warnings[0]
+    assert json.loads(body) == {"sites": {known: [UP], "not-on-the-map": [DOWN]}}
+    assert len(warnings) == 1 and "'not-on-the-map'" in warnings[0]
     assert secrets == []
     with pytest.raises(live_map.DeployError, match="watch targets"):
         live_map.read_targets(tmp_path / "missing.json")
@@ -418,7 +422,7 @@ def test_targets_are_checked_against_the_published_map(live_map, tmp_path):
 def test_routed_targets_carry_secret_names_and_never_secrets(live_map, tmp_path):
     path = tmp_path / "targets.json"
     route = {"client_id": SITE_CLIENT, "client_secret_env": "SITE_SECRET"}
-    path.write_text(json.dumps({"sites": {"mbzuai": [OWNED]}, "routes": {OWNED: route}}))
+    path.write_text(json.dumps({"sites": {"site-b": [OWNED]}, "routes": {OWNED: route}}))
     body, _, secrets = live_map.read_targets(path)
     assert json.loads(body)["routes"] == {OWNED: route}
     assert secrets == ["SITE_SECRET"]
@@ -427,7 +431,7 @@ def test_routed_targets_carry_secret_names_and_never_secrets(live_map, tmp_path)
     assert live_map.read_site_secrets(secrets, {"SITE_SECRET": "x"}) == {"SITE_SECRET": "x"}
 
     path.write_text(
-        json.dumps({"sites": {"mbzuai": [OWNED]}, "routes": {OWNED: {**route, "secret": "x"}}})
+        json.dumps({"sites": {"site-b": [OWNED]}, "routes": {OWNED: {**route, "secret": "x"}}})
     )
     with pytest.raises(live_map.DeployError, match="never the secret"):
         live_map.read_targets(path)
@@ -439,10 +443,10 @@ def test_update_keeps_the_stored_probe_list_without_its_secrets(live_map, tmp_pa
     monkeypatch.delenv("SITE_SECRET", raising=False)
     path = tmp_path / "targets.json"
     route = {"client_id": SITE_CLIENT, "client_secret_env": "SITE_SECRET"}
-    path.write_text(json.dumps({"sites": {"mbzuai": [OWNED]}, "routes": {OWNED: route}}))
+    path.write_text(json.dumps({"sites": {"site-b": [OWNED]}, "routes": {OWNED: route}}))
     args = SimpleNamespace(targets=path, globus_client=tmp_path / "none.json")
     stored = SimpleNamespace(has_parameters=lambda *keys: True)
-    monkeypatch.setattr(live_map, "public_site_ids", lambda: {"mbzuai"})
+    monkeypatch.setattr(live_map, "public_site_ids", lambda: {"site-b"})
 
     targets, globus, secrets = live_map.gather_inputs(args, stored, required=False)
     assert (targets, globus, secrets) == (None, None, None)
