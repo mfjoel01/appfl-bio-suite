@@ -65,12 +65,12 @@
   const PING_BACK_MS = 2500;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   let pingState = null, pingTimer = 0;
-  function setPing(state) {
+  function setPing(state, ids = null) {
     if (reducedMotion.matches) state = null;
     if (state === pingState) return;
     pingState = state;
     clearTimeout(pingTimer);
-    const probed = new Set(state ? Object.keys(live.data?.sites || {}) : []);
+    const probed = new Set(state ? ids || Object.keys(live.data?.sites || {}) : []);
     for (const [id, line] of Object.entries(lines)) {
       const path = line?.getElement?.();
       if (!path) continue;
@@ -79,6 +79,22 @@
     }
     ui.globe?.setPing?.(probed, state);
     if (state === 'back') pingTimer = setTimeout(() => setPing(null), PING_BACK_MS);
+  }
+  // A map with no live status behind it (a static copy, such as GitHub Pages) still shows
+  // the network moving: the same out-and-back trace, on a timer, along every site's line.
+  // It asserts nothing about any endpoint; the site colours stay those of the stages.
+  let ambientTimer = 0, ambientKick = 0;
+  function stopAmbient() { clearInterval(ambientTimer); clearTimeout(ambientKick); }
+  function startAmbient() {
+    stopAmbient();
+    const pulse = () => {
+      if (ui.runId !== 'network' || live.url) return;
+      const ids = Object.keys(state.clients).filter(id => !isCoordinator(id));
+      setPing('out', ids);
+      setTimeout(() => { if (pingState === 'out') setPing('back', ids); }, 2000);
+    };
+    ambientKick = setTimeout(pulse, 3000);
+    ambientTimer = setInterval(pulse, 60000);
   }
   function recolorSites() {
     for (const [id, c] of Object.entries(state.clients)) {
@@ -126,9 +142,13 @@
   }
   function startLive(name, metadataUrl) {
     clearInterval(live.timer); live.url = null; live.data = null; live.nextPoll = 0;
+    stopAmbient(); setPing(null);
     // A bare file name beside the metadata, and nothing else: map data does not get to
     // point the page at another origin.
-    if (!metadataUrl || !/^[\w.-]+\.json$/.test(name || '')) return;
+    if (!metadataUrl || !/^[\w.-]+\.json$/.test(name || '')) {
+      if (ui.runId === 'network') startAmbient();
+      return;
+    }
     live.url = new URL(name, new URL(metadataUrl, location.href)).href;
     live.timer = setInterval(() => { if (Date.now() >= live.nextPoll) livePoll(); else liveHeader(); }, 1000);
     livePoll();

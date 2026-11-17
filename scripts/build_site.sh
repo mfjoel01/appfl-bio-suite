@@ -3,9 +3,10 @@
 #
 #     scripts/build_site.sh [OUTDIR]          # default: _site
 #
-# Layout: the network map is the front page (OUTDIR/index.html, a copy of map/map.html);
-# the hand-written pages in website/ become docs/ (About) and docs/<section>/, one per
-# section of website/index.html, plus docs/network-map/ -- see scripts/build_docs.py.
+# Two layouts. By default (GitHub Pages) the hand-written pages in website/ are published
+# as they are -- index.html, network.html -- with the map under map/. SITE_MAP_FIRST=1
+# (the live map on AWS) puts the map itself at the root and cuts website/index.html into
+# docs/ (About) and docs/<section>/, plus docs/network-map/ -- see scripts/build_docs.py.
 #
 # The network-map preview under OUTDIR/map is
 # exported here, from website/federation.yaml and website/partners.json -- the real
@@ -47,23 +48,32 @@ cd "$root"
 rm -rf "$out"
 mkdir -p "$out"
 
-# Only the assets are copied as they are. The map inputs (federation.yaml, partners.json,
-# results/) are published through the export, reduced, and the pages through
-# build_docs.py, which lays them out under docs/.
-cp -R website/assets "$out"/assets
+if [[ -n ${SITE_MAP_FIRST:-} ]]; then
+  # Only the assets are copied as they are; build_docs.py lays the pages out under docs/.
+  cp -R website/assets "$out"/assets
+  home=../docs/
+else
+  cp -R website/. "$out"/
+  home=../
+fi
+# The map inputs are published through the export, reduced; not as raw files. That
+# includes results/: the export embeds the files partners.json selects into the map.
+rm -rf "$out"/federation.yaml "$out"/partners.json "$out"/results
 cp src/appfl_bio_suite/core/watch_assets/suite-logo.png "$out"/assets/suite-logo.png
 
-# --home-url is relative to the map data in map/: the viewer's logo leads to docs/.
+# --home-url is relative to the map data in map/: where the viewer's logo leads.
 "$cli" watch export \
   --federation website/federation.yaml \
   --catalog website/partners.json \
   --out "$out/map" \
   ${SITE_LIVE_STATUS:+--live-status} \
-  --home-url ../docs/ \
+  --home-url "$home" \
   --title "APPFL Bio Suite federation network" >/dev/null
 
-# The map at the root, the documentation one page per section under docs/.
-"$python" scripts/build_docs.py --site website --out "$out" >/dev/null
+if [[ -n ${SITE_MAP_FIRST:-} ]]; then
+  # The map at the root, the documentation one page per section under docs/.
+  "$python" scripts/build_docs.py --site website --out "$out" >/dev/null
+fi
 
 # Serve the tree as-is. Redundant under the Actions deployment, and the thing that keeps
 # docs/ from being rewritten if Pages is ever pointed at a branch instead.
