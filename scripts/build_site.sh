@@ -24,6 +24,10 @@
 # itself, and browsers refuse that for local files.
 #
 # APPFL_BIO_SUITE overrides the CLI, for a checkout that is not pip-installed.
+#
+# SITE_LIVE_STATUS=1 builds the map for a host that runs `appfl-bio-suite watch live`
+# beside it (docs/coordinator/live-map-aws.md): the viewer then polls for endpoint
+# status. Not set for GitHub Pages, which has nothing to keep that file current.
 
 set -euo pipefail
 
@@ -49,6 +53,8 @@ cp src/appfl_bio_suite/core/watch_assets/suite-logo.png "$out"/assets/suite-logo
   --federation website/federation.yaml \
   --catalog website/partners.json \
   --out "$out/map" \
+  ${SITE_LIVE_STATUS:+--live-status} \
+  --home-url ../ \
   --title "APPFL Bio Suite federation network" >/dev/null
 
 # Serve the tree as-is. Redundant under the Actions deployment, and the thing that keeps

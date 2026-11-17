@@ -8,7 +8,7 @@
     liveRuns: new Set(), queued: [], error: '', resultGroups: [], resultsRevision: 0, resultsSignature: '',
     source: !!(METADATA_URL || EVENTS_URL) };
   const labels = { 'fine-mapping': 'Fine-mapping', gwas: 'GWAS',
-    'flamby-heart-disease': 'FLamby · Heart disease', caidf: 'CAIDF', cpg: 'CpG', tbd: 'Project TBD' };
+    'flamby-heart-disease': 'FLamby · Heart disease', caidf: 'CAIDF', cpg: 'CpG', 'fed-finetuning': 'Fed fine-tuning', tbd: 'Project TBD' };
   const label = name => labels[name] || name;
   const number = value => Number(value || 0).toLocaleString();
   const coordinate = v => v == null || (typeof v === 'string' && v.trim() === '') || typeof v === 'boolean' ? null
@@ -28,8 +28,89 @@
   const inExperiment = (id, c, name) => isCoordinator(id) || memberships(c).includes(name);
   const matches = (id, c) => ui.selected === null || [...ui.selected].some(e => inExperiment(id, c, e));
   const visible = () => Object.entries(state.clients).filter(([id, c]) => matches(id, c));
-  const color = c => ({ '0': '#8d9eaa', '1': '#669fe0', '2': '#d89e42', '4': '#15b9a6', X: '#db717e' }
+  const stageColor = c => ({ '0': '#8d9eaa', '1': '#669fe0', '2': '#d89e42', '4': '#15b9a6', X: '#db717e' }
     [String(c.partnership_stage || '').slice(0, 1)] || { idle: '#f5bd66', dropped: '#f08085', failed: '#f08085' }[c.status] || '#50d9c7');
+  // A site whose endpoint is answering is green whatever stage its partnership is at: the
+  // dot says whether it is up, the stage line beneath says how far along it is. Without a
+  // current answer (none published, or stale), the stage colours the site as before.
+  const liveKnown = id => { const l = id == null ? null : liveOf(id); return l && l.state !== 'unknown' ? l : null; };
+  const color = (c, id = c?.client_id) => liveKnown(id)?.color || stageColor(c);
+  // Live endpoint status. The map is exported once; a prober beside it rewrites a small
+  // status file, named by the map's metadata, that this polls. An answer older than three
+  // intervals is shown as stale, never as the last thing it said.
+  const live = { url: null, data: null, timer: null, nextPoll: 0 };
+  const liveStates = { online: ['Endpoint online', '#2fbf71'], degraded: ['Partly online', '#d89e42'],
+    offline: ['Endpoint offline', '#db717e'], unknown: ['Endpoint status unknown', '#8d9eaa'] };
+  const liveAge = () => (Date.now() - Date.parse(live.data?.checked_at)) / 1000;
+  const liveStale = () => !(liveAge() <= 3 * (Number(live.data?.interval_sec) || 60) + 30);
+  const ago = s => s < 90 ? `${Math.max(0, Math.floor(s))}s ago` : s < 5400 ? `${Math.round(s / 60)} min ago`
+    : `${Math.round(s / 3600)} h ago`;
+  function liveOf(id) {
+    const site = ui.runId === 'network' ? live.data?.sites?.[id] : null;
+    if (!site) return null;
+    const state = liveStale() || !liveStates[site.state] ? 'unknown' : site.state;
+    const total = Number(site.endpoints) || 0, up = Number(site.online) || 0;
+    const text = state === 'unknown' ? liveStates.unknown[0]
+      : total > 1 ? `${up} of ${total} endpoints online` : liveStates[state][0];
+    return { state, text, color: liveStates[state][1] };
+  }
+  const liveHtml = id => { const l = liveOf(id);
+    return l ? `<span class="bio-live ${l.state}" style="--live-color:${l.color}"><i></i>${esc(l.text)}</span>` : ''; };
+  let liveWasStale = null;
+  function recolorSites() {
+    for (const [id, c] of Object.entries(state.clients)) {
+      dressMarker(id);
+      lines[id]?.setStyle({ color: color(c, id) });
+    }
+  }
+  function liveHeader() {
+    if (!live.data || ui.runId !== 'network') return;
+    const stale = liveStale();
+    // Going stale changes every site's colour back to its stage, and coming back the reverse.
+    if (liveWasStale !== null && stale !== liveWasStale) { recolorSites(); renderSidebar(); refreshDetail(); }
+    liveWasStale = stale;
+    // Past one interval the next check is due: say so rather than counting on, until it lands.
+    const age = liveAge(), interval = Number(live.data?.interval_sec) || 60;
+    $('status-text').textContent = stale ? `Status stale · checked ${ago(age)}`
+      : age >= interval ? 'Live · checking…' : `Live · checked ${ago(age)}`;
+    $('status-dot').classList.toggle('live', !stale);
+  }
+  // Fetch when the next answer is due rather than on a fixed beat. The file says when the
+  // prober last checked and how often it checks, so the page asks a second after the next
+  // check should have landed; a fixed 15-second beat let the "checked … ago" age run up to
+  // interval + 15 before resetting. If the answer is late, ask again every 2 seconds; once
+  // it is stale (the prober has stopped), every 15.
+  async function livePoll() {
+    live.nextPoll = Date.now() + 15000;  // until this poll knows better
+    try {
+      const response = await fetch(live.url, { cache: 'no-store' });
+      if (!response.ok) return;
+      const data = await response.json();
+      const changed = data.checked_at !== live.data?.checked_at;
+      live.data = data;
+      if (changed) { recolorSites(); renderSidebar(); refreshDetail(); }
+      const due = Date.parse(data.checked_at) + 1000 * (Number(data.interval_sec) || 60) + 1000;
+      live.nextPoll = liveStale() ? Date.now() + 15000
+        : due > Date.now() ? due : Date.now() + 2000;
+    } catch (error) { /* keep the last answer; liveStale() retires it */ } finally { liveHeader(); }
+  }
+  function startLive(name, metadataUrl) {
+    clearInterval(live.timer); live.url = null; live.data = null; live.nextPoll = 0;
+    // A bare file name beside the metadata, and nothing else: map data does not get to
+    // point the page at another origin.
+    if (!metadataUrl || !/^[\w.-]+\.json$/.test(name || '')) return;
+    live.url = new URL(name, new URL(metadataUrl, location.href)).href;
+    live.timer = setInterval(() => { if (Date.now() >= live.nextPoll) livePoll(); else liveHeader(); }, 1000);
+    livePoll();
+  }
+  function refreshDetail() {
+    const c = state.clients[ui.focus], panel = $('bio-site-detail');
+    if (!c || panel.hidden) return;
+    panel.innerHTML = '<button class="bio-detail-close" aria-label="Close site details">×</button>' + detailsHtml(ui.focus, c);
+    panel.querySelector('button').onclick = () => { closeDetail(); renderSidebar(); };
+  }
+  const liveWord = { online: 'Online', degraded: 'Partly online', offline: 'Offline' };
+  const siteSummary = (id, c) => [liveWord[liveKnown(id)?.state], statusLabel(c)].filter(Boolean).join(' · ');
   const statusLabel = c => c.partnership_stage || (ui.runId === 'network' ? `Member · ${c.status || 'active'}` : c.status || 'active');
 
   // ?theme=light and ?view=globe let an embedding page open the viewer already matching
@@ -44,6 +125,18 @@
     <div><div class="bio-brand">APPFL <span>Bio Suite</span></div>
     <div class="bio-brand-note">FEDERATION NETWORK</div></div>`;
   document.querySelector('.bio-suite-logo').src = branding.suite_logo || '';
+  // The logo leads back to the project's own pages when the export says where they are
+  // (`watch export --home-url`). A copy exported elsewhere has no such page, so no link.
+  // The top window navigates, so the embedded preview leaves its frame too.
+  function setHome(url) {
+    let href;
+    try { href = new URL(url, location.href); } catch (e) { return; }
+    if (!['http:', 'https:'].includes(href.protocol)) return;
+    const logo = document.querySelector('.logo');
+    const link = logo.querySelector('a.bio-home') || document.createElement('a');
+    if (!link.parentNode) { link.className = 'bio-home'; link.append(...logo.childNodes); logo.append(link); }
+    Object.assign(link, { href: href.href, target: '_top', title: 'Back to the project page' });
+  }
   // Credit upstream by name and link rather than by wordmark. watch.py drops the inlined
   // hivewatch logo from the exported page; a link is the credit that still works when
   // this file is read in a diff, and it is somewhere to go from every page we publish.
@@ -81,7 +174,13 @@
     <section id="bio-experiments-panel" role="tabpanel" aria-labelledby="bio-experiments-tab">
       <fieldset id="bio-filters"><legend class="bio-sr-only">Filter sites by experiment</legend></fieldset>
       <div id="bio-sites-pane">
-        <div class="bio-sites-heading"><span>Participating Sites</span><span id="bio-site-count">0</span></div>
+        <div class="bio-split-resizer" role="separator" aria-orientation="horizontal" tabindex="0"
+          aria-label="Resize the site list" title="Drag to resize"></div>
+        <div class="bio-sites-heading"><span>Participating Sites</span><span class="bio-sites-tools">
+          <span id="bio-sort" class="bio-sort" role="radiogroup" aria-label="Sort sites" data-sort="status">
+            <button type="button" role="radio" data-sort="name" aria-checked="false" tabindex="-1">Name</button>
+            <button type="button" role="radio" data-sort="status" aria-checked="true">Status</button></span>
+          <span id="bio-site-count">0</span></span></div>
         <p id="bio-filter-note" role="status"></p>
       </div>
     </section>
@@ -142,6 +241,144 @@
       map.setView([centreLat(view.lat), view.lng], mercatorZoom(view.radius, view.lat), { animate: false });
     } else if (fitPending) fitNetwork();
   }
+  // The site list sorts by name, or by status: endpoints answering now first, then how far
+  // along each partnership is (Experiment Ready down to Not Started, Stalled last). The
+  // coordinator stays at the top either way. Only the list moves; the map is unaffected.
+  const sortKey = 'appfl-bio-suite:site-sort';
+  const sortSwitch = $('bio-sort');
+  const siteName = (id, c) => String(c.institution || id);
+  const stageRank = c => { const s = String(c.partnership_stage || '').slice(0, 1);
+    return s === 'X' ? -1 : /\d/.test(s) ? Number(s) : -0.5; };
+  const liveRank = id => ({ online: 0, degraded: 1 })[liveKnown(id)?.state] ?? 2;
+  function sortSites(entries) {
+    const byName = (a, b) => siteName(...a).localeCompare(siteName(...b), undefined, { sensitivity: 'base' });
+    const byStatus = (a, b) => liveRank(a[0]) - liveRank(b[0]) || stageRank(b[1]) - stageRank(a[1]) || byName(a, b);
+    return [...entries].sort((a, b) => (isCoordinator(b[0]) - isCoordinator(a[0]))
+      || (ui.sort === 'name' ? byName(a, b) : byStatus(a, b)));
+  }
+  function setSort(mode, remember = true) {
+    ui.sort = mode === 'name' ? 'name' : 'status';
+    sortSwitch.dataset.sort = ui.sort;
+    for (const button of sortSwitch.querySelectorAll('button')) {
+      const on = button.dataset.sort === ui.sort;
+      button.setAttribute('aria-checked', String(on));
+      button.tabIndex = on ? 0 : -1;
+    }
+    try { if (remember) localStorage.setItem(sortKey, ui.sort); } catch (e) {}
+  }
+  try { setSort(localStorage.getItem(sortKey) || 'status', false); } catch (e) { setSort('status', false); }
+  sortSwitch.addEventListener('click', event => {
+    const button = event.target.closest('button');
+    if (!button || button.dataset.sort === ui.sort) return;
+    setSort(button.dataset.sort); renderSidebar();
+  });
+  sortSwitch.addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    event.preventDefault();
+    setSort(ui.sort === 'name' ? 'status' : 'name'); renderSidebar();
+    sortSwitch.querySelector('[aria-checked="true"]').focus();
+  });
+
+  // Likewise the split between the experiment filters and the site list: drag the line above
+  // "Participating Sites", or focus it and use the arrow keys; double-click or Home resets.
+  // Kept as a fraction of the sidebar's height, so it holds when the window is resized.
+  const splitKey = 'appfl-bio-suite:sites-share';
+  const splitter = sidebar.querySelector('.bio-split-resizer');
+  function setSitesShare(share, remember = true) {
+    if (share == null) {
+      sidebar.style.removeProperty('--bio-sites-h');
+      try { if (remember) localStorage.removeItem(splitKey); } catch (e) {}
+    } else {
+      share = Math.min(0.8, Math.max(0.2, share));
+      sidebar.style.setProperty('--bio-sites-h', `${(share * 100).toFixed(1)}%`);
+      try { if (remember) localStorage.setItem(splitKey, share.toFixed(3)); } catch (e) {}
+    }
+    splitter.setAttribute('aria-valuenow', String(Math.round(currentShare() * 100)));
+  }
+  const currentShare = () => $('bio-sites-pane').getBoundingClientRect().height
+    / Math.max(1, sidebar.getBoundingClientRect().height);
+  try { const saved = Number(localStorage.getItem(splitKey)); if (saved) setSitesShare(saved, false); } catch (e) {}
+  splitter.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    splitter.setPointerCapture(event.pointerId);
+    document.body.classList.add('bio-resizing-rows');
+    const move = e => { const box = sidebar.getBoundingClientRect(); setSitesShare((box.bottom - e.clientY) / box.height); };
+    const end = () => {
+      document.body.classList.remove('bio-resizing-rows');
+      splitter.removeEventListener('pointermove', move);
+      splitter.removeEventListener('pointerup', end);
+      splitter.removeEventListener('pointercancel', end);
+    };
+    splitter.addEventListener('pointermove', move);
+    splitter.addEventListener('pointerup', end);
+    splitter.addEventListener('pointercancel', end);
+  });
+  splitter.addEventListener('dblclick', () => setSitesShare(null));
+  splitter.addEventListener('keydown', event => {
+    const step = event.shiftKey ? 0.1 : 0.04;
+    if (event.key === 'ArrowUp') setSitesShare(currentShare() + step);
+    else if (event.key === 'ArrowDown') setSitesShare(currentShare() - step);
+    else if (event.key === 'Home') setSitesShare(null);
+    else return;
+    event.preventDefault();
+  });
+
+  // The sidebar's width is the reader's to set: drag its edge, or focus the edge and use the
+  // arrow keys. Double-click returns it to the layout's own width. Remembered per browser,
+  // as a convenience only -- a viewer without storage just starts at the default.
+  const widthKey = 'appfl-bio-suite:sidebar-width';
+  const resizer = document.createElement('div');
+  Object.assign(resizer, { className: 'bio-sidebar-resizer', tabIndex: 0, title: 'Drag to resize' });
+  resizer.setAttribute('role', 'separator');
+  resizer.setAttribute('aria-orientation', 'vertical');
+  resizer.setAttribute('aria-label', 'Resize sidebar');
+  sidebar.after(resizer);
+  const widthLimits = () => [240, Math.max(260, Math.min(720, window.innerWidth * 0.6))];
+  let settleFrame = 0;
+  function setSidebarWidth(px, remember = true) {
+    if (px == null) {
+      sidebar.style.removeProperty('--bio-sidebar-w');
+      try { if (remember) localStorage.removeItem(widthKey); } catch (e) {}
+    } else {
+      const [low, high] = widthLimits();
+      px = Math.round(Math.min(high, Math.max(low, px)));
+      sidebar.style.setProperty('--bio-sidebar-w', `${px}px`);
+      try { if (remember) localStorage.setItem(widthKey, String(px)); } catch (e) {}
+    }
+    resizer.setAttribute('aria-valuenow', String(Math.round(sidebar.getBoundingClientRect().width)));
+    cancelAnimationFrame(settleFrame);
+    settleFrame = requestAnimationFrame(() => { if (ui.view === 'flat') settleMap(); });
+  }
+  try { const saved = Number(localStorage.getItem(widthKey)); if (saved) setSidebarWidth(saved, false); } catch (e) {}
+  resizer.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    resizer.setPointerCapture(event.pointerId);
+    const left = sidebar.getBoundingClientRect().left;
+    document.body.classList.add('bio-resizing');
+    const move = e => setSidebarWidth(e.clientX - left);
+    const end = () => {
+      document.body.classList.remove('bio-resizing');
+      resizer.removeEventListener('pointermove', move);
+      resizer.removeEventListener('pointerup', end);
+      resizer.removeEventListener('pointercancel', end);
+    };
+    resizer.addEventListener('pointermove', move);
+    resizer.addEventListener('pointerup', end);
+    resizer.addEventListener('pointercancel', end);
+  });
+  resizer.addEventListener('dblclick', () => setSidebarWidth(null));
+  resizer.addEventListener('keydown', event => {
+    const step = event.shiftKey ? 64 : 16;
+    const width = sidebar.getBoundingClientRect().width;
+    if (event.key === 'ArrowLeft') setSidebarWidth(width - step);
+    else if (event.key === 'ArrowRight') setSidebarWidth(width + step);
+    else if (event.key === 'Home') setSidebarWidth(null);
+    else return;
+    event.preventDefault();
+  });
+
   function setTab(tab) {
     ui.tab = tab;
     document.body.classList.toggle('bio-show-runs', tab === 'runs');
@@ -214,20 +451,23 @@
   function cardHtml(id, c) {
     return `<button class="bio-site-card${ui.focus === id ? ' selected' : ''}" data-site="${esc(id)}">
       ${isCoordinator(id) ? coordinatorLabel : ''}<span class="bio-card-top"><span class="bio-site-name">${esc(c.institution || id)}</span>
-        <span class="bio-dot" style="background:${color(c)}" title="${esc(statusLabel(c))}"></span></span>
+        <span class="bio-dot" style="background:${color(c, id)}" title="${esc(siteSummary(id, c))}"></span></span>
       <span class="bio-site-location">${esc([c.city, c.country].filter(Boolean).join(', ') || 'Location not declared')}</span>
       <span class="bio-tags">${memberships(c).map(e => `<span>${esc(label(e))}</span>`).join('')}</span>
-      ${c.partnership_stage ? `<span class="bio-partner-stage" style="--stage-color:${color(c)}">${esc(c.partnership_stage)}</span>` : ''}
-      <span class="bio-card-bottom"><span>${c.num_samples == null ? 'Samples not declared' : number(c.num_samples) + ' declared samples'}</span>
-        <span>${placed(c) ? '↗' : 'Unplaced'}</span></span></button>`;
+      ${c.partnership_stage ? `<span class="bio-partner-stage" style="--stage-color:${stageColor(c)}">${esc(c.partnership_stage)}</span>` : ''}
+      ${liveHtml(id)}${c.num_samples == null && placed(c) ? '' : `<span class="bio-card-bottom">
+        <span>${c.num_samples == null ? '' : number(c.num_samples) + ' declared samples'}</span>
+        <span>${placed(c) ? '↗' : 'Unplaced'}</span></span>`}</button>`;
   }
   function detailsHtml(id, c) {
     const experimentRows = memberships(c).map(e => `<div class="bio-detail-row"><span>${esc(label(e))}</span>
       <strong>${esc(c[e] || 'Participating')}</strong></div>`).join('');
     return `${isCoordinator(id) ? coordinatorLabel : ''}<div class="popup-title">${esc(c.institution || id)}</div>
       <p class="bio-detail-location">${esc([c.city, c.country].filter(Boolean).join(', ') || 'Location not declared')}</p>
-      ${experimentRows}<div class="bio-detail-row"><span>Samples across experiments</span><strong>${c.num_samples == null ? 'Not declared' : number(c.num_samples)}</strong></div>
+      ${experimentRows}${c.num_samples == null ? '' : `<div class="bio-detail-row"><span>Samples across experiments</span><strong>${number(c.num_samples)}</strong></div>`}
       <div class="bio-detail-row"><span>${c.partnership_stage ? 'Project readiness' : 'Status'}</span><strong>${esc(statusLabel(c))}</strong></div>
+      ${liveOf(id) ? `<div class="bio-detail-row"><span>Globus Compute endpoint · checked ${esc(ago(liveAge()))}</span>
+        <strong>${liveHtml(id)}</strong></div>` : ''}
       ${Array.isArray(c.contacts) ? c.contacts.map(contact => `<div class="bio-detail-row"><span>${esc(contact.name)}</span>
         <a href="mailto:${esc(encodeURI(contact.email))}">${esc(contact.email)}</a></div>`).join('') : ''}
       ${c.notes ? `<div class="bio-detail-row"><span>Notes</span><strong>${esc(c.notes)}</strong></div>` : ''}
@@ -273,7 +513,8 @@
       toggle(packets[id]?.downlink, show && !!ui.server && ui.runId !== 'network');
     }
     if (ui.view === 'globe' || ui.runId === 'network' || ui.tab === 'results') stopNetworkAnimation();
-    if (ui.globe) ui.globe.setData(visible().map(([id, c]) => ({ ...c, client_id: id })), ui.server);
+    if (ui.globe) ui.globe.setData(visible().map(([id, c]) =>
+      ({ ...c, client_id: id, live_color: liveKnown(id)?.color, live_summary: siteSummary(id, c) })), ui.server);
   }
 
   renderSidebar = () => {
@@ -293,7 +534,7 @@
     $('bio-filter-note').textContent = unplaced
       ? `${unplaced} ${unplaced === 1 ? 'site' : 'sites'} not on the map` : '';
     const focused = document.activeElement?.dataset.site;
-    clientList.innerHTML = entries.map(([id, c]) => cardHtml(id, c)).join('')
+    clientList.innerHTML = sortSites(entries).map(([id, c]) => cardHtml(id, c)).join('')
       || `<div class="bio-empty"><span>◎</span><h3>${ui.loading ? 'Loading the network…' : 'No sites to show'}</h3>
         <p>${esc(ui.error || (total ? 'Choose All experiments or another experiment.' : 'Build a network map or select a run.'))}</p></div>`;
     if (focused) [...clientList.querySelectorAll('[data-site]')].find(b => b.dataset.site === focused)?.focus();
@@ -315,11 +556,11 @@
   function siteIcon(id, c) {
     const size = isCoordinator(id) ? 36 : 20;
     return L.divIcon({ className: `bio-leaflet-marker${isCoordinator(id) ? ' bio-coordinator' : ''}`,
-      html: `<span style="--site-color:${c ? color(c) : '#8d9eaa'}"></span>`,
+      html: `<span style="--site-color:${c ? color(c, id) : '#8d9eaa'}"></span>`,
       iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
   }
   const hoverHtml = (id, c) => `${isCoordinator(id) ? coordinatorLabel : ''}<strong>${esc(c.institution || id)}</strong>
-    <div>${esc(c.partnership_stage || c.status || 'Site')} · Select to inspect</div>`;
+    <div>${esc(siteSummary(id, c) || 'Site')} · Select to inspect</div>`;
   // Marker, popup and hover all depend on which site is the coordinator, which a run can
   // announce before or after its sites. Every marker is redressed whenever either changes.
   function dressMarker(id) {
@@ -373,7 +614,7 @@
     const c = state.clients[id] = { ...state.clients[id], ...data };
     c.lat = coordinate(c.lat); c.lng = coordinate(c.lng);
     if (!placed(c)) return;
-    const col = color(c);
+    const col = color(c, id);
     const ll = [c.lat, c.lng];
     if (markers[id]) markers[id].setLatLng(ll);
     else markers[id] = L.marker(ll, { icon: siteIcon(id, c) }).bindPopup('').bindTooltip('', tipOptions).addTo(map);
@@ -487,6 +728,8 @@
       $('bio-map-title').textContent = ui.runId === 'network' ? 'Federation footprint' : `Run · ${ui.runId}`;
       if (live) setMode('live');
       if (ui.source) $('status-text').textContent = 'Network snapshot';
+      startLive(ui.runId === 'network' ? metadata?.config?.live_status : null, metadataUrl);
+      if (metadata?.config?.home_url) setHome(new URL(metadata.config.home_url, new URL(metadataUrl || '.', location.href)).href);
       buildRoundTicks(); updateProgress(); fitNetwork();
     } catch (error) {
       if (token !== ui.loadToken) return;

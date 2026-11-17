@@ -3,13 +3,15 @@
     {"id": "anl", "name": "Argonne National Laboratory", "country": "United States", "projects": ["gwas", "fine-mapping", "flamby-heart-disease"], "stage": "4 - Experiment Ready"},
     {"id": "uic", "name": "University of Illinois Chicago", "country": "United States", "projects": ["caidf"], "stage": "X - Stalled", "location": {"lat": 41.87167, "lng": -87.64917, "city": "Chicago"}, "location_basis": "Representative UIC east campus."},
     {"id": "covenant", "name": "Covenant University", "country": "Nigeria", "projects": ["fine-mapping"], "stage": "4 - Experiment Ready", "location": {"lat": 6.6718, "lng": 3.1583, "city": "Ota"}, "location_basis": "Representative Covenant University campus."},
-    {"id": "mbzuai", "name": "Mohamed bin Zayed University of Artificial Intelligence", "country": "United Arab Emirates", "projects": ["fine-mapping"], "stage": "2 - Setup in Progress", "location": {"lat": 24.4297, "lng": 54.6167, "city": "Abu Dhabi"}, "location_basis": "Representative MBZUAI campus, Masdar City."},
+    {"id": "mbzuai", "name": "Mohamed bin Zayed University of Artificial Intelligence", "country": "United Arab Emirates", "projects": ["fine-mapping"], "stage": "4 - Experiment Ready", "location": {"lat": 24.4297, "lng": 54.6167, "city": "Abu Dhabi"}, "location_basis": "Representative MBZUAI campus, Masdar City."},
     {"id": "cdac", "name": "Centre for Development of Advanced Computing", "country": "India", "projects": ["flamby-heart-disease"], "stage": "4 - Experiment Ready", "location": {"lat": 18.534874, "lng": 73.808688, "city": "Pune"}, "location_basis": "Representative C-DAC Innovation Park headquarters."},
-    {"id": "uio", "name": "University of Oslo", "country": "Norway", "projects": ["flamby-heart-disease"], "stage": "1 - Initial Planning", "location": {"lat": 59.943589, "lng": 10.717264, "city": "Oslo"}, "location_basis": "Representative University of Oslo campus."},
+    {"id": "cdac-bangalore", "name": "Centre for Development of Advanced Computing, Bangalore", "country": "India", "projects": ["flamby-heart-disease"], "stage": "3 - Debugging", "location": {"lat": 12.9915, "lng": 77.6605, "city": "Bengaluru"}, "location_basis": "Representative C-DAC Bangalore campus, Old Madras Road."},
+    {"id": "uio", "name": "University of Oslo", "country": "Norway", "projects": ["flamby-heart-disease"], "stage": "2 - Setup in Progress", "location": {"lat": 59.943589, "lng": 10.717264, "city": "Oslo"}, "location_basis": "Representative University of Oslo campus."},
+    {"id": "stony-brook", "name": "Stony Brook University", "country": "United States", "projects": ["fed-finetuning"], "stage": "2 - Setup in Progress", "location": {"lat": 40.9126, "lng": -73.1234, "city": "Stony Brook"}, "location_basis": "Representative Stony Brook University campus."},
     {"id": "aist", "name": "National Institute of Advanced Industrial Science and Technology (AIST)", "country": "Japan", "projects": ["tbd"], "stage": "0 - Not Started", "location": {"lat": 36.060969, "lng": 140.133784, "city": "Tsukuba"}, "location_basis": "Representative AIST Tsukuba Central campus."},
     {"id": "broad", "name": "Broad Institute", "country": "United States", "projects": ["tbd"], "stage": "1 - Initial Planning", "location": {"lat": 42.362808, "lng": -71.088956, "city": "Cambridge"}, "location_basis": "Representative Broad Institute, 415 Main Street."},
-    {"id": "niar", "name": "National Institutes of Applied Research (NIAR)", "country": "Taiwan", "projects": ["tbd"], "stage": "1 - Initial Planning", "location": {"lat": 25.025, "lng": 121.542222, "city": "Taipei"}, "location_basis": "Representative NIAR Taipei headquarters."},
-    {"id": "utfpr", "name": "Federal University of Technology - Parana (UTFPR)", "country": "Brazil", "projects": ["tbd"], "stage": "0 - Not Started", "location": {"lat": -25.4394, "lng": -49.2687, "city": "Curitiba"}, "location_basis": "Representative UTFPR Curitiba campus."},
+    {"id": "niar", "name": "National Institutes of Applied Research (NIAR)", "country": "Taiwan", "projects": ["tbd"], "stage": "0 - Not Started", "location": {"lat": 25.025, "lng": 121.542222, "city": "Taipei"}, "location_basis": "Representative NIAR Taipei headquarters."},
+    {"id": "utfpr", "name": "Federal University of Technology - Parana (UTFPR)", "country": "Brazil", "projects": ["tbd"], "stage": "1 - Initial Planning", "location": {"lat": -25.4394, "lng": -49.2687, "city": "Curitiba"}, "location_basis": "Representative UTFPR Curitiba campus."},
     {"id": "anl-nz", "name": "Argonne National Laboratory (New Zealand site)", "country": "New Zealand", "projects": ["tbd"], "stage": "3 - Debugging", "location": {"lat": -41.2865, "lng": 174.7762, "city": "Wellington"}, "location_basis": "Representative location within New Zealand."}
   ],
   "results": [
@@ -192,6 +194,63 @@
           "path": "results/fine-mapping/pap8_scalability.webp",
           "title": "Runtime and what drives it",
           "description": "Runtime grows with the square of the locus window, not with the number of causal variants."
+        }
+      ]
+    },
+    {
+      "experiment": "gwas",
+      "title": "GWAS meta-analysis across five sites",
+      "description": "Run of 21 July 2026, at full variant scale: synthetic European-ancestry genotypes for 100,000 individuals over 239,801 GRCh37 variants, split across five deliberately unequal sites, with BMI and type 2 diabetes simulated from PGS Catalog scores plus age and sex. Each site computed its own association statistics, and only per-variant effect, standard error, allele frequency and sample size were combined, by fixed-effect inverse-variance meta-analysis. The five sites ran on one node, combined by APPFL's meta-analysis aggregator rather than over Globus Compute.",
+      "artifacts": [
+        {
+          "path": "results/gwas/bmi_manhattan.webp",
+          "title": "BMI: Manhattan plot",
+          "description": "Every variant's meta-analysis P value along the genome. 33 variants pass genome-wide significance (P < 5×10⁻⁸, dashed line).",
+          "wide": true
+        },
+        {
+          "path": "results/gwas/t2d_manhattan.webp",
+          "title": "Type 2 diabetes: Manhattan plot",
+          "description": "The same for the binary trait. 14 variants pass genome-wide significance.",
+          "wide": true
+        },
+        {
+          "path": "results/gwas/bmi_qq.webp",
+          "title": "BMI: QQ plot",
+          "description": "Observed against expected P values. The phenotypes were simulated from tens of thousands of causal variants, so an early departure from the diagonal is expected."
+        },
+        {
+          "path": "results/gwas/t2d_qq.webp",
+          "title": "Type 2 diabetes: QQ plot",
+          "description": "Observed against expected P values, with the genomic inflation factor."
+        },
+        {
+          "path": "results/gwas/top_hits.tsv",
+          "title": "Strongest associations",
+          "description": "Up to 15 genome-wide significant variants per trait, by P value. Effect is the per-allele β for BMI and the odds ratio for type 2 diabetes."
+        },
+        {
+          "path": "results/gwas/site_cohorts.tsv",
+          "title": "Sites and their polygenic scores",
+          "description": "Each site's cohort size, and how well a polygenic score predicts each trait in that site's evaluation cohort: R² for BMI, AUROC for type 2 diabetes."
+        }
+      ]
+    },
+    {
+      "experiment": "flamby-heart-disease",
+      "title": "Heart disease: federated training, rehearsed on one machine",
+      "description": "Loopback run of 14 September 2026 on Fed-Heart-Disease from the FLamby benchmark: three of the dataset's four hospital centres, five rounds of federated averaging of a logistic-regression model. Each site trained on its own centre's records and every site evaluated on the benchmark's pooled test set. All three sites ran as processes on one machine, without Globus Compute; the cross-institution run is still to come.",
+      "artifacts": [
+        {
+          "path": "results/flamby-heart-disease/fedavg_rounds.webp",
+          "title": "Accuracy and loss by round",
+          "description": "The global model each site receives at the start of a round (solid), and each site's model after its local training that round (dashed). The global model's accuracy climbs from 55.9% at the start of round 1 to 75.6% at the start of round 5.",
+          "wide": true
+        },
+        {
+          "path": "results/flamby-heart-disease/fedavg_rounds.tsv",
+          "title": "Accuracy by round",
+          "description": "The values behind the figure; n is each site's number of training records."
         }
       ]
     }

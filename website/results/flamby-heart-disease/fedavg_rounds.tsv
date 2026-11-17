@@ -1,0 +1,6 @@
+Round	Global model accuracy (start of round)	Site1 after local training (n = 199)	Site2 after local training (n = 172)	Site3 after local training (n = 85)
+1	0.559	0.642	0.634	0.571
+2	0.618	0.689	0.685	0.622
+3	0.669	0.740	0.744	0.689
+4	0.721	0.760	0.748	0.721
+5	0.756	0.760	0.760	0.768

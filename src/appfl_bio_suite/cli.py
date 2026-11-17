@@ -561,6 +561,7 @@ def watch() -> None:
       appfl-bio-suite watch build            refresh it from federation.yaml
       appfl-bio-suite watch serve            open it locally, live
       appfl-bio-suite watch export --out DIR a static copy anyone can host
+      appfl-bio-suite watch live             keep a hosted copy's endpoint status current
 
     Needs the coordinator-only extra:  pip install 'appfl-bio-suite[watch]'
     """
@@ -697,6 +698,18 @@ def watch_serve(host: str, port: int | None, runs_dir: Path | None) -> None:
     help="Directory to write the static site into.",
 )
 @click.option("--title", default="APPFL federation network", show_default=True)
+@click.option(
+    "--live-status",
+    is_flag=True,
+    help="Tell the viewer to poll endpoints.status.json beside the map for endpoint "
+    "liveness. Something has to keep that file current: `watch live`.",
+)
+@click.option(
+    "--home-url",
+    default=None,
+    help="Make the viewer's logo a link to this page, relative to the map (e.g. ../ for a "
+    "map published inside a larger site).",
+)
 def watch_export(
     catalog_path: Path | None,
     experiment: str | None,
@@ -705,6 +718,8 @@ def watch_export(
     federation_path: str | None,
     out_dir: Path,
     title: str,
+    live_status: bool,
+    home_url: str | None,
 ) -> None:
     """Write a static copy of the network map that anyone can host.
 
@@ -718,6 +733,7 @@ def watch_export(
     accounts, cluster paths, your Globus identity and (unless you pass
     --include-endpoint-uuids) full endpoint UUIDs are not.
     """
+    from appfl_bio_suite.core.live_status import STATUS_FILENAME
     from appfl_bio_suite.core.watch import WatchError, export_site, unplaced_report
 
     fed = _load(federation_path)
@@ -730,6 +746,8 @@ def watch_export(
             experiment=experiment,
             statuses=_statuses(fed, experiment, probe),
             include_endpoint_uuids=include_endpoint_uuids,
+            live_status=STATUS_FILENAME if live_status else None,
+            home_url=home_url,
         )
     except WatchError as exc:
         raise click.ClickException(str(exc)) from exc
@@ -745,6 +763,187 @@ def watch_export(
     if report:
         click.echo("")
         click.echo(report)
+
+
+def _pairs(values: tuple[str, ...], option: str, shape: str) -> list[tuple[str, str]]:
+    out = []
+    for pair in values:
+        left, sep, right = pair.partition("=")
+        if not (left and sep and right):
+            raise click.UsageError(f"{option} takes {shape}, not {pair!r}")
+        out.append((left.strip(), right.strip()))
+    return out
+
+
+@watch.command("targets")
+@click.option("--federation", "federation_path", default=None, help=_FEDERATION_HELP)
+@click.option(
+    "--rename",
+    multiple=True,
+    metavar="LOCAL=PUBLIC",
+    help="A site whose id on the published map differs from its id in this federation. Repeatable.",
+)
+@click.option(
+    "--endpoint",
+    "extra",
+    multiple=True,
+    metavar="SITE=UUID",
+    help="Also probe this endpoint for this (published) site id -- one the federation file "
+    "does not name, such as one recorded only at registration. Repeatable.",
+)
+@click.option(
+    "--skip",
+    multiple=True,
+    metavar="SITE",
+    help="Leave this (published) site out -- one whose endpoint the prober cannot be "
+    "given an identity for, such as a coordinator endpoint owned by a personal login. "
+    "Repeatable.",
+)
+@click.option(
+    "--site-credentials",
+    type=click.Path(path_type=Path, exists=True, dir_okay=False),
+    default=None,
+    help="A coordinator credential manifest. Each probed endpoint it routes to a service "
+    "account is asked about as that account: its client id and the NAME of the variable "
+    "holding the secret are copied; the secret is not.",
+)
+@click.option(
+    "--out",
+    "out_path",
+    type=click.Path(path_type=Path, dir_okay=False),
+    required=True,
+    help="Where to write the probe list. Keep it under local/: it holds real endpoint UUIDs.",
+)
+def watch_targets(
+    federation_path: str | None,
+    rename: tuple[str, ...],
+    extra: tuple[str, ...],
+    skip: tuple[str, ...],
+    site_credentials: Path | None,
+    out_path: Path,
+) -> None:
+    """Write the probe list `watch live` reads, from your real federation.yaml.
+
+    The list is site id -> endpoint UUIDs, plus an optional credential route per
+    endpoint, and nothing else -- so the host that keeps a public map live never needs
+    the federation config itself. Read it before using it: the ids must be the ones the
+    published map draws.
+
+    \b
+    A single-user endpoint owned by a site's service account reports its status only to
+    that account. Without a route it is published as `unknown`.
+    """
+    import json
+    import re
+
+    from appfl_bio_suite.core.live_status import is_placeholder, targets_from_federation
+
+    renames = dict(_pairs(rename, "--rename", "LOCAL=PUBLIC"))
+    targets, notes = targets_from_federation(_load(federation_path), renames)
+    for site_id, uuid in _pairs(extra, "--endpoint", "SITE=UUID"):
+        uuid = uuid.lower()
+        if not re.fullmatch(r"[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}", uuid):
+            raise click.UsageError(f"--endpoint {site_id}=...: not an endpoint UUID: {uuid!r}")
+        if is_placeholder(uuid):
+            raise click.UsageError(f"--endpoint {site_id}=...: {uuid} is a placeholder")
+        uuids = targets.setdefault(site_id, [])
+        if uuid not in uuids:
+            uuids.append(uuid)
+    for site_id in skip:
+        if targets.pop(site_id, None) is None:
+            raise click.UsageError(f"--skip {site_id}: no such site in the probe list")
+        notes.append(f"{site_id}: left out (--skip)")
+    if not targets:
+        raise click.ClickException("no site has a real endpoint to probe")
+
+    routes = {}
+    if site_credentials is not None:
+        try:
+            manifest = json.loads(site_credentials.read_text(encoding="utf-8"))["endpoints"]
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise click.ClickException(f"cannot read {site_credentials}: {exc}") from exc
+        probed = {uuid for uuids in targets.values() for uuid in uuids}
+        for uuid, entry in manifest.items():
+            if uuid.lower() in probed and isinstance(entry, dict) and entry.get("client_id"):
+                routes[uuid.lower()] = {
+                    "client_id": entry["client_id"],
+                    "client_secret_env": entry["client_secret_env"],
+                }
+
+    document = {"sites": targets, **({"routes": routes} if routes else {})}
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    out_path.chmod(0o600)
+
+    click.echo(f"probe targets: {out_path}")
+    for site_id, uuids in targets.items():
+        asked = {routes[u]["client_secret_env"] for u in uuids if u in routes}
+        how = f"  as the account in ${', $'.join(sorted(asked))}" if asked else ""
+        click.echo(f"  {site_id:16} {len(uuids)} endpoint(s){how}")
+    for note in notes:
+        click.echo(f"  skipped  {note}")
+
+
+@watch.command("live")
+@click.option(
+    "--targets",
+    "targets_path",
+    type=click.Path(path_type=Path, exists=True, dir_okay=False),
+    required=True,
+    help="The probe list: site id -> endpoint UUIDs. Write one with `watch targets`.",
+)
+@click.option(
+    "--out",
+    "out_path",
+    type=click.Path(path_type=Path),
+    required=True,
+    help="The exported map's directory, or the status file itself.",
+)
+@click.option("--interval", default=60.0, show_default=True, help="Seconds between probes.")
+@click.option("--once", is_flag=True, help="Probe once and exit.")
+def watch_live(targets_path: Path, out_path: Path, interval: float, once: bool) -> None:
+    """Keep an exported map's endpoint status current. Runs until stopped.
+
+    Asks Globus Compute whether each endpoint's daemon is connected and rewrites
+    endpoints.status.json beside the map; a map exported with `--live-status` polls it.
+    One API call per endpoint per interval, as whatever Globus identity this process
+    has -- your login, or GLOBUS_COMPUTE_CLIENT_ID / GLOBUS_COMPUTE_CLIENT_SECRET for a
+    service account on an unattended host -- except where the probe list routes an
+    endpoint to a site's own service account. A site whose endpoint will not answer is
+    published as `unknown`, not as offline.
+
+    \b
+    This is the daemon's status, not `endpoint smoke`: an endpoint can be online and
+    still refuse or fail a task.
+    """
+    from appfl_bio_suite.core.live_status import (
+        STATUS_FILENAME,
+        LiveStatusError,
+        load_probe_list,
+        missing_secrets,
+        run,
+    )
+
+    if out_path.is_dir():
+        out_path = out_path / STATUS_FILENAME
+
+    def report(status: dict) -> None:
+        line = "  ".join(f"{name}={entry['state']}" for name, entry in status["sites"].items())
+        click.echo(f"{status['checked_at']}  {line}")
+
+    try:
+        targets, routes = load_probe_list(targets_path)
+        missing = missing_secrets(routes)
+        if missing:
+            raise click.ClickException(
+                "the probe list routes endpoints to service accounts whose secrets are not "
+                f"set: {', '.join(missing)}"
+            )
+        run(targets, out_path, routes=routes, interval=interval, once=once, report=report)
+    except LiveStatusError as exc:
+        raise click.ClickException(str(exc)) from exc
+    except KeyboardInterrupt:
+        pass
 
 
 # ---------------------------------------------------------------------------

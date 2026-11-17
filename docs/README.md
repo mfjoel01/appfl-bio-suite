@@ -31,6 +31,8 @@ Read in this order:
 5. [coordinator/network-map.md](coordinator/network-map.md) — the page everyone in the
    federation can open: every site on a map, what they hold, and live runs on top of it.
    Built on [hivewatch](https://github.com/APPFL/hivewatch).
+   [coordinator/live-map-aws.md](coordinator/live-map-aws.md) hosts it on AWS with live
+   endpoint status, from one command.
 6. [coordinator/ga4gh.md](coordinator/ga4gh.md) — the four GA4GH standards the
    fine-mapping experiment is assembled out of: who may use a site's data (DUO), which
    bytes it computed over (DRS), which tool version computed them (TRS), and how to

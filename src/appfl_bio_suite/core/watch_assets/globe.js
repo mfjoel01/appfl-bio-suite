@@ -321,7 +321,7 @@
       description.className = 'bio-globe-tip-detail';
       description.style.color = this.theme === 'light' ? '#496b78' : '#a8c0d0';
       description.textContent = target.server ? [item.city, item.country].filter(Boolean).join(', ') :
-        `${item.partnership_stage || item.status || 'Site'} · Select to inspect`;
+        `${item.live_summary || item.partnership_stage || item.status || 'Site'} · Select to inspect`;
       parts.push(title, description);
       this.tooltip.replaceChildren(...parts);
       const left = clamp(point[0] + 17, 8, Math.max(8, this.width - this.tooltip.offsetWidth - 12));
@@ -436,7 +436,7 @@
       const stage = String(item.partnership_stage || '').slice(0, 1);
       const stageColors = { '0': '#8d9eaa', '1': '#669fe0', '2': '#d89e42', '4': '#15b9a6', X: '#db717e' };
       const color = server ? '#8d9eaa'
-        : stageColors[stage] || (this.theme === 'light' && item.status === 'active' ? '#088981' : COLORS[item.status] || '#66ddd7');
+        : item.live_color || stageColors[stage] || (this.theme === 'light' && item.status === 'active' ? '#088981' : COLORS[item.status] || '#66ddd7');
       const coordinator = server || this._isCoordinator(item);
       const ring = coordinator ? GOLD[this.theme] : color;
       const hovered = this.hovered && this.hovered.server === server &&
