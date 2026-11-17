@@ -82,3 +82,15 @@ def test_the_root_is_the_map_and_old_anchors_redirect(built):
     assert '"quickstart": "docs/installation/"' in root
     assert '"experiments": "docs/experiments/"' in root
     assert "url=./" in (out / "network.html").read_text(encoding="utf-8")
+
+
+def test_a_section_with_no_page_stops_the_build(built, tmp_path):
+    module, _ = built
+    site = tmp_path / "website"
+    site.mkdir()
+    page = (SITE / "index.html").read_text(encoding="utf-8")
+    extra = '<section id="new-section"><div class="wrap">New</div></section>\n</main>'
+    (site / "index.html").write_text(page.replace("</main>", extra, 1), encoding="utf-8")
+    (site / "network.html").write_text((SITE / "network.html").read_text(encoding="utf-8"))
+    with pytest.raises(SystemExit, match="new-section"):
+        module.build(site, tmp_path / "out")

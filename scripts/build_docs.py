@@ -119,6 +119,15 @@ def assemble(head: str, header: str, body: str, footer: str) -> str:
 def build(site: Path, out: Path) -> list[Path]:
     written = []
     head, header, footer, sections = split((site / "index.html").read_text(encoding="utf-8"))
+    # A section added to website/index.html must be given a page here; dropping it from
+    # the live site without a word is the failure this refuses.
+    placed = {key for _, keys in PAGES.values() for key in keys}
+    unplaced = sorted(set(sections) - placed)
+    if unplaced:
+        raise SystemExit(
+            f"website/index.html has sections no docs page holds: {', '.join(unplaced)}. "
+            "Add each to PAGES in scripts/build_docs.py (its own page, or About's list)."
+        )
     owner = anchor_pages(sections)
 
     for slug, (title, keys) in PAGES.items():
