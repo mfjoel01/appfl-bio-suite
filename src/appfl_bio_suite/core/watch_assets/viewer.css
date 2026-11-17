@@ -49,8 +49,16 @@
 .bio-filter input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
 .bio-filter-count { margin-left: auto; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; background: var(--surface); min-width: 23px; text-align: center; padding: 3px 5px; border-radius: 4px; }
 #bio-sites-pane { display: flex; flex-direction: column; min-height: 0; }
-.bio-sites-heading { display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); font-size: 12px; font-weight: 600; padding: 18px 22px 12px; border-top: 1px solid var(--border); }
+.bio-sites-heading { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 12px; font-weight: 600; padding: 18px 22px 12px; border-top: 1px solid var(--border); }
 #bio-site-count { color: var(--accent); font-size: 11px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.bio-sites-tools { display: flex; align-items: center; gap: 10px; }
+/* Name | Status: a two-position switch whose highlight slides to the chosen side. */
+.bio-sort { position: relative; display: inline-grid; grid-template-columns: 1fr 1fr; padding: 2px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
+.bio-sort::before { content: ''; position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 2px); border-radius: 999px; background: color-mix(in srgb, var(--accent) 20%, transparent); transition: transform .18s ease; }
+.bio-sort[data-sort="status"]::before { transform: translateX(100%); }
+.bio-viewer .bio-sort button { position: relative; z-index: 1; margin: 0; padding: 2px 8px; border: 0; border-radius: 999px; background: none; color: var(--muted); font: inherit; font-size: 9px; font-weight: 500; letter-spacing: .3px; cursor: pointer; }
+.bio-viewer .bio-sort button[aria-checked="true"] { color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .bio-sort::before { transition: none; } }
 #bio-filter-note { color: var(--muted); padding: 0 22px 12px; font-size: 10px; line-height: 1.5; }
 #bio-filter-note:empty { display: none; }
 .bio-viewer .client-list { padding: 2px 16px 20px; }

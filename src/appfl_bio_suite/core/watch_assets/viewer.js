@@ -152,7 +152,11 @@
     <section id="bio-experiments-panel" role="tabpanel" aria-labelledby="bio-experiments-tab">
       <fieldset id="bio-filters"><legend class="bio-sr-only">Filter sites by experiment</legend></fieldset>
       <div id="bio-sites-pane">
-        <div class="bio-sites-heading"><span>Participating Sites</span><span id="bio-site-count">0</span></div>
+        <div class="bio-sites-heading"><span>Participating Sites</span><span class="bio-sites-tools">
+          <span id="bio-sort" class="bio-sort" role="radiogroup" aria-label="Sort sites" data-sort="status">
+            <button type="button" role="radio" data-sort="name" aria-checked="false" tabindex="-1">Name</button>
+            <button type="button" role="radio" data-sort="status" aria-checked="true">Status</button></span>
+          <span id="bio-site-count">0</span></span></div>
         <p id="bio-filter-note" role="status"></p>
       </div>
     </section>
@@ -213,6 +217,44 @@
       map.setView([centreLat(view.lat), view.lng], mercatorZoom(view.radius, view.lat), { animate: false });
     } else if (fitPending) fitNetwork();
   }
+  // The site list sorts by name, or by status: endpoints answering now first, then how far
+  // along each partnership is (Experiment Ready down to Not Started, Stalled last). The
+  // coordinator stays at the top either way. Only the list moves; the map is unaffected.
+  const sortKey = 'appfl-bio-suite:site-sort';
+  const sortSwitch = $('bio-sort');
+  const siteName = (id, c) => String(c.institution || id);
+  const stageRank = c => { const s = String(c.partnership_stage || '').slice(0, 1);
+    return s === 'X' ? -1 : /\d/.test(s) ? Number(s) : -0.5; };
+  const liveRank = id => ({ online: 0, degraded: 1 })[liveKnown(id)?.state] ?? 2;
+  function sortSites(entries) {
+    const byName = (a, b) => siteName(...a).localeCompare(siteName(...b), undefined, { sensitivity: 'base' });
+    const byStatus = (a, b) => liveRank(a[0]) - liveRank(b[0]) || stageRank(b[1]) - stageRank(a[1]) || byName(a, b);
+    return [...entries].sort((a, b) => (isCoordinator(b[0]) - isCoordinator(a[0]))
+      || (ui.sort === 'name' ? byName(a, b) : byStatus(a, b)));
+  }
+  function setSort(mode, remember = true) {
+    ui.sort = mode === 'name' ? 'name' : 'status';
+    sortSwitch.dataset.sort = ui.sort;
+    for (const button of sortSwitch.querySelectorAll('button')) {
+      const on = button.dataset.sort === ui.sort;
+      button.setAttribute('aria-checked', String(on));
+      button.tabIndex = on ? 0 : -1;
+    }
+    try { if (remember) localStorage.setItem(sortKey, ui.sort); } catch (e) {}
+  }
+  try { setSort(localStorage.getItem(sortKey) || 'status', false); } catch (e) { setSort('status', false); }
+  sortSwitch.addEventListener('click', event => {
+    const button = event.target.closest('button');
+    if (!button || button.dataset.sort === ui.sort) return;
+    setSort(button.dataset.sort); renderSidebar();
+  });
+  sortSwitch.addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    event.preventDefault();
+    setSort(ui.sort === 'name' ? 'status' : 'name'); renderSidebar();
+    sortSwitch.querySelector('[aria-checked="true"]').focus();
+  });
+
   // The sidebar's width is the reader's to set: drag its edge, or focus the edge and use the
   // arrow keys. Double-click returns it to the layout's own width. Remembered per browser,
   // as a convenience only -- a viewer without storage just starts at the default.
@@ -423,7 +465,7 @@
     $('bio-filter-note').textContent = unplaced
       ? `${unplaced} ${unplaced === 1 ? 'site' : 'sites'} not on the map` : '';
     const focused = document.activeElement?.dataset.site;
-    clientList.innerHTML = entries.map(([id, c]) => cardHtml(id, c)).join('')
+    clientList.innerHTML = sortSites(entries).map(([id, c]) => cardHtml(id, c)).join('')
       || `<div class="bio-empty"><span>◎</span><h3>${ui.loading ? 'Loading the network…' : 'No sites to show'}</h3>
         <p>${esc(ui.error || (total ? 'Choose All experiments or another experiment.' : 'Build a network map or select a run.'))}</p></div>`;
     if (focused) [...clientList.querySelectorAll('[data-site]')].find(b => b.dataset.site === focused)?.focus();
