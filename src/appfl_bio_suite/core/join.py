@@ -103,17 +103,21 @@ def single_user_handoff(state, bundle_path, spec):
         f"Prepared. Endpoint mode: single-user; worker account: {spec.service_account}. "
         "No root and no identity mapping."
     )
+    credentials = api.credentials_hint(spec)
     click.echo(
-        "Put the site's Globus service-account client ID and secret in a file readable only "
-        f"by {spec.service_account}, as two lines:\n"
-        "  GLOBUS_COMPUTE_CLIENT_ID=<client UUID>\n"
-        "  GLOBUS_COMPUTE_CLIENT_SECRET=<secret>"
+        "Put the site's Globus service-account client in a file readable only by "
+        f"{spec.service_account} (chmod 600), for example {credentials}, as two lines with "
+        "the bare values after each =:\n"
+        "  GLOBUS_COMPUTE_CLIENT_ID=     the Client UUID (not the project UUID or a secret's ID)\n"
+        "  GLOBUS_COMPUTE_CLIENT_SECRET= the secret value, shown once when it was generated"
     )
     click.echo(
         f"Stage the data, then as {spec.service_account} activate (prints the endpoint UUID):"
     )
+    # Not shell-quoted: the ~ must still expand.
     click.echo(
-        command_line(executable, "site", "activate", "--state", state, "--credentials-file", "FILE")
+        command_line(executable, "site", "activate", "--state", state)
+        + f" --credentials-file {credentials}"
     )
     click.echo("Then finish registration:")
     click.echo(

@@ -83,7 +83,10 @@ def setup(bundle, local, state, python, install_source):
             f"Stage the data, then as {spec.service_account} with the site's service-account "
             "credentials in a 0600 file, run:"
         )
-        click.echo(f"  appfl-bio-suite site activate --state {destination} --credentials-file FILE")
+        click.echo(
+            f"  appfl-bio-suite site activate --state {destination} "
+            f"--credentials-file {api.credentials_hint(spec)}"
+        )
         return
     click.echo(f"Administrator: create/authorize POSIX account {spec.service_account}, then run:")
     click.echo(f"  appfl-bio-suite site activate --state {destination}")
@@ -94,10 +97,12 @@ def single_user_activated(state: Path, activated: dict) -> None:
     click.echo(f"Endpoint UUID: {activated['endpoint_id']}")
     if activated["unit"] is not None:
         unit = activated["unit"]
+        command = state / "runtime/bin/globus-compute-endpoint"
         click.echo(
-            "To keep it running across logouts and reboots, stop the detached copy and hand "
-            f"it to systemd (as root):\n"
-            f"  {state / 'runtime/bin/globus-compute-endpoint'} stop {unit.stem}\n"
+            "To keep it running across logouts and reboots, hand it to systemd. First stop "
+            "the detached copy, as this same account (not root):\n"
+            f"  PATH={state / 'runtime/bin'}:$PATH {command} stop {unit.stem}\n"
+            "Then, as root:\n"
             f"  install -m 644 {unit} /etc/systemd/system/{unit.name}\n"
             f"  systemctl daemon-reload && systemctl enable --now {unit.name}"
         )
@@ -150,6 +155,21 @@ def verify(state, endpoint_id, runtime_only):
     if endpoint_id:
         click.echo(f"Send {state.resolve() / 'registration.json'} to the coordinator.")
         click.echo("Remote worker verification is still required before this site is ready.")
+
+
+@site.command("check-data")
+@click.argument("bundle", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--data-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help="Where the data actually is, if not the directory the bundle suggests.",
+)
+@errors
+def check_data(bundle, data_dir):
+    """Load the staged data exactly as the experiment task will, as this account."""
+    spec = api.read_bundle(bundle)
+    for line in api.check_data(spec, data_dir):
+        click.echo(line)
 
 
 @click.group()

@@ -29,6 +29,8 @@ from appfl_bio_suite.core.site_credentials import SiteCredential, load_site_cred
 SERVICE = "fedlearn_svc"
 CLIENT = "30000000-0000-0000-0000-000000000003"
 ENDPOINT = "40000000-0000-0000-0000-000000000004"
+# The real check; the `prepared` fixture replaces it so no test reaches Globus Auth.
+CHECK_CLIENT_CREDENTIALS = api.check_client_credentials
 
 
 def _federation(tmp_path, *, scheduler="local", mode="single-user"):
@@ -120,6 +122,10 @@ def test_single_user_local_bundle_declares_both(fed, su_dir, su_bundle):
     assert "LocalProvider" in template and "REPLACE_WITH" not in template
     guide = (su_dir / "0-onboarding.md").read_text()
     assert "single-user" in guide and "--credentials-file" in guide
+    # Commands name the file the coordinator actually sends, and show no <...> values.
+    assert "join gwas_Site2.zip" in guide and "site.zip" not in guide
+    assert "GLOBUS_COMPUTE_CLIENT_ID=<" not in guide and "Client UUID" in guide
+    assert "site check-data /path/to/gwas_Site2.zip" in (su_dir / "2-gwas.md").read_text()
     assert "As root, using the prepared runtime" not in guide
     assert "does not apply to you" in (su_dir / "1-endpoint-setup.md").read_text()
 
@@ -192,6 +198,8 @@ def test_join_local_prompts_only_for_paths(su_dir, tmp_path, monkeypatch):
     assert calls[0].account is None and calls[0].data_dir == data
     assert "Endpoint mode: single-user; scheduler: local" in result.output
     assert "--credentials-file" in result.output and "Administrator" not in result.output
+    assert "--credentials-file ~/.config/" in result.output and "Client UUID" in result.output
+    assert "=<" not in result.output
 
 
 # -- setup and activation ----------------------------------------------------
@@ -236,6 +244,10 @@ def prepared(su_bundle, su_site, tmp_path, monkeypatch):
         pwd, "getpwuid", lambda uid: SimpleNamespace(pw_name=su_bundle.service_account)
     )
     monkeypatch.setattr(api, "verify_site", lambda state, endpoint_id=None: {})
+    # Globus Auth and the endpoint daemon are outside the boundary these tests replace.
+    monkeypatch.setattr(api, "check_client_credentials", lambda client_id, secret: None)
+    monkeypatch.setattr(api, "endpoint_alive", lambda endpoint: True)
+    monkeypatch.setattr(api, "SETTLE_SECONDS", 0)
     return state, home
 
 
@@ -277,11 +289,16 @@ def test_single_user_activation_starts_endpoint_as_service_account(
     assert start[1:] == ["start", "--detach", su_bundle.endpoint_name]
     assert start_env["GLOBUS_COMPUTE_CLIENT_ID"] == CLIENT
     assert start_env["GLOBUS_COMPUTE_CLIENT_SECRET"] == "s3cr3t"  # quotes stripped
+    # The endpoint launches its interchange by bare name, so the runtime leads PATH.
+    assert start_env["PATH"].startswith(f"{state / 'runtime/bin'}:")
     endpoint = home / ".globus_compute" / su_bundle.endpoint_name
     assert (endpoint / "config.yaml").read_text() == (state / "endpoint_config.yaml").read_text()
+    # Foreground under systemd; activation's own `start --detach` still detaches.
+    assert yaml.safe_load((endpoint / "config.yaml").read_text())["detach_endpoint"] is False
     unit = activated["unit"].read_text()
     assert f"User={su_bundle.service_account}" in unit
     assert f"EnvironmentFile={tmp_path / 'creds.env'}" in unit
+    assert f"Environment=PATH={state / 'runtime/bin'}:" in unit
     assert "s3cr3t" not in unit and "--detach" not in unit
     # A second activation restarts the endpoint it manages instead of refusing it.
     calls.clear()
@@ -297,6 +314,8 @@ def test_single_user_activation_starts_endpoint_as_service_account(
         ("no_credentials", "personal Globus login"),
         ("group_readable", "readable only by its owner"),
         ("bad_key", "only GLOBUS_COMPUTE_CLIENT_ID"),
+        ("placeholder", "placeholder brackets"),
+        ("mismatched", "do not belong together"),
         ("unmanaged", "unmanaged endpoint"),
     ],
 )
@@ -318,12 +337,98 @@ def test_single_user_activation_refuses(
         credentials = _credentials(tmp_path, mode=0o640)
     elif change == "bad_key":
         credentials = _credentials(tmp_path, text="AWS_SECRET=hunter2\n")
+    elif change == "placeholder":
+        # Copied from a guide that showed the values as <...>.
+        credentials = _credentials(
+            tmp_path,
+            text=f"GLOBUS_COMPUTE_CLIENT_ID={CLIENT}\nGLOBUS_COMPUTE_CLIENT_SECRET=<s3cr3t>\n",
+        )
+    elif change == "mismatched":
+        import globus_sdk
+
+        class Rejected(globus_sdk.AuthAPIError):
+            def __init__(self):
+                self.http_status = 401
+
+        class Auth:
+            def __init__(self, client_id, secret):
+                assert (client_id, secret) == (CLIENT, "s3cr3t")
+
+            def oauth2_client_credentials_tokens(self, requested_scopes):
+                raise Rejected()
+
+        monkeypatch.setattr(api, "check_client_credentials", CHECK_CLIENT_CREDENTIALS)
+        monkeypatch.setattr(globus_sdk, "ConfidentialAppAuthClient", Auth)
     elif change == "unmanaged":
         (home / ".globus_compute" / su_bundle.endpoint_name).mkdir(parents=True)
     with pytest.raises(ValueError, match=message) as caught:
         api.activate_single_user(state, credentials, wait=1)
     assert "hunter2" not in str(caught.value) and "s3cr3t" not in str(caught.value)
     assert calls == []
+
+
+def test_activation_reports_an_endpoint_that_registers_then_dies(
+    su_bundle, prepared, tmp_path, monkeypatch
+):
+    # The UUID is written at registration, before the engine starts: an endpoint whose
+    # engine cannot start leaves endpoint.json behind and no process.
+    state, home = prepared
+    _fake_endpoint(monkeypatch, home, su_bundle.endpoint_name)
+    monkeypatch.setattr(api, "endpoint_alive", lambda endpoint: False)
+    with pytest.raises(RuntimeError, match="registered and then stopped"):
+        api.activate_single_user(state, _credentials(tmp_path), wait=1)
+    # No unit is offered for an endpoint that does not stay up.
+    assert not (state / f"{su_bundle.endpoint_name}.service").exists()
+
+
+def test_endpoint_alive_reads_the_pidfile(tmp_path):
+    assert not api.endpoint_alive(tmp_path)
+    (tmp_path / "daemon.pid").write_text(f"{os.getpid()}\n")
+    assert api.endpoint_alive(tmp_path)
+    (tmp_path / "daemon.pid").write_text("not-a-pid")
+    assert not api.endpoint_alive(tmp_path)
+
+
+def test_setup_names_the_remedy_for_a_python_without_venv(
+    su_bundle, su_site, tmp_path, monkeypatch
+):
+    # Ubuntu 24.04: python3.12 is present, python3.12-venv is not.
+    calls = _fake_install(monkeypatch, su_bundle)
+    monkeypatch.setattr(api.subprocess, "run", lambda args, **kwargs: SimpleNamespace(returncode=1))
+    with pytest.raises(ValueError, match="python3.12-venv.*uv python install 3.12"):
+        api.setup_site(su_bundle, su_site, tmp_path / "state")
+    assert not any("venv" in call for call in calls)
+
+
+def test_check_data_passes_the_tasks_own_arguments(su_bundle, tmp_path, monkeypatch):
+    import importlib
+
+    seen = {}
+
+    class Dataset(list):
+        composition = {"EUR": 2}
+
+    def get_dataset(**kwargs):
+        seen.update(kwargs)
+        return Dataset([1, 2]), None
+
+    real = importlib.import_module
+    monkeypatch.setattr(
+        importlib,
+        "import_module",
+        lambda name, *a: (
+            SimpleNamespace(get_dataset=get_dataset)
+            if name == "appfl_bio_suite.experiments.gwas.dataset"
+            else real(name, *a)
+        ),
+    )
+    lines = api.check_data(su_bundle, tmp_path)
+    assert lines[0] == "OK, samples: 2" and "EUR" in lines[1]
+    # Everything the task passes, not only a directory, and the directory actually used.
+    expected = dict(su_bundle.client_config["data_configs"]["dataset_kwargs"])
+    assert set(seen) == set(expected) and seen["data_dir"] == str(tmp_path.resolve())
+    result = CliRunner().invoke(main, ["site", "check-data", "--help"])
+    assert result.exit_code == 0 and "as the experiment task will" in result.output
 
 
 def test_multi_user_activation_refuses_single_user_bundle(prepared):
@@ -350,6 +455,10 @@ def test_activate_cli_prints_uuid_and_systemd_steps(su_bundle, prepared, tmp_pat
     assert result.exit_code == 0, result.output
     assert f"Endpoint UUID: {ENDPOINT}" in result.output
     assert "systemctl daemon-reload" in result.output and "s3cr3t" not in result.output
+    # The detached copy belongs to the service account: root cannot stop it.
+    stop, root_steps = result.output.split("Then, as root:")
+    assert "as this same account (not root)" in stop and " stop " in stop
+    assert " stop " not in root_steps and "install -m 644" in root_steps
 
 
 # -- registration ------------------------------------------------------------

@@ -73,6 +73,14 @@ dill==0.3.9
 # tools in a throwaway venv, never into the environment that runs the endpoint.
 click==8.1.8
 
+# texttable is pinned because globus-compute-endpoint 4.9.0 declares texttable>=1.6.4,<2
+# but reaches into a private attribute: `globus-compute-endpoint list` calls
+# table._compute_cols_width() and then reads table._width. texttable 1.7.1 sets that
+# attribute; from 1.7.2 the method returns the widths instead, and `list` -- the command
+# every guide uses to read an endpoint's status -- dies with
+# "AttributeError: 'Texttable' object has no attribute '_width'".
+texttable==1.7.1
+
 # ---------------------------------------------------------------------------
 # APPFL
 # ---------------------------------------------------------------------------
@@ -93,6 +101,13 @@ appfl==1.10.0
 # is aggressive, and a partner whose torch differs is a partner whose weights may not
 # round-trip.
 torch==2.8.0
+# Transitive (through appfl), and not involved in serialization. Pinned only because pip
+# otherwise backtracks through many releases of each on every install ("pip is looking at
+# multiple versions of ..."), which is minutes on a slow link. These are what the
+# resolver settles on for the pins above; torchvision 0.23.0 is torch 2.8.0's pair.
+torchvision==0.23.0
+wandb==0.26.1
+contourpy==1.3.3
 # numpy is pinned BY appfl 1.10.0, which requires exactly 1.26.4. Raising it here makes
 # the pinned set unresolvable -- pip cannot satisfy appfl's ==1.26.4 and ours at once,
 # and `pip install -e '.[all,dev]' -c constraints.txt` fails outright. Bump this only

@@ -1,3 +1,38 @@
+# Unreleased
+
+Fixes from the first live single-user site, a cloud VM running Ubuntu 24.04. Each of
+these stopped or misled the onboarding as written in 0.3.2.
+
+- **Activation no longer reports a dead endpoint as started.** Globus Compute launches
+  its interchange as bare `globus-compute-endpoint`, so an endpoint started by absolute
+  path, without the runtime on `PATH`, registered and then died. `site activate` printed
+  its UUID anyway. Activation now puts the runtime first on `PATH`, waits to see the
+  endpoint stay up, and fails with the log's location if it does not.
+- **The generated systemd unit keeps the endpoint running.** It sets `PATH`, and the
+  single-user configuration now sets `detach_endpoint: false`. Before, the endpoint
+  daemonized under `Type=simple`, systemd saw a clean exit, and the service went
+  inactive with nothing to restart. **Re-run `site activate` and reinstall the unit on a
+  0.3.2 single-user site.**
+- The printed systemd hand-off stops the background copy as the service account, not
+  as root, which could not see the endpoint.
+- **Credentials are checked before anything is configured.** Activation asks Globus
+  Auth whether the client ID and secret belong together and says which field is the
+  client ID (the Client UUID, not the project UUID or a secret's ID). A value still
+  wrapped in the guide's `<...>` is refused by name. The guide shows bare values, and
+  `join` names the credentials file it expects.
+- **`appfl-bio-suite site check-data BUNDLE`** loads the staged data with the task's own
+  arguments. The command the GWAS and fine-mapping guides printed passed only a
+  directory, so a cohort that declares data-use terms was refused as if the data were
+  wrong.
+- `site setup` and `join` name the remedy when `python3.12` cannot create an environment
+  (Ubuntu 24.04 without `python3.12-venv`), and the guide checks for it first.
+- **`texttable` is pinned to 1.7.1.** `globus-compute-endpoint list` crashes with any
+  later release. `torchvision`, `wandb` and `contourpy` are pinned so pip stops
+  backtracking through them on every install.
+- The partner guide's commands use the bundle's real filename, the fine-mapping guide
+  covers a `.zip` delivery and states the space needed, and a link to a guide that is
+  not in the bundle is gone.
+
 # appfl-bio-suite 0.3.2
 
 Cross-site fine-mapping over Globus Compute, and onboarding for sites with no root and
