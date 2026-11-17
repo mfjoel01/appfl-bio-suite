@@ -9,7 +9,9 @@ PLINK1 binary fileset (``{bed,bim,fam}``) ready for FedFM site bundles.
 from __future__ import annotations
 
 import gzip
+import hashlib
 import io
+import json
 import os
 import struct
 import subprocess
@@ -294,6 +296,7 @@ def ensure_vcf_header(chrom: int | str, cache_dir: Path, base_url: str = NYGC_BA
     chunk = 262_144
     carry = b""
     done = False
+    line_carry = b""
     while not done and offset < 4_000_000:
         raw = carry + http_get_bytes(url, offset, offset + chunk - 1)
         consumed_end = 0
@@ -306,7 +309,11 @@ def ensure_vcf_header(chrom: int | str, cache_dir: Path, base_url: str = NYGC_BA
                     consumed_end = rel_off + bsize + 1
                     break
                 sub += 4 + int.from_bytes(raw[sub + 2 : sub + 4], "little")
-            for line in payload.decode("utf-8", errors="replace").splitlines(keepends=True):
+            # BGZF block boundaries may fall anywhere within a VCF header line.
+            complete_lines = (line_carry + payload).split(b"\n")
+            line_carry = complete_lines.pop()
+            for raw_line in complete_lines:
+                line = raw_line.decode("utf-8") + "\n"
                 if line.startswith("#"):
                     lines.append(line)
                     if line.startswith("#CHROM\t"):
@@ -406,11 +413,26 @@ def extract_locus_plink(
 ) -> Path:
     """Materialize a clean biallelic PLINK1 fileset for a MAGE cis window."""
     out_prefix = Path(out_prefix)
+    cache_key = {
+        "chrom": normalize_chrom(chrom),
+        "start_bp": start_bp,
+        "end_bp": end_bp,
+        "samples_sha256": hashlib.sha256(Path(keep_samples_file).read_bytes()).hexdigest(),
+        "maf": maf,
+        "snps_only": snps_only,
+        "rm_dup_mode": rm_dup_mode,
+        "base_url": base_url,
+        "plink2_bin": str(plink2_bin),
+    }
+    fingerprint = json.dumps(cache_key, sort_keys=True)
+    stamp = Path(f"{out_prefix}.extraction.json")
     bed = Path(f"{out_prefix}.bed")
     bim = Path(f"{out_prefix}.bim")
     fam = Path(f"{out_prefix}.fam")
     if (
         not overwrite
+        and stamp.is_file()
+        and stamp.read_text() == fingerprint
         and bed.is_file()
         and bim.is_file()
         and fam.is_file()
@@ -419,6 +441,7 @@ def extract_locus_plink(
         return out_prefix
 
     out_prefix.parent.mkdir(parents=True, exist_ok=True)
+    stamp.unlink(missing_ok=True)
     c = normalize_chrom(chrom)
     vcf_gz = Path(cache_dir) / "vcf" / f"chr{c}_{start_bp}_{end_bp}.vcf.gz"
     extract_vcf_window(c, start_bp, end_bp, vcf_gz, cache_dir=cache_dir, base_url=base_url)
@@ -463,4 +486,5 @@ def extract_locus_plink(
         )
     if not bed.is_file() or not bim.is_file() or not fam.is_file():
         raise RuntimeError(f"Expected PLINK1 output at {out_prefix}.{{bed,bim,fam}}")
+    stamp.write_text(fingerprint)
     return out_prefix

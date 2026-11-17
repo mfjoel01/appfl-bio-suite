@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import concurrent.futures
 import gzip
+import hashlib
+import inspect
 import json
 import logging
 import multiprocessing
@@ -11,6 +13,7 @@ import shutil
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict
+from functools import wraps
 from pathlib import Path
 
 import numpy as np
@@ -117,10 +120,13 @@ def _arm_complete(out_dir: Path, expected_loci: Sequence[str]) -> bool:
     if not res_path.is_file():
         return False
     df = pd.read_csv(res_path, sep="\t")
-    if len(df) < len(expected_loci):
+    if "locus_id" not in df or sorted(df["locus_id"]) != sorted(expected_loci):
         return False
     for lid in expected_loci:
-        if not list((out_dir / "data" / "instances").glob(f"{lid}_*/variants.tsv")):
+        instances = list((out_dir / "data" / "instances").glob(f"{lid}_*/variants.tsv"))
+        if len(instances) != 1 or any(
+            not (instances[0].parent / name).is_file() for name in ("credible_sets.tsv", "fit.json")
+        ):
             return False
     return True
 
@@ -135,6 +141,50 @@ def _resolve_arm_pops_from_variants(
     return ordered
 
 
+def _validated_resume(func):
+    """Reuse arm outputs only for the same inputs, inference options, and source code."""
+    signature = inspect.signature(func)
+
+    @wraps(func)
+    def wrapped(*args, **kwargs):
+        bound = signature.bind(*args, **kwargs)
+        bound.apply_defaults()
+        params = dict(bound.arguments)
+        out_dir = Path(params["out_dir"])
+        root = Path(params["federation_root"]).resolve()
+        if root.is_relative_to(out_dir.resolve()):
+            raise ValueError("Arm output directory must not contain the federation inputs")
+        for key in ("out_dir", "skip_existing", "overwrite", "n_workers"):
+            params.pop(key, None)
+        params["federation_root"] = str(root)
+        # Input metadata includes genotype files without rereading gigabytes on resume.
+        inputs = []
+        for path in sorted(root.rglob("*")):
+            if path.is_file():
+                stat = path.stat()
+                inputs.append((str(path.relative_to(root)), stat.st_size, stat.st_mtime_ns))
+        source = hashlib.sha256()
+        for path in sorted(Path(__file__).resolve().parents[1].rglob("*.py")):
+            source.update(path.read_bytes())
+        payload = json.dumps([params, inputs, source.hexdigest()], sort_keys=True, default=str)
+        fingerprint = hashlib.sha256(payload.encode()).hexdigest()
+        stamp = out_dir / "resume_fingerprint.txt"
+        matches = stamp.is_file() and stamp.read_text().strip() == fingerprint
+        if not matches or not bound.arguments["skip_existing"]:
+            bound.arguments["skip_existing"] = False
+            # Remove stale instances as well as summary rows (e.g. a reduced locus limit).
+            bound.arguments["overwrite"] = True
+        if stamp.exists():
+            stamp.unlink()
+        result = func(*bound.args, **bound.kwargs)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        stamp.write_text(fingerprint + "\n")
+        return result
+
+    return wrapped
+
+
+@_validated_resume
 def run_federated_arm(
     federation_root: Path,
     out_dir: Path,
@@ -175,7 +225,7 @@ def run_federated_arm(
             "resumed": True,
         }
 
-    if out_dir.exists() and overwrite:
+    if out_dir.exists():
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -575,6 +625,7 @@ def _run_centralized_locus(task: dict) -> dict:
     return row
 
 
+@_validated_resume
 def run_centralized_arm(
     federation_root: Path,
     out_dir: Path,
@@ -616,7 +667,7 @@ def run_centralized_arm(
             "resumed": True,
         }
 
-    if out_dir.exists() and overwrite:
+    if out_dir.exists():
         shutil.rmtree(out_dir)
     data_dir = out_dir / "data"
     art_root = out_dir / "artifacts"
@@ -732,6 +783,7 @@ def run_centralized_arm(
     }
 
 
+@_validated_resume
 def run_naive_site_standardized_arm(
     federation_root: Path,
     out_dir: Path,
@@ -767,7 +819,7 @@ def run_naive_site_standardized_arm(
             "resumed": True,
         }
 
-    if out_dir.exists() and overwrite:
+    if out_dir.exists():
         shutil.rmtree(out_dir)
     data_dir = out_dir / "data"
     art_root = out_dir / "artifacts"

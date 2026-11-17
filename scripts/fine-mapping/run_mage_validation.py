@@ -68,6 +68,19 @@ def _write_loopback_parity(loop_results: Path, fed_results: Path, out_path: Path
     common = sorted(set(lp.index) & set(fd.index))
     if not common:
         return None
+
+    def cs_memberships(results, lid):
+        paths = sorted((results.parent / "instances").glob(f"{lid}_*/credible_sets.tsv"))
+        if not paths:
+            return None
+        sets = []
+        for path in paths:
+            frame = pd.read_csv(path, sep="\t")
+            sets.extend(
+                tuple(sorted(g["snp_id"].astype(str))) for _, g in frame.groupby("component")
+            )
+        return sorted(sets)
+
     records = []
     max_top_pip_diff = 0.0
     for lid in common:
@@ -78,6 +91,8 @@ def _write_loopback_parity(loop_results: Path, fed_results: Path, out_path: Path
         diff = abs(pip_l - pip_f)
         if pd.notna(diff):
             max_top_pip_diff = max(max_top_pip_diff, diff)
+        cs_l = cs_memberships(loop_results, lid)
+        cs_f = cs_memberships(fed_results, lid)
         records.append(
             {
                 "locus_id": lid,
@@ -86,7 +101,7 @@ def _write_loopback_parity(loop_results: Path, fed_results: Path, out_path: Path
                 "loopback_top_pip": pip_l,
                 "federated_top_pip": pip_f,
                 "top_pip_abs_diff": diff,
-                "exact_cs_match": str(row_l["cs_sizes_json"]) == str(row_f["cs_sizes_json"]),
+                "exact_cs_match": cs_l is not None and cs_f is not None and cs_l == cs_f,
             }
         )
     summary = {

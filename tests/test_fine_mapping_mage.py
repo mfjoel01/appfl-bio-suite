@@ -650,3 +650,121 @@ def test_mage_federation_and_shipped_pipeline_round_trip(tmp_path, monkeypatch):
     assert len(figs) == 10
     for fig_path in figs:
         assert fig_path.is_file() and fig_path.stat().st_size > 1000
+
+
+def test_vcf_header_spanning_bgzf_blocks(tmp_path, monkeypatch):
+    header = (
+        b"##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER"
+        b"\tINFO\tFORMAT\tsample1\tsample2\n"
+    )
+    split = header.index(b"sample1") + 3
+    stream = _bgzf_block(header[:split]) + _bgzf_block(header[split:]) + _bgzf_block(b"")
+    monkeypatch.setattr(vcf_slice, "http_get_bytes", lambda *args: stream)
+    result = vcf_slice.ensure_vcf_header(4, tmp_path)
+    assert result.read_bytes() == header
+
+
+def test_loopback_parity_compares_members_not_sizes(tmp_path):
+    import importlib.util
+
+    script = Path(__file__).resolve().parents[1] / "scripts/fine-mapping/run_mage_validation.py"
+    spec = importlib.util.spec_from_file_location("mage_validation_cli", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    results = []
+    for arm, snp in (("loop", "rs1"), ("fed", "rs2")):
+        data = tmp_path / arm / "data"
+        inst = data / "instances" / "M00-gene_mage_eqtl_rep0"
+        inst.mkdir(parents=True)
+        result = data / "fed_fm_results.tsv"
+        pd.DataFrame([{"locus_id": "M00-gene", "cs_sizes_json": "[1]", "top_pip": 1.0}]).to_csv(
+            result, sep="\t", index=False
+        )
+        pd.DataFrame([{"component": 1, "snp_id": snp}]).to_csv(
+            inst / "credible_sets.tsv", sep="\t", index=False
+        )
+        results.append(result)
+    report = tmp_path / "parity.json"
+    assert not module._write_loopback_parity(*results, report)["all_exact_cs_match"]
+    cs_file = results[1].parent / "instances/M00-gene_mage_eqtl_rep0/credible_sets.tsv"
+    cs_file.write_text("component\tsnp_id\n1\trs1\n")
+    assert module._write_loopback_parity(*results, report)["all_exact_cs_match"]
+    cs_file.unlink()
+    assert not module._write_loopback_parity(*results, report)["all_exact_cs_match"]
+
+
+def test_arm_resume_invalidates_changed_options_inputs_and_loci(tmp_path):
+    root = tmp_path / "input"
+    root.mkdir()
+    data = root / "data.tsv"
+    data.write_text("original")
+    calls = []
+
+    @benchmark._validated_resume
+    def run(federation_root, out_dir, maf=0.005, skip_existing=True, overwrite=False):
+        calls.append((skip_existing, overwrite))
+        return {}
+
+    out = tmp_path / "output"
+    run(root, out)
+    assert calls[-1] == (False, True)
+    run(root, out)
+    assert calls[-1] == (True, False)
+    run(root, out, maf=0.01)
+    assert calls[-1] == (False, True)
+    data.write_text("changed input")
+    run(root, out, maf=0.01)
+    assert calls[-1] == (False, True)
+
+    (out / "data").mkdir()
+    pd.DataFrame({"locus_id": ["wrong"]}).to_csv(
+        out / "data/fed_fm_results.tsv", sep="\t", index=False
+    )
+    instance = out / "data/instances/expected_mage_rep0"
+    instance.mkdir(parents=True)
+    (instance / "variants.tsv").touch()
+    assert not benchmark._arm_complete(out, ["expected"])
+    pd.DataFrame({"locus_id": ["expected"]}).to_csv(
+        out / "data/fed_fm_results.tsv", sep="\t", index=False
+    )
+    assert not benchmark._arm_complete(out, ["expected"])
+    (instance / "credible_sets.tsv").touch()
+    (instance / "fit.json").write_text("{}")
+    assert benchmark._arm_complete(out, ["expected"])
+    with pytest.raises(ValueError, match="must not contain"):
+        run(root, tmp_path)
+    assert data.is_file()
+
+
+def test_plink_cache_invalidates_maf_and_sample_selection(tmp_path, monkeypatch):
+    keep = tmp_path / "samples.keep"
+    keep.write_text("0 sample1\n")
+    prefix = tmp_path / "geno"
+    calls = []
+    monkeypatch.setattr(vcf_slice, "extract_vcf_window", lambda *a, **kw: None)
+
+    def plink(cmd, **kwargs):
+        from types import SimpleNamespace
+
+        calls.append(cmd)
+        for ext in ("bed", "bim", "fam"):
+            Path(f"{prefix}.{ext}").write_bytes(b"fixture")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(vcf_slice.subprocess, "run", plink)
+    kwargs = dict(
+        chrom=4,
+        start_bp=100,
+        end_bp=200,
+        out_prefix=prefix,
+        keep_samples_file=keep,
+        cache_dir=tmp_path,
+    )
+    vcf_slice.extract_locus_plink(**kwargs)
+    vcf_slice.extract_locus_plink(**kwargs)
+    assert len(calls) == 1
+    vcf_slice.extract_locus_plink(**kwargs, maf=0.02)
+    assert len(calls) == 2
+    keep.write_text("0 sample2\n")
+    vcf_slice.extract_locus_plink(**kwargs, maf=0.02)
+    assert len(calls) == 3

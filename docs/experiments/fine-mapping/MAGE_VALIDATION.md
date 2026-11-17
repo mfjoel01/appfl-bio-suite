@@ -69,7 +69,7 @@ federated-versus-pooled agreement are unaffected.
 
 ```bash
 # 1. Stage MAGE files, slice 1000G NYGC 30x regions, build federations, verify loopback, run benchmark & figures
-PYTHONPATH=src python scripts/fine-mapping/run_mage_validation.py \
+PYTHONNOUSERSITE=1 PYTHONPATH=src python scripts/fine-mapping/run_mage_validation.py \
     --all --maf-analysis 0.005 --max-workers 16
 
 # 2. Run offline MAGE real-data regression & shipped-pipeline unit tests (no network needed)
@@ -77,3 +77,19 @@ pytest -v tests/test_fine_mapping_mage.py
 ```
 
 Publication figures (PDF + PNG) are written under `<out-root>/figures/` (`fig1_cohort_and_design` through `fig5_regional_locus_exemplars`), and machine-readable tables under `<out-root>/reports/`.
+
+Resume checks fingerprint inference options, the fine-mapping Python source, and input
+file sizes/modification times. PLINK extraction caches also record the sample selection
+and filtering options. Outputs predating these fingerprints are recomputed on their next
+run; changed settings or incomplete arms are recomputed instead of silently reused.
+Input fingerprints are cache invalidation metadata, not content-integrity checks; use
+`--overwrite` after externally replacing files while preserving their sizes and timestamps
+or changing inference backend installations.
+
+The clean rerun rebuilt both federations and recomputed all 15 arms (240 locus fits;
+no resumed arms) into `local/output/mage-validation`, replacing the obsolete outputs.
+It reproduced the corrected results above and regenerated all five PDF/PNG figure pairs.
+The APPFL serial loopback check on `M00-NPNT` matched credible-set membership exactly
+and had zero top-PIP difference. The isolated coordinator environment also passed the
+offline suite: 984 passed, 3 skipped, 6 deselected. The two multi-ancestry SuSiEx
+nonconvergences remain reported as such; MultiSuSiE converged at all 16 loci.
