@@ -196,6 +196,61 @@
       map.setView([centreLat(view.lat), view.lng], mercatorZoom(view.radius, view.lat), { animate: false });
     } else if (fitPending) fitNetwork();
   }
+  // The sidebar's width is the reader's to set: drag its edge, or focus the edge and use the
+  // arrow keys. Double-click returns it to the layout's own width. Remembered per browser,
+  // as a convenience only -- a viewer without storage just starts at the default.
+  const widthKey = 'appfl-bio-suite:sidebar-width';
+  const resizer = document.createElement('div');
+  Object.assign(resizer, { className: 'bio-sidebar-resizer', tabIndex: 0, title: 'Drag to resize' });
+  resizer.setAttribute('role', 'separator');
+  resizer.setAttribute('aria-orientation', 'vertical');
+  resizer.setAttribute('aria-label', 'Resize sidebar');
+  sidebar.after(resizer);
+  const widthLimits = () => [240, Math.max(260, Math.min(720, window.innerWidth * 0.6))];
+  let settleFrame = 0;
+  function setSidebarWidth(px, remember = true) {
+    if (px == null) {
+      sidebar.style.removeProperty('--bio-sidebar-w');
+      try { if (remember) localStorage.removeItem(widthKey); } catch (e) {}
+    } else {
+      const [low, high] = widthLimits();
+      px = Math.round(Math.min(high, Math.max(low, px)));
+      sidebar.style.setProperty('--bio-sidebar-w', `${px}px`);
+      try { if (remember) localStorage.setItem(widthKey, String(px)); } catch (e) {}
+    }
+    resizer.setAttribute('aria-valuenow', String(Math.round(sidebar.getBoundingClientRect().width)));
+    cancelAnimationFrame(settleFrame);
+    settleFrame = requestAnimationFrame(() => { if (ui.view === 'flat') settleMap(); });
+  }
+  try { const saved = Number(localStorage.getItem(widthKey)); if (saved) setSidebarWidth(saved, false); } catch (e) {}
+  resizer.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    resizer.setPointerCapture(event.pointerId);
+    const left = sidebar.getBoundingClientRect().left;
+    document.body.classList.add('bio-resizing');
+    const move = e => setSidebarWidth(e.clientX - left);
+    const end = () => {
+      document.body.classList.remove('bio-resizing');
+      resizer.removeEventListener('pointermove', move);
+      resizer.removeEventListener('pointerup', end);
+      resizer.removeEventListener('pointercancel', end);
+    };
+    resizer.addEventListener('pointermove', move);
+    resizer.addEventListener('pointerup', end);
+    resizer.addEventListener('pointercancel', end);
+  });
+  resizer.addEventListener('dblclick', () => setSidebarWidth(null));
+  resizer.addEventListener('keydown', event => {
+    const step = event.shiftKey ? 64 : 16;
+    const width = sidebar.getBoundingClientRect().width;
+    if (event.key === 'ArrowLeft') setSidebarWidth(width - step);
+    else if (event.key === 'ArrowRight') setSidebarWidth(width + step);
+    else if (event.key === 'Home') setSidebarWidth(null);
+    else return;
+    event.preventDefault();
+  });
+
   function setTab(tab) {
     ui.tab = tab;
     document.body.classList.toggle('bio-show-runs', tab === 'runs');
@@ -272,15 +327,16 @@
       <span class="bio-site-location">${esc([c.city, c.country].filter(Boolean).join(', ') || 'Location not declared')}</span>
       <span class="bio-tags">${memberships(c).map(e => `<span>${esc(label(e))}</span>`).join('')}</span>
       ${c.partnership_stage ? `<span class="bio-partner-stage" style="--stage-color:${color(c)}">${esc(c.partnership_stage)}</span>` : ''}
-      ${liveHtml(id)}<span class="bio-card-bottom"><span>${c.num_samples == null ? 'Samples not declared' : number(c.num_samples) + ' declared samples'}</span>
-        <span>${placed(c) ? '↗' : 'Unplaced'}</span></span></button>`;
+      ${liveHtml(id)}${c.num_samples == null && placed(c) ? '' : `<span class="bio-card-bottom">
+        <span>${c.num_samples == null ? '' : number(c.num_samples) + ' declared samples'}</span>
+        <span>${placed(c) ? '↗' : 'Unplaced'}</span></span>`}</button>`;
   }
   function detailsHtml(id, c) {
     const experimentRows = memberships(c).map(e => `<div class="bio-detail-row"><span>${esc(label(e))}</span>
       <strong>${esc(c[e] || 'Participating')}</strong></div>`).join('');
     return `${isCoordinator(id) ? coordinatorLabel : ''}<div class="popup-title">${esc(c.institution || id)}</div>
       <p class="bio-detail-location">${esc([c.city, c.country].filter(Boolean).join(', ') || 'Location not declared')}</p>
-      ${experimentRows}<div class="bio-detail-row"><span>Samples across experiments</span><strong>${c.num_samples == null ? 'Not declared' : number(c.num_samples)}</strong></div>
+      ${experimentRows}${c.num_samples == null ? '' : `<div class="bio-detail-row"><span>Samples across experiments</span><strong>${number(c.num_samples)}</strong></div>`}
       <div class="bio-detail-row"><span>${c.partnership_stage ? 'Project readiness' : 'Status'}</span><strong>${esc(statusLabel(c))}</strong></div>
       ${liveOf(id) ? `<div class="bio-detail-row"><span>Globus Compute endpoint · checked ${esc(ago(liveAge()))}</span>
         <strong>${liveHtml(id)}</strong></div>` : ''}

@@ -31,7 +31,7 @@
 .bio-viewer .status-dot.live { animation: none; box-shadow: 0 0 8px #50d9c740; }
 /* Half the column for the tabs and experiment filters, half for the participating sites.
    Every panel spans both rows below the tabs; the experiments panel lays its two parts onto them. */
-.bio-viewer .sidebar { width: 326px; background: var(--bg); display: grid; grid-template-rows: auto minmax(0, 1fr) 50%; }
+.bio-viewer .sidebar { width: var(--bio-sidebar-w, 326px); background: var(--bg); display: grid; grid-template-rows: auto minmax(0, 1fr) 50%; }
 .bio-tabs { display: grid; grid-template-columns: 1.3fr 1fr .8fr; margin: 20px 20px 0; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .bio-tabs button { background: none; color: var(--muted); border: none; padding: 14px 4px; font-size: 12px; font-weight: 600; border-bottom: 2px solid transparent; }
 .bio-tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
@@ -70,6 +70,12 @@
 .bio-coordinator-label { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; color: var(--coordinator); font-size: 9px; font-weight: 600; letter-spacing: 1.6px; line-height: 1.4; text-transform: uppercase; }
 .bio-coordinator-label::before { content: ''; width: 5px; height: 5px; border: 1.5px solid currentColor; transform: rotate(45deg); }
 .bio-viewer .map-area { min-width: 0; overflow: hidden; background: #08131d; }
+/* A 10px grab area centred on the sidebar's border, taking no width of its own. */
+.bio-sidebar-resizer { flex: 0 0 10px; margin: 0 -5px; position: relative; z-index: 1001; cursor: col-resize; touch-action: none; }
+.bio-sidebar-resizer::after { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px; background: transparent; transition: background .15s; }
+.bio-sidebar-resizer:hover::after, .bio-sidebar-resizer:focus-visible::after, .bio-resizing .bio-sidebar-resizer::after { background: var(--accent); }
+.bio-sidebar-resizer:focus-visible { outline: none; }
+.bio-resizing, .bio-resizing * { cursor: col-resize !important; user-select: none !important; }
 .bio-viewer #map { background: #122834; }
 .bio-map-toolbar { position: absolute; z-index: 500; top: 28px; left: 30px; right: 30px; display: flex; align-items: center; justify-content: space-between; gap: 14px; pointer-events: none; }
 .bio-map-toolbar > div { pointer-events: auto; }
@@ -135,11 +141,11 @@
 .bio-viewer.bio-show-runs .bio-map-footer { bottom: 85px; }
 .bio-viewer #debug { top: 125px; right: 30px; z-index: 400; font-size: 9px; background: var(--bg); }
 .bio-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-@media (min-width: 1500px) { .bio-viewer .sidebar { width: 356px; } .bio-viewer header { padding: 0 38px; } }
+@media (min-width: 1500px) { .bio-viewer .sidebar { width: var(--bio-sidebar-w, 356px); } .bio-viewer header { padding: 0 38px; } }
 @media (max-width: 1050px) {
   .bio-viewer header { padding: 0 20px; gap: 16px; }
   .bio-viewer .header-stats { gap: 22px; margin-right: 0; }
-  .bio-viewer .sidebar { width: 284px; }
+  .bio-viewer .sidebar { width: var(--bio-sidebar-w, 284px); }
   .bio-map-toolbar { top: 22px; left: 20px; right: 20px; align-items: flex-start; }
   .bio-map-toolbar h2 { font-size: 15px; }
   .bio-map-toolbar > div:first-child { padding: 10px; }
@@ -158,6 +164,7 @@
   .bio-viewer .stat-label { font-size: 7px; letter-spacing: .5px; }
   .bio-viewer .status-pill { display: none; }
   .bio-viewer .main { flex-direction: column-reverse; }
+  .bio-sidebar-resizer { display: none; }
   .bio-viewer .map-area { flex: 1; min-height: 270px; }
   /* Here the sidebar is a strip under the map, too short to split: filters and sites scroll as one. */
   .bio-viewer .sidebar { width: 100%; height: 40%; min-height: 215px; border-right: 0; border-top: 1px solid var(--border); display: flex; }
