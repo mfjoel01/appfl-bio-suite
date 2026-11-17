@@ -320,8 +320,9 @@ def update_commands(sha: str, host: str = "") -> list[str]:
         raise DeployError(f"not a full commit id: {sha!r}")
     if host and not _HOST.match(host):
         raise DeployError(f"not a host name: {host!r}")
+    # AWS-RunShellScript runs these with /bin/sh (dash on Ubuntu): no bash-only options.
     return [
-        "set -euo pipefail",
+        "set -eu",
         # The name the instance itself serves HTTPS for: yours with --domain, else none.
         f"sed -i 's/^LIVE_MAP_HOST=.*/LIVE_MAP_HOST={host}/' /etc/live-map.env",
         "cd /opt/live-map/repo",

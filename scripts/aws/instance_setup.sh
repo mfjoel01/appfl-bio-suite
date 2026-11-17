@@ -88,6 +88,9 @@ RestartSec=15
 RuntimeDirectory=live-map
 RuntimeDirectoryMode=0700
 NoNewPrivileges=true
+# ProtectSystem=strict makes /tmp read-only too, and the Globus SDK's imports (dill)
+# need a temporary directory before anything runs. A private one, emptied on stop.
+PrivateTmp=true
 ProtectSystem=strict
 ReadWritePaths=$home
 
