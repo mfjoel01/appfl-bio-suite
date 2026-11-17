@@ -597,6 +597,53 @@ def cmd_deploy(args) -> int:
     return 0
 
 
+def run_remote(cloud: Cloud, instance_id: str, commands: list[str], comment: str) -> dict:
+    """Run a shell script on the instance through Systems Manager, and wait for it."""
+    try:
+        command = cloud.ssm.send_command(
+            InstanceIds=[instance_id],
+            DocumentName="AWS-RunShellScript",
+            Comment=comment[:100],
+            Parameters={"commands": commands, "executionTimeout": ["1800"]},
+        )["Command"]["CommandId"]
+    except cloud.ssm.exceptions.InvalidInstanceId:
+        raise DeployError(
+            f"{instance_id} is not reachable through Systems Manager yet. Its agent registers "
+            "a few minutes after boot; try again shortly, or use `status --log`."
+        ) from None
+    while True:
+        time.sleep(5)
+        try:
+            result = cloud.ssm.get_command_invocation(CommandId=command, InstanceId=instance_id)
+        except cloud.ssm.exceptions.InvocationDoesNotExist:
+            continue
+        if result["Status"] not in ("Pending", "InProgress", "Delayed"):
+            return result
+
+
+LOG_COMMANDS = [
+    "echo '== services'; systemctl is-active caddy live-map-prober || true",
+    "echo '== prober'; journalctl -u live-map-prober --no-pager -n 40 -o cat",
+    "echo '== web server'; journalctl -u caddy --no-pager -n 15 -o cat",
+    "echo '== status file'; ls -la /opt/live-map/site/map/ | grep -i status || echo none",
+    "echo '== setup (last lines)'; tail -n 25 /var/log/live-map-setup.log",
+]
+
+
+def cmd_logs(args) -> int:
+    cloud = Cloud(args.name, args.region, args.profile)
+    instance = cloud.instance()
+    if instance is None:
+        say("nothing is deployed.")
+        return 1
+    result = run_remote(cloud, instance["InstanceId"], LOG_COMMANDS, "live map logs")
+    say((result.get("StandardOutputContent") or "").rstrip())
+    error = (result.get("StandardErrorContent") or "").strip()
+    if error:
+        say("== stderr\n" + error[-3000:])
+    return 0
+
+
 def cmd_update(args, cloud: Cloud | None = None, sha: str | None = None) -> int:
     sha = sha or resolve_ref(args.ref)
     cloud = cloud or Cloud(args.name, args.region, args.profile)
@@ -609,23 +656,10 @@ def cmd_update(args, cloud: Cloud | None = None, sha: str | None = None) -> int:
     targets, globus, site_secrets = gather_inputs(args, cloud, required=False)
     cloud.put_inputs(targets, globus, site_secrets)
 
-    command = cloud.ssm.send_command(
-        InstanceIds=[instance["InstanceId"]],
-        DocumentName="AWS-RunShellScript",
-        Comment=f"live map -> {sha[:10]}",
-        Parameters={"commands": update_commands(sha), "executionTimeout": ["1800"]},
-    )["Command"]["CommandId"]
     say(f"  updating {instance['InstanceId']} to commit {sha[:10]}")
-    while True:
-        time.sleep(10)
-        try:
-            result = cloud.ssm.get_command_invocation(
-                CommandId=command, InstanceId=instance["InstanceId"]
-            )
-        except cloud.ssm.exceptions.InvocationDoesNotExist:
-            continue
-        if result["Status"] not in ("Pending", "InProgress", "Delayed"):
-            break
+    result = run_remote(
+        cloud, instance["InstanceId"], update_commands(sha), f"live map -> {sha[:10]}"
+    )
     tail = (result.get("StandardOutputContent") or "").strip().splitlines()[-3:]
     for line in tail:
         say(f"    {line}")
@@ -737,6 +771,9 @@ def parser() -> argparse.ArgumentParser:
     status = commands.add_parser("status", parents=[common], help="is it up")
     status.add_argument("--log", action="store_true", help="print the instance's console log")
     status.set_defaults(run=cmd_status)
+
+    logs = commands.add_parser("logs", parents=[common], help="the server's recent logs")
+    logs.set_defaults(run=cmd_logs)
 
     destroy = commands.add_parser("destroy", parents=[common], help="delete all of it")
     destroy.add_argument("--yes", action="store_true")
