@@ -35,3 +35,19 @@ and evaluation distributions fixed across the sweep. Preserve negative results.
    explicit interpolation and figures with per-local and paired uncertainty.
 3. Run a small development check, then a locked multi-seed validation sweep.
 4. Commit scripts/configs/results/figures and update this log at each milestone.
+
+## Sweep protocol (implementation in progress)
+
+Committed specification: `src/appfl_bio_suite/experiments/methylation/configs/alma3-skew-sweep.json`.
+Five convergence levels 0, .25, .5, .75, 1; three data seeds 42–44.
+Extreme rows: [97,1,1,1], [2,96,1,1], [1,1,96,2], [1,1,1,97], [49,1,1,49].
+Identical endpoint: [30,20,20,30] at every site. Every row has 100 patients;
+pool totals remain [150,100,100,150] at every point. Integer rounding must
+preserve both row and column totals and at least one patient per class.
+Evaluation: fixed, class-balanced validation (25/class/site), with common
+patient reservoirs paired across sweep points. Preserve site measurement shifts
+throughout; only class ratios converge. No test access, DP noise, or clinical
+calibration claim in this sweep. Compare zero-shot, pooled, FedAvg, and all
+five locals. Report the best local as well as their mean. Use development seed
+41 for a mechanics check, then locked seeds 42–44; do not tune toward a desired
+winner. Checkpoint/commit compact per-point scores as experiments progress.
