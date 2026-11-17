@@ -38,7 +38,7 @@
   // Live endpoint status. The map is exported once; a prober beside it rewrites a small
   // status file, named by the map's metadata, that this polls. An answer older than three
   // intervals is shown as stale, never as the last thing it said.
-  const live = { url: null, data: null, timer: null };
+  const live = { url: null, data: null, timer: null, nextPoll: 0 };
   const liveStates = { online: ['Endpoint online', '#2fbf71'], degraded: ['Partly online', '#d89e42'],
     offline: ['Endpoint offline', '#db717e'], unknown: ['Endpoint status unknown', '#8d9eaa'] };
   const liveAge = () => (Date.now() - Date.parse(live.data?.checked_at)) / 1000;
@@ -72,7 +72,13 @@
     $('status-text').textContent = `${stale ? 'Status stale' : 'Live'} · checked ${ago(liveAge())}`;
     $('status-dot').classList.toggle('live', !stale);
   }
+  // Fetch when the next answer is due rather than on a fixed beat. The file says when the
+  // prober last checked and how often it checks, so the page asks a few seconds after the
+  // next check should have landed; a fixed 15-second beat let the "checked … ago" age run
+  // up to interval + 15 before resetting. If the answer is late, ask again every 5 seconds;
+  // once it is stale (the prober has stopped), every 15.
   async function livePoll() {
+    live.nextPoll = Date.now() + 15000;  // until this poll knows better
     try {
       const response = await fetch(live.url, { cache: 'no-store' });
       if (!response.ok) return;
@@ -80,17 +86,18 @@
       const changed = data.checked_at !== live.data?.checked_at;
       live.data = data;
       if (changed) { recolorSites(); renderSidebar(); refreshDetail(); }
-    } catch (error) { /* keep the last answer; liveStale() retires it */ }
-    liveHeader();
+      const due = Date.parse(data.checked_at) + 1000 * (Number(data.interval_sec) || 60) + 3000;
+      live.nextPoll = liveStale() ? Date.now() + 15000
+        : due > Date.now() ? due : Date.now() + 5000;
+    } catch (error) { /* keep the last answer; liveStale() retires it */ } finally { liveHeader(); }
   }
   function startLive(name, metadataUrl) {
-    clearInterval(live.timer); live.url = null; live.data = null;
+    clearInterval(live.timer); live.url = null; live.data = null; live.nextPoll = 0;
     // A bare file name beside the metadata, and nothing else: map data does not get to
     // point the page at another origin.
     if (!metadataUrl || !/^[\w.-]+\.json$/.test(name || '')) return;
     live.url = new URL(name, new URL(metadataUrl, location.href)).href;
-    let ticks = 0;
-    live.timer = setInterval(() => { if (++ticks % 15 === 0) livePoll(); else liveHeader(); }, 1000);
+    live.timer = setInterval(() => { if (Date.now() >= live.nextPoll) livePoll(); else liveHeader(); }, 1000);
     livePoll();
   }
   function refreshDetail() {
