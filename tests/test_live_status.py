@@ -415,6 +415,27 @@ def test_routed_targets_carry_secret_names_and_never_secrets(live_map, tmp_path)
         live_map.read_targets(path)
 
 
+def test_update_keeps_the_stored_probe_list_without_its_secrets(live_map, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.delenv("SITE_SECRET", raising=False)
+    path = tmp_path / "targets.json"
+    route = {"client_id": SITE_CLIENT, "client_secret_env": "SITE_SECRET"}
+    path.write_text(json.dumps({"sites": {"mbzuai": [OWNED]}, "routes": {OWNED: route}}))
+    args = SimpleNamespace(targets=path, globus_client=tmp_path / "none.json")
+    stored = SimpleNamespace(has_parameters=lambda *keys: True)
+    monkeypatch.setattr(live_map, "public_site_ids", lambda: {"mbzuai"})
+
+    targets, globus, secrets = live_map.gather_inputs(args, stored, required=False)
+    assert (targets, globus, secrets) == (None, None, None)
+    with pytest.raises(live_map.DeployError, match="SITE_SECRET"):
+        live_map.gather_inputs(args, stored, required=True)
+
+    monkeypatch.setenv("SITE_SECRET", "x")
+    targets, _, secrets = live_map.gather_inputs(args, stored, required=False)
+    assert targets is not None and secrets == {"SITE_SECRET": "x"}
+
+
 def test_globus_client_from_file_or_environment(live_map, tmp_path):
     path = tmp_path / "client.json"
     assert live_map.read_globus_client(path, {}) is None

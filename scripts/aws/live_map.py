@@ -665,7 +665,14 @@ def gather_inputs(args, cloud: Cloud | None, *, required: bool):
         targets, warnings, secret_envs = read_targets(args.targets, public_site_ids())
         for warning in warnings:
             say(f"  warning: {warning}")
-        site_secrets = read_site_secrets(secret_envs)
+        missing = [name for name in secret_envs if not os.environ.get(name)]
+        if missing and not required and cloud is not None and cloud.has_parameters("targets"):
+            # A content-only update should not need a partner's secret in the shell. The
+            # stored list and its secrets stay as they are, consistent with each other.
+            say(f"  keeping the stored probe list (export {', '.join(missing)} to replace it)")
+            targets = None
+        else:
+            site_secrets = read_site_secrets(secret_envs)
     globus = read_globus_client(args.globus_client)
     if globus is None and required:
         if not (cloud and cloud.has_parameters("globus-client-id", "globus-client-secret")):
