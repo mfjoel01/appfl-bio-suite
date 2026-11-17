@@ -37,8 +37,8 @@ manifest's allowlist, excluding unrelated files left in the output directory. Ch
 identify revisions; they do not authenticate a sender. Distribute bundles through your
 normal trusted collaboration channel.
 
-The partner runs `appfl-bio-suite join site.zip`, or prepares `site.yaml` first and runs
-`appfl-bio-suite join site.zip --local site.yaml`. The guided command remembers cluster
+The partner runs `appfl-bio-suite join gwas_Site1.zip`, or prepares `site.yaml` first and runs
+`appfl-bio-suite join gwas_Site1.zip --local site.yaml`. The guided command remembers cluster
 settings and hands off endpoint activation explicitly, for whichever endpoint mode the
 bundle declares (below).
 
@@ -168,7 +168,10 @@ of implementing this feature.
 Single-user activation is covered the same way: refusal as root or as any other account,
 refusal without service-account credentials or with a credentials file others can read,
 endpoint ownership, restart of a managed endpoint, and registration through a route.
-`globus-compute-endpoint configure`/`start` are mocked there too. Its first live
-deployment (a cloud VM) is the validation step; the
+`globus-compute-endpoint configure`/`start` are mocked there too. A first live deployment
+on a cloud VM (Ubuntu 24.04) reached a running endpoint and a passing owner probe, and
+found what the mocks could not: the endpoint's `PATH`, its self-daemonizing under
+systemd, and credential mistakes. Those are fixed and covered by tests, but a reboot of
+that host and a re-activation with the fixed release have not been repeated live. The
 [service-account trial](service-account-trial.md) records the cross-site isolation checks
 that remain open. Both endpoint modes keep the bundle revision and readiness checks.

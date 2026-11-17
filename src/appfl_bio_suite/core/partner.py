@@ -125,6 +125,9 @@ def render_context(federation: Federation, experiment: str, site_key: str) -> di
         "site_id": site.id,
         "site_name": site.name,
         "client_id": entry.client_id,
+        # The file the coordinator sends, as `experiment package` names it. The guide's
+        # commands use it verbatim so nothing has to be substituted by the reader.
+        "bundle_zip": f"{experiment}_{entry.client_id}.zip",
         "output_dir": entry.output_dir,
         # Where the partner puts their data. GWAS sites are told exactly where, because
         # the coordinator must know the path to configure the run. FLamby sites choose

@@ -24,14 +24,20 @@ on [PyPI](https://pypi.org/project/appfl-bio-suite/); install exactly the releas
 generated your bundle:
 
 ```bash
-python3.12 -m zipfile -e site.zip site-bundle
+python3.12 -c 'import ensurepip, venv'      # no output means Python 3.12 is complete
+python3.12 -m zipfile -e {{ bundle_zip }} site-bundle
 python3.12 -m venv bootstrap
 bootstrap/bin/python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu \
   -c site-bundle/runtime-constraints.txt "{{ install_spec }}"
 source bootstrap/bin/activate
 ```
 
-No `python3.12`? Ubuntu 22.04, for one, ships 3.10. Install 3.12 alongside it (for
+If the first line fails with `No module named 'ensurepip'`, your `python3.12` cannot
+create environments. Ubuntu 24.04 ships it that way: an administrator runs
+`apt install python3.12-venv`, or, without root, `uv python install 3.12` gives you a
+complete one.
+
+No `python3.12` at all? Ubuntu 22.04, for one, ships 3.10. Install 3.12 alongside it (for
 example from the deadsnakes PPA, or with `uv python install 3.12`) and use that
 interpreter for these commands and for `--python` below.
 
@@ -43,10 +49,10 @@ CLI; setup creates the runtime used by the workers.
 
 {% if single_user %}Run it as `{{ service_account }}`, the account the endpoint will run
 as. Create that account first if it does not exist; it needs no special privileges.
-{% endif %}After installing BIOSIM, run:
+{% endif %}After installing the tool, run:
 
 ```bash
-appfl-bio-suite join site.zip
+appfl-bio-suite join {{ bundle_zip }}
 ```
 
 The command asks for {% if not local_scheduler %}the scheduler account, {{ scheduler_slot }},
@@ -55,7 +61,7 @@ suggestions. Invalid answers are reported at the question. It prepares the runti
 prints the exact activation and registration commands for this installation. It never
 activates an endpoint as a side effect of join.
 
-You can also prepare your settings **before** pointing BIOSIM at the bundle:
+You can also prepare your settings **before** running `join`:
 
 ```yaml
 {% if not local_scheduler %}account: my-allocation
@@ -67,7 +73,7 @@ work_dir: /shared/project/work
 Then run:
 
 ```bash
-appfl-bio-suite join site.zip --local site.yaml
+appfl-bio-suite join {{ bundle_zip }} --local site.yaml
 ```
 
 Values supplied in the file are used without asking again. Missing values are prompted.
@@ -96,7 +102,7 @@ Follow the administrator activation command printed by join. Once the administra
 supplies the endpoint UUID, run as the service account:
 {% endif %}
 ```bash
-appfl-bio-suite join site.zip --state /shared/project/onboarding --endpoint-id UUID
+appfl-bio-suite join {{ bundle_zip }} --state /shared/project/onboarding --endpoint-id UUID
 ```
 
 Use your actual state directory from the first command. A prepared installation resumes
@@ -106,7 +112,7 @@ coordinator for the remote probe. No registration is sent automatically.
 ## Individual commands and local settings
 
 ```bash
-appfl-bio-suite site init site.zip --out site.yaml
+appfl-bio-suite site init {{ bundle_zip }} --out site.yaml
 ```
 
 Edit {% if not local_scheduler %}the scheduler account, {{ scheduler_slot }}, {% endif %}the
@@ -126,7 +132,7 @@ installation accessible to that account. Choose a state directory {% if not loca
 nodes and {% endif %}writable by the service account. Python 3.12 must already be available.
 
 ```bash
-appfl-bio-suite site setup site.zip --local site.yaml \
+appfl-bio-suite site setup {{ bundle_zip }} --local site.yaml \
   --state /shared/project/onboarding --python /path/to/python3.12
 ```
 
@@ -153,10 +159,21 @@ site. Never paste the secret into a chat, a ticket or a shared file. As
 
 ```bash
 mkdir -p ~/.config && install -m 600 /dev/null ~/.config/{{ endpoint_name }}.env
-# then edit it to contain exactly these two lines:
-#   GLOBUS_COMPUTE_CLIENT_ID=<client UUID from your coordinator>
-#   GLOBUS_COMPUTE_CLIENT_SECRET=<secret from your coordinator>
 ```
+
+Edit that file so it holds exactly two lines, with the bare values straight after each
+`=` (no quotes, no brackets, no `export`):
+
+```
+GLOBUS_COMPUTE_CLIENT_ID=0a1b2c3d-1111-2222-3333-444455556666
+GLOBUS_COMPUTE_CLIENT_SECRET=the-secret-value-exactly-as-given
+```
+
+The client ID is the **Client UUID**. If you are reading it off the client's page in
+Globus (Settings → Developers) yourself, that page also shows a project UUID and an ID
+beside each secret; none of those is the client ID. The secret is a value Globus shows
+only once, when it is generated, and is not a UUID. Activation asks Globus whether the
+two belong together before it changes anything, and says so if they do not.
 
 Then, as `{{ service_account }}` and using the prepared runtime's executable:
 
@@ -168,14 +185,23 @@ Then, as `{{ service_account }}` and using the prepared runtime's executable:
 Activation refuses to run as root or as any account other than `{{ service_account }}`,
 because the endpoint runs every task as whoever starts it. It checks the runtime, the
 data and the work directory as that account, configures a dedicated single-user endpoint
-named `{{ endpoint_name }}`, starts it in the background, and prints its **UUID**. It
-refuses to alter an endpoint it did not create. The credentials are read from the file,
-never echoed, and never placed in any configuration sent to anyone.
+named `{{ endpoint_name }}`, starts it in the background, waits to see that it stays up,
+and prints its **UUID**. It refuses to alter an endpoint it did not create. The
+credentials are read from the file, never echoed, and never placed in any configuration
+sent to anyone.
 
 It also writes `{{ endpoint_name }}.service` in the state directory: a systemd unit that
-keeps the endpoint running across logouts, crashes and reboots. Installing it needs root
-once; the command prints the three lines to run. Without it, the endpoint stops when the
-host reboots and must be activated again.
+keeps the endpoint running across logouts, crashes and reboots. The command prints what
+to run: one line as `{{ service_account }}` to stop the background copy, then two lines
+as root to install and start the service. Root is needed for those two lines only, once.
+Without the service, the endpoint stops when the host reboots and must be activated
+again.
+
+To see the endpoint's state afterwards, as `{{ service_account }}`:
+
+```bash
+/shared/project/onboarding/runtime/bin/globus-compute-endpoint list
+```
 
 Then, as `{{ service_account }}`:
 

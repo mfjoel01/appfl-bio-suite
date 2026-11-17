@@ -1,6 +1,7 @@
 # Part 2 — Federated fine-mapping: placing your data
 
-Assumes Part 1 (`1-endpoint-setup.md`, beside this file) is done and your endpoint is running.
+{% if single_user %}Your endpoint is set up by `0-onboarding.md`, beside this file. The data can be placed
+before or after its `join` step, and must be in place before activation.{% else %}Assumes Part 1 (`1-endpoint-setup.md`, beside this file) is done and your endpoint is running.{% endif %}
 
 ---
 
@@ -42,13 +43,21 @@ statistical package, no genetics toolchain, and no compiler involved on your sid
 We deliver your cohort either as an archive or as a directory (by rsync or a Globus
 transfer). Put it somewhere `{{ service_account }}` can read.
 
-From an archive:
+From a `.tar.gz` archive:
 
 ```bash
 sudo -iu {{ service_account }}
 mkdir -p {{ data_dir }}
 cd {{ data_dir }}
 tar xzf /path/to/the/bundle/you/received.tar.gz --strip-components=1
+```
+
+From a `.zip` archive whose top-level folder is `data/` (as `{{ service_account }}`; no
+root needed if that account downloaded it):
+
+```bash
+mkdir -p unpacked && python3.12 -m zipfile -e /path/to/the/data.zip unpacked
+mkdir -p "$(dirname {{ data_dir }})" && mv unpacked/data {{ data_dir }}
 ```
 
 From a delivered directory (here, one copied into a staging area by another account):
@@ -71,7 +80,10 @@ Your data directory is:
 That exact path is already in the configuration we hold for you, so if you put it
 somewhere else, tell us.
 
-**Check the free space first.** The genotype file is the bulk of it and is not small.
+**Check the free space first.** A full cohort unpacks to tens of gigabytes: the genotype file is
+several, and the thousands of phenotype files together are larger still. You need room for
+the archive and its unpacked copy at once, plus several gigabytes in the work directory
+for each run's result (the `spool/` note above).
 
 ## Step 2 — Check the contents
 
@@ -157,17 +169,15 @@ data.
 
 ## Step 3 — Verify, and send us the number
 
-Still as `{{ service_account }}`, in the Part 1 environment:
+Still as `{{ service_account }}`, in the environment where you installed
+`appfl-bio-suite` (the bootstrap environment from `0-onboarding.md`, or your Part 1
+environment), with the ZIP we sent you:
 
 ```bash
-python -c "
-from appfl_bio_suite.experiments.fine_mapping.dataset import get_dataset
-d, _ = get_dataset(data_dir='{{ data_dir }}', site_id='{{ client_id }}')
-print('OK, samples:', len(d))
-print('    ancestries:', d.composition)
-print('    regions:', len(d.loci), ' instances:', len(d.available_instances))
-"
+appfl-bio-suite site check-data /path/to/{{ bundle_zip }}
 ```
+
+Add `--data-dir /your/actual/path` if the data is not in `{{ data_dir }}`.
 
 **Expected output starts with: `OK, samples: {{ expected_samples }}`**
 
@@ -248,5 +258,5 @@ Contact: {{ coordinator_contact }}
 The coordinator can enable fixed-roster masked sums for either SuSiEx or MultiSuSiE.
 All sites must return matching ancestry/variant blocks. Provision the worker-local
 `APPFL_FINEMAP_SECAGG_KEYS` authorization file and use fresh authorization for every
-launch/retry; never send keys to the coordinator. See the
-[secure aggregation guide](../../experiments/fine-mapping/SECURE_AGGREGATION.md).
+launch/retry; never send keys to the coordinator. The coordinator sends the secure
+aggregation guide with the keys when this is in use.
