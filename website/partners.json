@@ -195,6 +195,63 @@
           "description": "Runtime grows with the square of the locus window, not with the number of causal variants."
         }
       ]
+    },
+    {
+      "experiment": "gwas",
+      "title": "GWAS meta-analysis across five sites",
+      "description": "Run of 21 July 2026, at full variant scale: synthetic European-ancestry genotypes for 100,000 individuals over 239,801 GRCh37 variants, split across five deliberately unequal sites, with BMI and type 2 diabetes simulated from PGS Catalog scores plus age and sex. Each site computed its own association statistics, and only per-variant effect, standard error, allele frequency and sample size were combined, by fixed-effect inverse-variance meta-analysis. The five sites ran on one node, combined by APPFL's meta-analysis aggregator rather than over Globus Compute.",
+      "artifacts": [
+        {
+          "path": "results/gwas/bmi_manhattan.webp",
+          "title": "BMI: Manhattan plot",
+          "description": "Every variant's meta-analysis P value along the genome. 33 variants pass genome-wide significance (P < 5×10⁻⁸, dashed line).",
+          "wide": true
+        },
+        {
+          "path": "results/gwas/t2d_manhattan.webp",
+          "title": "Type 2 diabetes: Manhattan plot",
+          "description": "The same for the binary trait. 14 variants pass genome-wide significance.",
+          "wide": true
+        },
+        {
+          "path": "results/gwas/bmi_qq.webp",
+          "title": "BMI: QQ plot",
+          "description": "Observed against expected P values. The phenotypes were simulated from tens of thousands of causal variants, so an early departure from the diagonal is expected."
+        },
+        {
+          "path": "results/gwas/t2d_qq.webp",
+          "title": "Type 2 diabetes: QQ plot",
+          "description": "Observed against expected P values, with the genomic inflation factor."
+        },
+        {
+          "path": "results/gwas/top_hits.tsv",
+          "title": "Strongest associations",
+          "description": "Up to 15 genome-wide significant variants per trait, by P value. Effect is the per-allele β for BMI and the odds ratio for type 2 diabetes."
+        },
+        {
+          "path": "results/gwas/site_cohorts.tsv",
+          "title": "Sites and their polygenic scores",
+          "description": "Each site's cohort size, and how well a polygenic score predicts each trait in that site's evaluation cohort: R² for BMI, AUROC for type 2 diabetes."
+        }
+      ]
+    },
+    {
+      "experiment": "flamby-heart-disease",
+      "title": "Heart disease: federated training, rehearsed on one machine",
+      "description": "Loopback run of 14 September 2026 on Fed-Heart-Disease from the FLamby benchmark: three of the dataset's four hospital centres, five rounds of federated averaging of a logistic-regression model. Each site trained on its own centre's records and every site evaluated on the benchmark's pooled test set. All three sites ran as processes on one machine, without Globus Compute; the cross-institution run is still to come.",
+      "artifacts": [
+        {
+          "path": "results/flamby-heart-disease/fedavg_rounds.webp",
+          "title": "Accuracy and loss by round",
+          "description": "The global model each site receives at the start of a round (solid), and each site's model after its local training that round (dashed). The global model's accuracy climbs from 55.9% at the start of round 1 to 75.6% at the start of round 5.",
+          "wide": true
+        },
+        {
+          "path": "results/flamby-heart-disease/fedavg_rounds.tsv",
+          "title": "Accuracy by round",
+          "description": "The values behind the figure; n is each site's number of training records."
+        }
+      ]
     }
   ]
 }
