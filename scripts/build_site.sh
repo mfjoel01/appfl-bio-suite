@@ -54,6 +54,7 @@ cp src/appfl_bio_suite/core/watch_assets/suite-logo.png "$out"/assets/suite-logo
   --catalog website/partners.json \
   --out "$out/map" \
   ${SITE_LIVE_STATUS:+--live-status} \
+  --home-url ../ \
   --title "APPFL Bio Suite federation network" >/dev/null
 
 # Serve the tree as-is. Redundant under the Actions deployment, and the thing that keeps

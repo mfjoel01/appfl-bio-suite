@@ -337,6 +337,7 @@ def build_network_events(
     include_endpoint_uuids: bool = False,
     generated_at: datetime | None = None,
     live_status: str | None = None,
+    home_url: str | None = None,
 ) -> list[dict[str, Any]]:
     """The network view as a hivewatch event stream.
 
@@ -352,6 +353,9 @@ def build_network_events(
 
     ``live_status`` names a file published beside the map that ``watch live`` keeps
     current; the viewer polls it. See :mod:`appfl_bio_suite.core.live_status`.
+
+    ``home_url`` is the page the viewer's logo leads back to, relative to the map data
+    (``../`` for the project site, where the map sits in ``map/``).
     """
     active = participations(federation, experiment)
     if not active:
@@ -385,6 +389,8 @@ def build_network_events(
     }
     if live_status:
         config["live_status"] = live_status
+    if home_url:
+        config["home_url"] = home_url
 
     return [
         {

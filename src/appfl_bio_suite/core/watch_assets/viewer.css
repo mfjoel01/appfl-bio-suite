@@ -18,6 +18,8 @@
 .bio-viewer ::-webkit-scrollbar-thumb { background: var(--scrollbar); border: 2px solid transparent; border-radius: 4px; background-clip: padding-box; }
 .bio-viewer header { height: 88px; padding: 0 30px; box-shadow: none; background: var(--bg); border-color: var(--border); gap: 24px; }
 .bio-viewer .logo { gap: 12px; flex-shrink: 0; }
+.bio-viewer .logo a.bio-home { display: flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; border-radius: 8px; }
+.bio-viewer .logo a.bio-home:hover .bio-brand, .bio-viewer .logo a.bio-home:focus-visible .bio-brand { color: var(--accent); }
 .bio-mark { color: var(--accent); font-size: 52px; line-height: 1; font-weight: 300; }
 .bio-brand { font-size: 18px; letter-spacing: -.4px; font-weight: 700; }
 .bio-brand span { font-weight: 400; color: var(--muted); }

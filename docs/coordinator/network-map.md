@@ -310,7 +310,7 @@ list is its own file, and a one-command deployment of the whole site to EC2.
 ```
 appfl-bio-suite watch build   [--experiment X] [--probe] [--include-endpoint-uuids]
 appfl-bio-suite watch serve   [--host 127.0.0.1] [--port 7070] [--runs-dir DIR]
-appfl-bio-suite watch export  --out DIR [--experiment X] [--probe] [--live-status] [--title "..."]
+appfl-bio-suite watch export  --out DIR [--experiment X] [--probe] [--live-status] [--home-url URL] [--title "..."]
 appfl-bio-suite watch targets --out FILE [--rename LOCAL=PUBLIC]
 appfl-bio-suite watch live    --targets FILE --out DIR [--interval 60] [--once]
 appfl-bio-suite run EXPERIMENT --watch

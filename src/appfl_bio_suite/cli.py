@@ -704,6 +704,12 @@ def watch_serve(host: str, port: int | None, runs_dir: Path | None) -> None:
     help="Tell the viewer to poll endpoints.status.json beside the map for endpoint "
     "liveness. Something has to keep that file current: `watch live`.",
 )
+@click.option(
+    "--home-url",
+    default=None,
+    help="Make the viewer's logo a link to this page, relative to the map (e.g. ../ for a "
+    "map published inside a larger site).",
+)
 def watch_export(
     catalog_path: Path | None,
     experiment: str | None,
@@ -713,6 +719,7 @@ def watch_export(
     out_dir: Path,
     title: str,
     live_status: bool,
+    home_url: str | None,
 ) -> None:
     """Write a static copy of the network map that anyone can host.
 
@@ -740,6 +747,7 @@ def watch_export(
             statuses=_statuses(fed, experiment, probe),
             include_endpoint_uuids=include_endpoint_uuids,
             live_status=STATUS_FILENAME if live_status else None,
+            home_url=home_url,
         )
     except WatchError as exc:
         raise click.ClickException(str(exc)) from exc

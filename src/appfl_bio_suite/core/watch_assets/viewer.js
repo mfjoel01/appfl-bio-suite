@@ -43,7 +43,7 @@
     offline: ['Endpoint offline', '#db717e'], unknown: ['Endpoint status unknown', '#8d9eaa'] };
   const liveAge = () => (Date.now() - Date.parse(live.data?.checked_at)) / 1000;
   const liveStale = () => !(liveAge() <= 3 * (Number(live.data?.interval_sec) || 60) + 30);
-  const ago = s => s < 90 ? `${Math.max(0, Math.round(s))}s ago` : s < 5400 ? `${Math.round(s / 60)} min ago`
+  const ago = s => s < 90 ? `${Math.max(0, Math.floor(s))}s ago` : s < 5400 ? `${Math.round(s / 60)} min ago`
     : `${Math.round(s / 3600)} h ago`;
   function liveOf(id) {
     const site = ui.runId === 'network' ? live.data?.sites?.[id] : null;
@@ -69,14 +69,17 @@
     // Going stale changes every site's colour back to its stage, and coming back the reverse.
     if (liveWasStale !== null && stale !== liveWasStale) { recolorSites(); renderSidebar(); refreshDetail(); }
     liveWasStale = stale;
-    $('status-text').textContent = `${stale ? 'Status stale' : 'Live'} · checked ${ago(liveAge())}`;
+    // Past one interval the next check is due: say so rather than counting on, until it lands.
+    const age = liveAge(), interval = Number(live.data?.interval_sec) || 60;
+    $('status-text').textContent = stale ? `Status stale · checked ${ago(age)}`
+      : age >= interval ? 'Live · checking…' : `Live · checked ${ago(age)}`;
     $('status-dot').classList.toggle('live', !stale);
   }
   // Fetch when the next answer is due rather than on a fixed beat. The file says when the
-  // prober last checked and how often it checks, so the page asks a few seconds after the
-  // next check should have landed; a fixed 15-second beat let the "checked … ago" age run
-  // up to interval + 15 before resetting. If the answer is late, ask again every 5 seconds;
-  // once it is stale (the prober has stopped), every 15.
+  // prober last checked and how often it checks, so the page asks a second after the next
+  // check should have landed; a fixed 15-second beat let the "checked … ago" age run up to
+  // interval + 15 before resetting. If the answer is late, ask again every 2 seconds; once
+  // it is stale (the prober has stopped), every 15.
   async function livePoll() {
     live.nextPoll = Date.now() + 15000;  // until this poll knows better
     try {
@@ -86,9 +89,9 @@
       const changed = data.checked_at !== live.data?.checked_at;
       live.data = data;
       if (changed) { recolorSites(); renderSidebar(); refreshDetail(); }
-      const due = Date.parse(data.checked_at) + 1000 * (Number(data.interval_sec) || 60) + 3000;
+      const due = Date.parse(data.checked_at) + 1000 * (Number(data.interval_sec) || 60) + 1000;
       live.nextPoll = liveStale() ? Date.now() + 15000
-        : due > Date.now() ? due : Date.now() + 5000;
+        : due > Date.now() ? due : Date.now() + 2000;
     } catch (error) { /* keep the last answer; liveStale() retires it */ } finally { liveHeader(); }
   }
   function startLive(name, metadataUrl) {
@@ -122,6 +125,18 @@
     <div><div class="bio-brand">APPFL <span>Bio Suite</span></div>
     <div class="bio-brand-note">FEDERATION NETWORK</div></div>`;
   document.querySelector('.bio-suite-logo').src = branding.suite_logo || '';
+  // The logo leads back to the project's own pages when the export says where they are
+  // (`watch export --home-url`). A copy exported elsewhere has no such page, so no link.
+  // The top window navigates, so the embedded preview leaves its frame too.
+  function setHome(url) {
+    let href;
+    try { href = new URL(url, location.href); } catch (e) { return; }
+    if (!['http:', 'https:'].includes(href.protocol)) return;
+    const logo = document.querySelector('.logo');
+    const link = logo.querySelector('a.bio-home') || document.createElement('a');
+    if (!link.parentNode) { link.className = 'bio-home'; link.append(...logo.childNodes); logo.append(link); }
+    Object.assign(link, { href: href.href, target: '_top', title: 'Back to the project page' });
+  }
   // Credit upstream by name and link rather than by wordmark. watch.py drops the inlined
   // hivewatch logo from the exported page; a link is the credit that still works when
   // this file is read in a diff, and it is somewhere to go from every page we publish.
@@ -714,6 +729,7 @@
       if (live) setMode('live');
       if (ui.source) $('status-text').textContent = 'Network snapshot';
       startLive(ui.runId === 'network' ? metadata?.config?.live_status : null, metadataUrl);
+      if (metadata?.config?.home_url) setHome(new URL(metadata.config.home_url, new URL(metadataUrl || '.', location.href)).href);
       buildRoundTicks(); updateProgress(); fitNetwork();
     } catch (error) {
       if (token !== ui.loadToken) return;

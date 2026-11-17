@@ -319,8 +319,10 @@ def test_export_names_the_status_file_only_when_asked(tmp_path):
             / "network.map.json"
         ).read_text()
     )
-    assert "live_status" not in plain["config"]
+    assert "live_status" not in plain["config"] and "home_url" not in plain["config"]
     assert live["config"]["live_status"] == STATUS_FILENAME
+    home = export_site(federation, tmp_path / "c", home_url="../")
+    assert json.loads((home / "network.map.json").read_text())["config"]["home_url"] == "../"
 
 
 # ---------------------------------------------------------------------------
