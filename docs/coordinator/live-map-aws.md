@@ -78,6 +78,11 @@ browser ── 80/443 ──> Caddy ── static files ── /opt/live-map/sit
   certificate, and no domain or DNS record of ours. CloudFront fetches from the instance
   over plain HTTP; the page is public, and the status file carries no identifiers.
   Caching is off, because a cached status file is the stale page this exists to avoid.
+  `--alias map.appfl.ai` gives the CloudFront address a name of your own: the first run
+  requests a free AWS certificate and prints the two DNS records to ask for (one proves
+  the name to AWS, one points it at CloudFront); run it again once they exist and it
+  attaches the name. `appfl.ai`'s DNS is run by Argonne IT (`dns1.anl.gov`), so for an
+  `appfl.ai` or `anl.gov` name that is one ticket to them.
   `--domain map.example.org` instead serves HTTPS from the instance for a name you
   control (point an A record at the address `deploy` prints), and `--no-cloudfront`
   serves plain HTTP on the address only. Not a wildcard-DNS name such as

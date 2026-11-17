@@ -51,6 +51,7 @@ The commit being served must be on GitHub: the instance clones the public reposi
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import re
@@ -315,6 +316,38 @@ bash scripts/aws/instance_setup.sh
 """
 
 
+def with_alias(config: dict, alias: str, certificate_arn: str) -> dict:
+    """A distribution config that also answers to ``alias``, with that name's certificate."""
+    config = copy.deepcopy(config)
+    config["Aliases"] = {"Quantity": 1, "Items": [alias]}
+    config["ViewerCertificate"] = {
+        "ACMCertificateArn": certificate_arn,
+        "SSLSupportMethod": "sni-only",
+        "MinimumProtocolVersion": "TLSv1.2_2021",
+    }
+    return config
+
+
+def dns_request(alias: str, cloudfront: str, validation: dict | None) -> str:
+    """The records to ask whoever runs the alias's DNS for -- both at once, one ticket."""
+    zone = alias.split(".", 1)[1] if "." in alias else alias
+    rows = []
+    if validation:
+        rows.append((validation["Name"], validation["Type"], validation["Value"],
+                     "lets AWS issue the certificate for the name"))  # fmt: skip
+    rows.append((alias, "CNAME", cloudfront, "points the name at the site"))
+    width = max(len(r[0]) for r in rows)
+    lines = [
+        f"  To use {alias}, ask whoever runs the {zone} DNS to add:",
+        "",
+        *[f"    {name:<{width}}  {kind}  {value}    ({why})" for name, kind, value, why in rows],
+        "",
+        "  Then run this same command again; it attaches the name once the certificate is",
+        f"  issued. Until then the site stays at https://{cloudfront}.",
+    ]
+    return "\n".join(lines)
+
+
 def update_commands(sha: str, host: str = "") -> list[str]:
     if not _SHA.match(sha):
         raise DeployError(f"not a full commit id: {sha!r}")
@@ -357,6 +390,8 @@ class Cloud:
             self.iam = session.client("iam")
             self.ssm = session.client("ssm")
             self.cloudfront = session.client("cloudfront")
+            # CloudFront only takes certificates from us-east-1, whatever the instance's region.
+            self.acm = session.client("acm", region_name="us-east-1")
             self.account = session.client("sts").get_caller_identity()["Account"]
         except (BotoCoreError, ClientError) as exc:
             raise DeployError(
@@ -435,6 +470,60 @@ class Cloud:
                 "Tags": {"Items": self.tags},
             }
         )["Distribution"]
+
+    def project_certificates(self) -> list[str]:
+        """Certificates this deployment requested, found by tag."""
+        found = []
+        for page in self.acm.get_paginator("list_certificates").paginate():
+            for summary in page["CertificateSummaryList"]:
+                arn = summary["CertificateArn"]
+                tags = self.acm.list_tags_for_certificate(CertificateArn=arn).get("Tags", [])
+                if {"Key": "Project", "Value": self.name} in tags:
+                    found.append(arn)
+        return found
+
+    def ensure_certificate(self, alias: str) -> dict:
+        """The certificate for ``alias``, requesting one if needed: arn, status, DNS record."""
+        if not _HOST.match(alias):
+            raise DeployError(f"not a host name: {alias!r}")
+        arn = None
+        for candidate in self.project_certificates():
+            detail = self.acm.describe_certificate(CertificateArn=candidate)["Certificate"]
+            if detail["DomainName"] == alias and detail["Status"] in (
+                "PENDING_VALIDATION",
+                "ISSUED",
+            ):
+                arn = candidate
+        if arn is None:
+            arn = self.acm.request_certificate(
+                DomainName=alias,
+                ValidationMethod="DNS",
+                IdempotencyToken=re.sub(r"\W", "", alias)[:32],
+                Tags=self.tags,
+            )["CertificateArn"]
+            say(f"  requested a certificate for {alias}")
+        for _ in range(12):
+            detail = self.acm.describe_certificate(CertificateArn=arn)["Certificate"]
+            options = detail.get("DomainValidationOptions") or [{}]
+            record = options[0].get("ResourceRecord")
+            if record or detail["Status"] == "ISSUED":
+                return {"arn": arn, "status": detail["Status"], "record": record}
+            time.sleep(5)
+        raise DeployError(
+            "AWS has not produced the certificate's DNS record yet; run again shortly"
+        )
+
+    def attach_alias(self, distribution_id: str, alias: str, certificate_arn: str) -> bool:
+        current = self.cloudfront.get_distribution_config(Id=distribution_id)
+        config = current["DistributionConfig"]
+        if alias in (config.get("Aliases") or {}).get("Items", []):
+            return False
+        self.cloudfront.update_distribution(
+            Id=distribution_id,
+            IfMatch=current["ETag"],
+            DistributionConfig=with_alias(config, alias, certificate_arn),
+        )
+        return True
 
     def address(self) -> dict | None:
         found = self.ec2.describe_addresses(Filters=self.filter)["Addresses"]
@@ -646,12 +735,32 @@ def wait_for_distribution(domain: str, minutes: int = 25) -> bool:
     return False
 
 
-def serve_through_cloudfront(cloud: Cloud, ip: str) -> str | None:
-    """Create (or find) the distribution and wait for it. Returns its domain if answering."""
+def serve_through_cloudfront(cloud: Cloud, ip: str, alias: str | None = None) -> str | None:
+    """Create (or find) the distribution and wait for it; attach ``alias`` when it can.
+
+    Returns the best address that answers: the alias once its certificate is issued and
+    its DNS points here, else the cloudfront.net name, else None.
+    """
     distribution = cloud.ensure_distribution(ec2_public_dns(ip, cloud.region))
     domain = distribution["DomainName"]
     say(f"  CloudFront {domain}")
-    return domain if wait_for_distribution(domain) else None
+    if not wait_for_distribution(domain):
+        return None
+    if not alias:
+        return f"https://{domain}"
+    certificate = cloud.ensure_certificate(alias)
+    if certificate["status"] != "ISSUED":
+        say(dns_request(alias, domain, certificate["record"]))
+        return f"https://{domain}"
+    if cloud.attach_alias(distribution["Id"], alias, certificate["arn"]):
+        say(f"  attached {alias}; CloudFront takes a few minutes to spread it")
+    for _ in range(20):
+        if fetch_status(f"https://{alias}"):
+            return f"https://{alias}"
+        time.sleep(30)
+    say(f"  {alias} is attached but not reaching the site yet. Its DNS record must read:")
+    say(f"    {alias}  CNAME  {domain}")
+    return f"https://{domain}"
 
 
 # ---------------------------------------------------------------------------
@@ -691,8 +800,11 @@ def cmd_deploy(args) -> int:
         gather_inputs(args, None, required=True)
         host = args.domain or ""
         front = (
-            "your domain" if args.domain else "plain HTTP" if args.no_cloudfront else "CloudFront"
-        )
+            "your domain" if args.domain
+            else "plain HTTP" if args.no_cloudfront
+            else f"CloudFront as {args.alias}" if args.alias
+            else "CloudFront"
+        )  # fmt: skip
         target = f"{args.instance_type} in {args.region}"
         say(f"would deploy commit {sha[:10]} to {target}, via {front}\n")
         say(render_user_data(sha=sha, host=host, region=args.region, name=args.name,
@@ -737,9 +849,9 @@ def finish(cloud: Cloud, args, ip: str, host: str, https: bool) -> int:
     """Put CloudFront in front if wanted, and print the address to use."""
     url = f"https://{host}" if https else f"http://{ip}"
     if not (args.domain or args.no_cloudfront):
-        domain = serve_through_cloudfront(cloud, ip)
-        if domain:
-            url = f"https://{domain}"
+        served = serve_through_cloudfront(cloud, ip, args.alias)
+        if served:
+            url = served
         else:
             say("  CloudFront is not answering yet; run `status` in a few minutes")
     elif host and not https:
@@ -820,7 +932,7 @@ def cmd_update(args, cloud: Cloud | None = None, sha: str | None = None) -> int:
         say((result.get("StandardErrorContent") or "").strip()[-2000:])
         raise DeployError(f"the update {result['Status'].lower()}; the previous site is still up")
     if not (args.domain or args.no_cloudfront):
-        serve_through_cloudfront(cloud, instance["PublicIpAddress"])
+        serve_through_cloudfront(cloud, instance["PublicIpAddress"], args.alias)
     return cmd_status(args, cloud=cloud)
 
 
@@ -847,8 +959,10 @@ def cmd_status(args, cloud: Cloud | None = None) -> int:
     distribution = cloud.distribution()
     if distribution is not None:
         domain = distribution["DomainName"]
-        if fetch_status(f"https://{domain}", timeout=8):
-            base = f"https://{domain}"
+        names = (distribution.get("Aliases") or {}).get("Items", []) + [domain]
+        answering = [n for n in names if fetch_status(f"https://{n}", timeout=8)]
+        if answering:
+            base = f"https://{answering[0]}"
         else:
             say(f"  CloudFront {domain} is not answering yet ({distribution['Status']})")
     say(f"live map: {base}/network.html")
@@ -928,6 +1042,12 @@ def cmd_destroy(args) -> int:
                 say("  CloudFront is still disabling; run `destroy --yes` again later to delete it")
                 break
             time.sleep(30)
+    for arn in cloud.project_certificates():
+        try:
+            cloud.acm.delete_certificate(CertificateArn=arn)
+            say("  deleted certificate")
+        except cloud.acm.exceptions.ResourceInUseException:
+            say("  certificate still in use by CloudFront; run `destroy --yes` again later")
     say("gone.")
     return 0
 
@@ -951,6 +1071,12 @@ def parser() -> argparse.ArgumentParser:
     )
     front.add_argument(
         "--no-cloudfront", action="store_true", help="plain HTTP on the address only"
+    )
+    front.add_argument(
+        "--alias",
+        default=None,
+        help="your own name for the CloudFront address, e.g. map.appfl.ai: prints the DNS "
+        "records to ask for, then attaches the name on a later run",
     )
 
     commands = top.add_subparsers(dest="command", required=True)

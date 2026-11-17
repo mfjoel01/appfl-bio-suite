@@ -375,6 +375,24 @@ def test_cloudfront_fronts_the_instance_over_https_without_caching(live_map):
     )
 
 
+def test_alias_attaches_with_its_certificate_and_asks_for_both_records(live_map):
+    base = live_map.distribution_config(
+        name="live-map", origin="o", cache_policy="C", request_policy="R", reference="x"
+    )
+    config = live_map.with_alias(base, "map.appfl.ai", "arn:cert")
+    assert config["Aliases"] == {"Quantity": 1, "Items": ["map.appfl.ai"]}
+    assert config["ViewerCertificate"]["ACMCertificateArn"] == "arn:cert"
+    assert config["ViewerCertificate"]["SSLSupportMethod"] == "sni-only"
+    assert base["ViewerCertificate"] == {"CloudFrontDefaultCertificate": True}, "not mutated"
+
+    record = {"Name": "_a1.map.appfl.ai.", "Type": "CNAME", "Value": "_b2.acm-validations.aws."}
+    text = live_map.dns_request("map.appfl.ai", "d1.cloudfront.net", record)
+    assert "appfl.ai DNS" in text
+    assert "_a1.map.appfl.ai." in text and "_b2.acm-validations.aws." in text
+    assert "CNAME  d1.cloudfront.net" in text
+    assert "_a1" not in live_map.dns_request("map.appfl.ai", "d1.cloudfront.net", None)
+
+
 def test_update_resets_the_served_host_name(live_map):
     commands = live_map.update_commands(SHA)
     assert any("LIVE_MAP_HOST=/' /etc/live-map.env" in c for c in commands)
