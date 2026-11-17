@@ -152,6 +152,8 @@
     <section id="bio-experiments-panel" role="tabpanel" aria-labelledby="bio-experiments-tab">
       <fieldset id="bio-filters"><legend class="bio-sr-only">Filter sites by experiment</legend></fieldset>
       <div id="bio-sites-pane">
+        <div class="bio-split-resizer" role="separator" aria-orientation="horizontal" tabindex="0"
+          aria-label="Resize the site list" title="Drag to resize"></div>
         <div class="bio-sites-heading"><span>Participating Sites</span><span class="bio-sites-tools">
           <span id="bio-sort" class="bio-sort" role="radiogroup" aria-label="Sort sites" data-sort="status">
             <button type="button" role="radio" data-sort="name" aria-checked="false" tabindex="-1">Name</button>
@@ -253,6 +255,51 @@
     event.preventDefault();
     setSort(ui.sort === 'name' ? 'status' : 'name'); renderSidebar();
     sortSwitch.querySelector('[aria-checked="true"]').focus();
+  });
+
+  // Likewise the split between the experiment filters and the site list: drag the line above
+  // "Participating Sites", or focus it and use the arrow keys; double-click or Home resets.
+  // Kept as a fraction of the sidebar's height, so it holds when the window is resized.
+  const splitKey = 'appfl-bio-suite:sites-share';
+  const splitter = sidebar.querySelector('.bio-split-resizer');
+  function setSitesShare(share, remember = true) {
+    if (share == null) {
+      sidebar.style.removeProperty('--bio-sites-h');
+      try { if (remember) localStorage.removeItem(splitKey); } catch (e) {}
+    } else {
+      share = Math.min(0.8, Math.max(0.2, share));
+      sidebar.style.setProperty('--bio-sites-h', `${(share * 100).toFixed(1)}%`);
+      try { if (remember) localStorage.setItem(splitKey, share.toFixed(3)); } catch (e) {}
+    }
+    splitter.setAttribute('aria-valuenow', String(Math.round(currentShare() * 100)));
+  }
+  const currentShare = () => $('bio-sites-pane').getBoundingClientRect().height
+    / Math.max(1, sidebar.getBoundingClientRect().height);
+  try { const saved = Number(localStorage.getItem(splitKey)); if (saved) setSitesShare(saved, false); } catch (e) {}
+  splitter.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    splitter.setPointerCapture(event.pointerId);
+    document.body.classList.add('bio-resizing-rows');
+    const move = e => { const box = sidebar.getBoundingClientRect(); setSitesShare((box.bottom - e.clientY) / box.height); };
+    const end = () => {
+      document.body.classList.remove('bio-resizing-rows');
+      splitter.removeEventListener('pointermove', move);
+      splitter.removeEventListener('pointerup', end);
+      splitter.removeEventListener('pointercancel', end);
+    };
+    splitter.addEventListener('pointermove', move);
+    splitter.addEventListener('pointerup', end);
+    splitter.addEventListener('pointercancel', end);
+  });
+  splitter.addEventListener('dblclick', () => setSitesShare(null));
+  splitter.addEventListener('keydown', event => {
+    const step = event.shiftKey ? 0.1 : 0.04;
+    if (event.key === 'ArrowUp') setSitesShare(currentShare() + step);
+    else if (event.key === 'ArrowDown') setSitesShare(currentShare() - step);
+    else if (event.key === 'Home') setSitesShare(null);
+    else return;
+    event.preventDefault();
   });
 
   // The sidebar's width is the reader's to set: drag its edge, or focus the edge and use the
