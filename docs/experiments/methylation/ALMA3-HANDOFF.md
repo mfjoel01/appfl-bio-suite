@@ -117,3 +117,18 @@ have stopped before resuming. The sequential command above remains available,
 but do NOT use it against a parallel-run output directory.
 
 Resume verification passed: all 141 checkpoint hashes and mtimes unchanged; no retraining. Full parallel sweep is ready to launch.
+
+## Full sweep running
+
+Launched with implementation commit `18272de` on `sophia-login-01`.
+Initial controller PID 2954105; coordinator seed PIDs 2954454/2954455/2954456.
+These PIDs may become stale: inspect matching command lines and progress before
+resuming. Output `local/output/alma3-skew-sweep`; 21 seed/level points expected.
+The controller commits compact results automatically. All code and specifications
+were committed before launch. Do not modify hashed training modules mid-run.
+
+When complete: inspect the combined report and figures; verify 168 model records
+(3 seeds × 7 levels × 8 arms), fixed class-balanced evaluation, pooled training
+counts and same zero-shot scores across levels. Copy final figures/summary CSVs
+into docs, update ALMA3-SWEEP.md with measured results, and commit. Preserve the
+best-local comparator and explicitly label this as synthetic validation.

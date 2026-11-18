@@ -1,0 +1,22 @@
+{
+  "parent_pid": 2954105,
+  "host": "sophia-login-01",
+  "python": "3.12.11",
+  "seed_pids": {
+    "42": 2954454,
+    "43": 2954455,
+    "44": 2954456
+  },
+  "implementation_commit": "18272de9207bb6d770984a7ecd2b9a0258c86ede",
+  "packages": {
+    "appfl": "1.10.0",
+    "torch": "2.11.0",
+    "numpy": "1.26.4",
+    "scipy": "1.17.1",
+    "matplotlib": "3.10.8"
+  },
+  "worker_command": [
+    "/lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-runtime/bin/python"
+  ],
+  "release": "/lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-release-v3.1.2"
+}
