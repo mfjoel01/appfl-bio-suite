@@ -83,3 +83,5 @@ Sweep checkpoint: seed 41, convergence 0 complete. Scores in `docs/experiments/m
 Sweep checkpoint: seed 41, convergence 1 complete. Scores in `docs/experiments/methylation/results/alma3-skew-sweep-development`; resume command below remains valid.
 
 Sweep checkpoint: seed 41, convergence 0 complete. Scores in `docs/experiments/methylation/results/alma3-skew-sweep-development`; resume command below remains valid.
+
+Sweep checkpoint: seed 41, convergence 1 complete. Scores in `docs/experiments/methylation/results/alma3-skew-sweep-development`; resume command below remains valid.
