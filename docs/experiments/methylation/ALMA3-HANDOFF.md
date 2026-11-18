@@ -134,3 +134,5 @@ into docs, update ALMA3-SWEEP.md with measured results, and commit. Preserve the
 best-local comparator and explicitly label this as synthetic validation.
 
 Parallel sweep checkpoint: 2 completed seed/level points. Durable scores: `docs/experiments/methylation/results/alma3-skew-sweep`.
+
+Parallel sweep checkpoint: 3 completed seed/level points. Durable scores: `docs/experiments/methylation/results/alma3-skew-sweep`.
