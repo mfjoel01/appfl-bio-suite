@@ -23,8 +23,10 @@ supports it. The previous five-site experiment had one nearly perfect local.
 | S3 | 1 / 1 / 1 / 97 | 30 / 20 / 20 / 30 |
 | S4 | 49 / 1 / 1 / 49 | 30 / 20 / 20 / 30 |
 
-Convergence values: 0, 0.25, 0.5, 0.75, 1. Linear interpolation is rounded while
+Convergence values: 0, 0.05, 0.10, 0.25, 0.5, 0.75, 1. Linear interpolation is rounded while
 preserving BOTH 100 patients per site and pooled class totals 150/100/100/150.
+Extra resolution near zero captures changes when rare classes gain their first few examples.
+These extra points were specified before development training results.
 All four classes remain present at every site. Class-wise patient prefixes from
 fixed independently generated reservoirs pair training samples across points.
 The same class-balanced validation patients (25/class/site) are used at every

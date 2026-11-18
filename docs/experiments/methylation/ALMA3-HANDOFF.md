@@ -39,7 +39,7 @@ and evaluation distributions fixed across the sweep. Preserve negative results.
 ## Sweep protocol (implementation in progress)
 
 Committed specification: `src/appfl_bio_suite/experiments/methylation/configs/alma3-skew-sweep.json`.
-Five convergence levels 0, .25, .5, .75, 1; three data seeds 42–44.
+Seven convergence levels 0, .05, .10, .25, .5, .75, 1; three data seeds 42–44.
 Extreme rows: [97,1,1,1], [2,96,1,1], [1,1,96,2], [1,1,1,97], [49,1,1,49].
 Identical endpoint: [30,20,20,30] at every site. Every row has 100 patients;
 pool totals remain [150,100,100,150] at every point. Integer rounding must
