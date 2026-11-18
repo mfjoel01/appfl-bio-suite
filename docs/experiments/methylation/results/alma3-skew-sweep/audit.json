@@ -1,0 +1,15 @@
+{
+  "model_records": 168,
+  "evaluation_records": 1680,
+  "unique_checkpoints_verified": 150,
+  "site_counts_preserved": true,
+  "pooled_counts_preserved": true,
+  "evaluation_counts": [
+    25,
+    25,
+    25,
+    25
+  ],
+  "zero_shot_identical_across_levels": true,
+  "test_access": false
+}

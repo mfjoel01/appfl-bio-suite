@@ -1,7 +1,7 @@
 # Five-site class-mix sweep for the St. Jude discussion
 
-Status: development endpoint check running; the three-seed specification is
-committed before that check finishes. Results will be added when complete.
+Status: complete. All 21 seed/convergence points and 168 model records are
+committed. The three-seed specification was locked before production training.
 This is a synthetic mechanism demonstration using ALMA3 CV:e11, not clinical
 validation, real hospital data, or an institutional deployment.
 
@@ -63,5 +63,59 @@ publishes compact scores and makes a git commit when `--commit-progress` is used
 Weights and patient representations remain outside git. The source release is
 immutable, and release licenses and attribution accompany all derivative models.
 
-Expected presentation artifacts: `sweep.png`, `sweep.svg`, `sweep.pdf`,
+Presentation artifacts: `sweep.png`, `sweep.svg`, `sweep.pdf`,
 `all-locals.png`, `site-mixes.png`, `summary.csv`, and `paired-gaps.csv`.
+
+
+## Measured results
+
+Balanced accuracy averaged across three data seeds on the same balanced,
+shifted validation cohorts at all five sites:
+
+| Class-mix convergence | FedAvg | Mean local | Best local |
+|---|---:|---:|---:|
+| 0 (extreme skew) | 100.00% | 72.72% | 80.53% |
+| 0.05 | 100.00% | 91.08% | 99.40% |
+| 0.10 | 100.00% | 97.45% | 100.00% |
+| 0.25 | 100.00% | 99.79% | 100.00% |
+| 0.50 | 100.00% | 99.96% | 100.00% |
+| 0.75 | 100.00% | 99.99% | 100.00% |
+| 1 (identical ratios) | 100.00% | 100.00% | 100.00% |
+
+Federation exceeds every measured local model at the extreme point in all three
+seeds. Its average advantage over the per-seed best local is 19.47 percentage
+points. Local catch-up happens early: the best local matches federation at 0.10,
+and mean local accuracy reaches 99.79% at 0.25, while sites still have very
+different class ratios. Pooled training also scores 100% throughout.
+
+Use the [full sweep PDF](figures/alma3/skew-sweep/sweep.pdf) together with the
+[early-convergence PDF](figures/alma3/skew-sweep/sweep-early.pdf). Supporting
+figures show [all five locals](figures/alma3/skew-sweep/all-locals.png),
+[site class counts](figures/alma3/skew-sweep/site-mixes.png), and
+[each local at its own site](figures/alma3/skew-sweep/own-site.pdf).
+At extreme skew, federation also beats all five locals on their own balanced
+site cohorts in each seed. This rules out cross-site evaluation as the sole
+explanation for that endpoint gap.
+
+[Aggregate scores and audit](results/alma3-skew-sweep/REPORT.md) include paired
+seed intervals, checkpoint hashes, and a supplementary
+[four-class unshifted retention view](figures/alma3/skew-sweep/retention.png).
+Retention in the other 105 classes was not evaluated.
+
+## Interpretation limits
+
+This demonstrates a mechanism on synthetic source-template data with deliberately
+constructed measurement shifts. It is not evidence of clinical accuracy or an
+expected gain at St. Jude. Local training uses ordinary unweighted samples;
+class-balanced local resampling and reweighting were not tested. Therefore this
+compares the implemented local baseline, not every possible local strategy.
+Federation combines 500 patients while each local has 100. Three data seeds
+provide descriptive uncertainty only. The endpoint equalizes class ratios while
+preserving site measurement differences. Real test cohorts remain untouched.
+
+Integrity audit passed: 168 model records, 1,680 site/evaluation records, and
+150 unique final checkpoint hashes verified; site and pooled counts preserved;
+25 validation patients per class per site; zero-shot scores identical across
+levels; no test access. Sixteen implementation tests passed. A real-worker
+serial/batched gradient comparison differed by at most 7.45e-9; resuming the
+development run preserved all 141 checkpoint hashes and modification times.

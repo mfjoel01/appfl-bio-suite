@@ -15,8 +15,8 @@ Worker Python: `/lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-r
 Coordinator Python: `/home/mfjoel01/.conda/envs/appfl_env/bin/python`.
 Run from this worktree with `PYTHONPATH=src NUMPY_MADVISE_HUGEPAGE=0 OPENBLAS_NUM_THREADS=1`.
 Weights/checkpoints stay outside git; licenses accompany derivatives.
-Latest completed output: `local/output/alma3-five-sites-skewed-validation`.
-Thirteen ALMA3 tests pass; lint/format checks pass. Real test cohorts untouched.
+Latest completed output: `local/output/alma3-skew-sweep`.
+Sixteen ALMA3 tests pass; lint/format checks pass. Real test cohorts untouched.
 
 ## Active request
 
@@ -28,13 +28,33 @@ proposed curve as a hypothesis; show all locals and the best local, not only
 an average that hides this result. Keep patient counts, optimization budgets,
 and evaluation distributions fixed across the sweep. Preserve negative results.
 
-## Next steps
+## Completion (2026-11-18)
 
-1. Commit baseline implementation and durable compact result summaries.
-2. Implement a resumable sweep, paired patient sampling, fixed evaluation cohorts,
-   explicit interpolation and figures with per-local and paired uncertainty.
-3. Run a small development check, then a locked multi-seed validation sweep.
-4. Commit scripts/configs/results/figures and update this log at each milestone.
+The requested sweep and presentation bundle are complete. No training remains.
+All 21 points / 168 model records completed; integrity audit passed on 1,680
+evaluation records and 150 unique final checkpoints. See ALMA3-SWEEP.md for the
+measured results and presentation links. Full output: `local/output/alma3-skew-sweep`.
+Compact results, figures, specifications and checkpoint hashes are committed.
+Weights and patient-level data remain outside git.
+
+FedAvg scores 100% throughout; extreme mean/best local scores are 72.72/80.53%.
+Best local catches up at convergence 0.10; all locals reach 100% at the identical
+ratio endpoint. Do not imply the advantage lasts until site ratios are identical.
+Scoped methylation lint/format checks pass. Repository-wide lint also reports
+four pre-existing errors in unrelated fine-mapping scripts.
+Sixteen tests passed; real-worker gradient parity and no-retraining resume checks
+passed. Local class-balanced reweighting/resampling was not evaluated.
+
+To audit and rerender existing results without training:
+
+```bash
+python scripts/methylation/audit_alma3_sweep.py local/output/alma3-skew-sweep
+NUMPY_MADVISE_HUGEPAGE=0 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 PYTHONPATH=src \
+/home/mfjoel01/.conda/envs/appfl_env/bin/python -m appfl_bio_suite.experiments.methylation.alma3.sweep_report local/output/alma3-skew-sweep
+```
+
+The following sections preserve historical progress and recovery commands;
+references to running jobs or pending checks below are superseded by this status.
 
 ## Sweep protocol (implementation in progress)
 

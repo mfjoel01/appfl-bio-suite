@@ -98,6 +98,9 @@ def report_sweep(out):
         "best-local": "Best local (per-seed oracle)",
         "known-support": "Zero-shot, known classes",
     }
+    if np.array_equal(arrays["fedavg"], arrays["pooled"]):
+        colors.pop("pooled")
+        labels["fedavg"] = "FedAvg / pooled (same scores)"
     fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
     for arm in colors:
         values = arrays[arm]
@@ -127,6 +130,7 @@ def report_sweep(out):
         ax.set(
             xlabel="Class-mix convergence: 0 = extreme skew; 1 = identical ratios",
             xticks=levels,
+            xticklabels=[f"{v:g}" for v in levels],
             xlim=(min(levels) - 0.02, max(levels) + 0.02),
         )
         ax.grid(alpha=0.2)
@@ -148,16 +152,35 @@ def report_sweep(out):
     fig.tight_layout(rect=(0, 0.05, 1, 0.94))
     for ext in ("png", "svg", "pdf"):
         fig.savefig(out / f"sweep.{ext}", dpi=220)
+    if len(levels) > 2 and 0.25 in levels:
+        for ax in axes:
+            ax.set(
+                xlim=(-0.005, 0.255),
+                xticks=[v for v in levels if v <= 0.25],
+                xlabel="Class-mix convergence (early region; identical endpoint = 1)",
+            )
+        fig.suptitle(
+            f"Early convergence detail · {len(seeds)} data seeds\n"
+            "Same prespecified sweep; 0–25% of movement toward shared class ratios"
+        )
+        for ext in ("png", "svg", "pdf"):
+            fig.savefig(out / f"sweep-early.{ext}", dpi=220)
     plt.close(fig)
     fig, ax = plt.subplots(figsize=(9, 5.5))
     for site in range(5):
         arm = f"local-S{site}"
-        ax.plot(levels, 100 * arrays[arm].mean(0), marker="o", label=f"Local S{site}")
+        ax.plot(
+            levels,
+            100 * arrays[arm].mean(0),
+            marker=["o", "s", "^", "D", "v"][site],
+            label=f"Local S{site}",
+        )
     ax.plot(levels, 100 * arrays["fedavg"].mean(0), color="black", linewidth=3, label="FedAvg")
     ax.set(
         xlabel="Class-mix convergence (0: extreme; 1: identical)",
         ylabel="Balanced accuracy (%)",
         xticks=levels,
+        xticklabels=[f"{v:g}" for v in levels],
         ylim=(0, 104),
         title="Every local model — no local site omitted",
     )
@@ -174,8 +197,15 @@ def report_sweep(out):
     fig.savefig(out / "all-locals.svg")
     plt.close(fig)
     counts = {r["convergence"]: r["class_counts"] for r in records}
-    fig, axes = plt.subplots(1, len(levels), figsize=(3 * len(levels), 4), squeeze=False)
-    for ax, level in zip(axes[0], levels, strict=True):
+    columns = min(4, len(levels))
+    row_count = (len(levels) + columns - 1) // columns
+    fig, axes = plt.subplots(
+        row_count, columns, figsize=(3.5 * columns, 3.4 * row_count), squeeze=False
+    )
+    for ax in axes.flat:
+        ax.set_visible(False)
+    for ax, level in zip(list(axes.flat)[: len(levels)], levels, strict=True):
+        ax.set_visible(True)
         matrix = np.array(counts[level])
         bottom = np.zeros(5)
         for j, label in enumerate(spec["class_indices"]):
@@ -225,13 +255,25 @@ def report_sweep(out):
         "an explicit no-training control.",
         "",
         "Intervals resample data seeds jointly across convergence points and "
-        "compare models within seed. With three seeds these intervals are "
+        "compare models within seed. With few seeds these intervals are "
         "descriptive, not a clinical-population uncertainty estimate. No "
         "calibrated decision policy is fitted in this sweep.",
         "",
         "See sweep.png/svg/pdf, all-locals.png, site-mixes.png, summary.csv and paired-gaps.csv.",
     ]
+    lines += [
+        "",
+        "Local training uses ordinary unweighted examples; class-balanced local "
+        "resampling or reweighting is not evaluated. This does not establish superiority "
+        "over all possible local training strategies.",
+        "",
+        "Own-site comparisons and four-class unshifted retention are supplementary "
+        "views of the same recorded predictions, not additional training or test data.",
+    ]
     (out / "REPORT.md").write_text("\n".join(lines) + "\n")
+    from .sweep_diagnostics import diagnostics
+
+    diagnostics(out)
 
 
 if __name__ == "__main__":
