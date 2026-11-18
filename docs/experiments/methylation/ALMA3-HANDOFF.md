@@ -85,3 +85,35 @@ Sweep checkpoint: seed 41, convergence 1 complete. Scores in `docs/experiments/m
 Sweep checkpoint: seed 41, convergence 0 complete. Scores in `docs/experiments/methylation/results/alma3-skew-sweep-development`; resume command below remains valid.
 
 Sweep checkpoint: seed 41, convergence 1 complete. Scores in `docs/experiments/methylation/results/alma3-skew-sweep-development`; resume command below remains valid.
+
+## Development result and parallel production runner
+
+Development seed 41 is complete at both endpoints: FedAvg 100% throughout;
+mean local 72.52% -> 99.96%; best local 79.80% -> 100%. No training settings were
+changed after inspecting these results. Scores were automatically committed.
+A resume integrity check is in progress; compare hashes AND mtimes against
+`local/alma3-sweep-before-resume.json` when it finishes.
+
+The full run will use three independent CPU seed workers under one controller,
+which alone writes progress commits (avoiding concurrent git writes). Each
+worker caps Torch/BLAS thread counts. There are no GPU or multi-member jobs.
+Use this command for the full parallel run; add `--resume` if its output exists:
+
+```bash
+NUMPY_MADVISE_HUGEPAGE=0 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 PYTHONPATH=src \
+/home/mfjoel01/.conda/envs/appfl_env/bin/python -m appfl_bio_suite.experiments.methylation.alma3.sweep_parallel \
+ --config src/appfl_bio_suite/experiments/methylation/configs/alma3-skew-sweep.json \
+ --out local/output/alma3-skew-sweep \
+ --release /lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-release-v3.1.2 \
+ --worker-command /lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-runtime/bin/python \
+ --publish docs/experiments/methylation/results/alma3-skew-sweep
+```
+
+Check `execution.json`, `progress.json`, and `seed-42.log` / `seed-43.log` /
+`seed-44.log` under the output directory. `COMPLETE.json` is written only after
+all workers and combined figures succeed. A failed worker leaves resumable
+round checkpoints; the controller records `FAILED.json`. Verify old processes
+have stopped before resuming. The sequential command above remains available,
+but do NOT use it against a parallel-run output directory.
+
+Resume verification passed: all 141 checkpoint hashes and mtimes unchanged; no retraining. Full parallel sweep is ready to launch.
