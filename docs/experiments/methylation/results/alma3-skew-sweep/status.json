@@ -18,7 +18,8 @@
     "seed-44/seed-44-convergence-0.25.json",
     "seed-44/seed-44-convergence-0.5.json",
     "seed-44/seed-44-convergence-0.75.json",
-    "seed-44/seed-44-convergence-0.json"
+    "seed-44/seed-44-convergence-0.json",
+    "seed-44/seed-44-convergence-1.json"
   ],
   "expected_points": 21,
   "output": "/lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/appfl-bio-suite-alma3/local/output/alma3-skew-sweep",
