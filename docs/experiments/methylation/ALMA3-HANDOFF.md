@@ -77,3 +77,5 @@ NUMPY_MADVISE_HUGEPAGE=0 OPENBLAS_NUM_THREADS=1 PYTHONPATH=src \
  --worker-command /lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-runtime/bin/python \
  --publish docs/experiments/methylation/results/alma3-skew-sweep --commit-progress
 ```
+
+Sweep checkpoint: seed 41, convergence 0 complete. Scores in `docs/experiments/methylation/results/alma3-skew-sweep-development`; resume command below remains valid.

@@ -1,0 +1,63 @@
+{
+  "seeds": [
+    41
+  ],
+  "levels": [
+    0.0,
+    1.0
+  ],
+  "extreme_counts": [
+    [
+      97,
+      1,
+      1,
+      1
+    ],
+    [
+      2,
+      96,
+      1,
+      1
+    ],
+    [
+      1,
+      1,
+      96,
+      2
+    ],
+    [
+      1,
+      1,
+      1,
+      97
+    ],
+    [
+      49,
+      1,
+      1,
+      49
+    ]
+  ],
+  "target_counts": [
+    30,
+    20,
+    20,
+    30
+  ],
+  "class_indices": [
+    5,
+    8,
+    58,
+    76
+  ],
+  "patients_per_site": 100,
+  "validation_per_class": 25,
+  "rounds": 10,
+  "local_steps": 2,
+  "learning_rate": 0.3,
+  "gradient_batch_size": 16,
+  "signature_rotation_degrees": 70.0,
+  "batch_shift": 0.6,
+  "coverage": 0.25,
+  "member": "CV:e11"
+}
