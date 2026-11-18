@@ -81,3 +81,5 @@ NUMPY_MADVISE_HUGEPAGE=0 OPENBLAS_NUM_THREADS=1 PYTHONPATH=src \
 Sweep checkpoint: seed 41, convergence 0 complete. Scores in `docs/experiments/methylation/results/alma3-skew-sweep-development`; resume command below remains valid.
 
 Sweep checkpoint: seed 41, convergence 1 complete. Scores in `docs/experiments/methylation/results/alma3-skew-sweep-development`; resume command below remains valid.
+
+Sweep checkpoint: seed 41, convergence 0 complete. Scores in `docs/experiments/methylation/results/alma3-skew-sweep-development`; resume command below remains valid.
