@@ -156,3 +156,5 @@ Parallel sweep checkpoint: 13 completed seed/level points. Durable scores: `docs
 Parallel sweep checkpoint: 15 completed seed/level points. Durable scores: `docs/experiments/methylation/results/alma3-skew-sweep`.
 
 Parallel sweep checkpoint: 16 completed seed/level points. Durable scores: `docs/experiments/methylation/results/alma3-skew-sweep`.
+
+Parallel sweep checkpoint: 17 completed seed/level points. Durable scores: `docs/experiments/methylation/results/alma3-skew-sweep`.
