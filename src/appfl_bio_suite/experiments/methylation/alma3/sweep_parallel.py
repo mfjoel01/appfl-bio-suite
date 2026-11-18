@@ -87,7 +87,13 @@ def run_parallel(spec, out, release, worker_command, publish, *, resume=False):
                 command,
                 stdout=log,
                 stderr=subprocess.STDOUT,
-                env={**os.environ, "NUMPY_MADVISE_HUGEPAGE": "0", "OPENBLAS_NUM_THREADS": "1"},
+                env={
+                    **os.environ,
+                    "NUMPY_MADVISE_HUGEPAGE": "0",
+                    "OPENBLAS_NUM_THREADS": "1",
+                    "OMP_NUM_THREADS": "1",
+                    "MKL_NUM_THREADS": "1",
+                },
             )
             children.append((seed, child))
         environment = dict(
