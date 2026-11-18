@@ -48,7 +48,19 @@ def rotate_signature(logits, profiles, support, degrees):
     return logits + (scores @ rotation.T - scores) @ basis
 
 
-def cohort(profiles, chrom, positions, config, seed, site, split, coverage, *, unshifted=False):
+def cohort(
+    profiles,
+    chrom,
+    positions,
+    config,
+    seed,
+    site,
+    split,
+    coverage,
+    *,
+    unshifted=False,
+    replicate=None,
+):
     codes = {"train": 11, "calibration": 22, "validation": 33, "test": 44}
     if split not in codes:
         raise ValueError("unknown cohort split")
@@ -67,7 +79,10 @@ def cohort(profiles, chrom, positions, config, seed, site, split, coverage, *, u
     weights = 0.85 * weights + 0.15 / len(support)
     shift = site_rng.normal(0, config.batch_shift, width).astype(np.float32)
     drift = site_rng.normal(0, 1, (classes, min(width, 256))).astype(np.float32)
-    rng = np.random.default_rng(np.random.SeedSequence([seed, site, codes[split]]))
+    patient_seed = [seed, site, codes[split]]
+    if replicate is not None:
+        patient_seed.append(replicate)
+    rng = np.random.default_rng(np.random.SeedSequence(patient_seed))
     if config.site_class_proportions:
         counts = class_counts(n, config.site_class_proportions[site], config.minimum_per_class)
         y = np.repeat(support, counts)

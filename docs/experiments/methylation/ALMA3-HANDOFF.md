@@ -51,3 +51,29 @@ calibration claim in this sweep. Compare zero-shot, pooled, FedAvg, and all
 five locals. Report the best local as well as their mean. Use development seed
 41 for a mechanics check, then locked seeds 42–44; do not tune toward a desired
 winner. Checkpoint/commit compact per-point scores as experiments progress.
+
+## Implementation checkpoint
+
+Sweep runner: `python -m appfl_bio_suite.experiments.methylation.alma3.sweep`.
+Resume requires an identical specification, worker identity and training-code
+hashes. Each arm saves atomic round progress plus a hashed checkpoint. Finished
+arms are reused on resume; initial checkpoints are not rewritten. Completed
+points publish compact scores and optionally create git commits automatically.
+
+Sixteen tests passed before final resume/format cleanup. Real CV:e11 batched
+per-patient clipping versus serial: maximum parameter error 7.45e-9 over three
+steps on 12 patients. Batched gradients preserve per-patient clipping and only
+sum afterward. No DP noise is used in this sweep.
+
+Development command (seed 41, endpoints) and full run use the same module.
+Full run/resume command (add `--resume` only when output already exists):
+
+```bash
+NUMPY_MADVISE_HUGEPAGE=0 OPENBLAS_NUM_THREADS=1 PYTHONPATH=src \
+/home/mfjoel01/.conda/envs/appfl_env/bin/python -m appfl_bio_suite.experiments.methylation.alma3.sweep \
+ --config src/appfl_bio_suite/experiments/methylation/configs/alma3-skew-sweep.json \
+ --out local/output/alma3-skew-sweep \
+ --release /lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-release-v3.1.2 \
+ --worker-command /lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-runtime/bin/python \
+ --publish docs/experiments/methylation/results/alma3-skew-sweep --commit-progress
+```

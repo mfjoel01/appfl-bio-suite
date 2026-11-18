@@ -6,6 +6,7 @@ import json
 import sys
 import time
 import traceback
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -99,6 +100,8 @@ class Worker:
         )
 
     def training_data(self, request):
+        if "class_counts" in request:
+            return self.sweep_training_data(request)
         cached = self.can_cache_features(request)
         all_data = []
         for site in request["sites"]:
@@ -126,6 +129,71 @@ class Worker:
         inputs = tuple(torch.cat([d[0][j] for d in all_data]) for j in range(len(all_data[0][0])))
         labels = torch.cat([d[1] for d in all_data])
         return CachedHeads(self.model) if cached else self.model, inputs, labels
+
+    def sweep_training_data(self, request):
+        """Paired class-wise patient prefixes; only embeddings stay in worker memory."""
+        if not self.can_cache_features(request) or request.get("sigma", 0) != 0:
+            raise ValueError("sweep reservoirs require nonprivate pretrained heads")
+        support = self.config.class_indices
+        counts = np.asarray(request["class_counts"])
+        if (
+            counts.shape != (len(self.config.site_sizes), len(support))
+            or counts.dtype.kind not in "iu"
+            or (counts < 1).any()
+            or not np.array_equal(counts.sum(1), self.config.site_sizes)
+        ):
+            raise ValueError("invalid sweep class counts")
+        if any(n % len(support) for n in self.config.site_sizes):
+            raise ValueError("reservoir cohort sizes must divide evenly by class count")
+        pool_config = replace(
+            self.config,
+            site_class_proportions=tuple(
+                (1 / len(support),) * len(support) for _ in self.config.site_sizes
+            ),
+        )
+        all_features, all_labels = [], []
+        for site in request["sites"]:
+            key = "sweep-reservoir", request["seed"], site
+            if key not in self.feature_cache:
+                features, labels = [], []
+                for replicate in range(1, len(support) + 1):
+                    inputs, y = cohort(
+                        self.profiles,
+                        self.chrom,
+                        self.positions,
+                        pool_config,
+                        request["seed"],
+                        site,
+                        "train",
+                        self.config.coverage[-1],
+                        replicate=replicate,
+                    )
+                    inputs = tuple(v.to(self.device) for v in inputs)
+                    with torch.no_grad():
+                        features.append(
+                            torch.cat(
+                                [
+                                    self.model.neural.embed(*(v[i : i + 8] for v in inputs))
+                                    for i in range(0, len(y), 8)
+                                ]
+                            )
+                        )
+                    labels.append(y.to(self.device))
+                if len(self.feature_cache) >= 64:
+                    self.feature_cache.pop(next(iter(self.feature_cache)))
+                self.feature_cache[key] = torch.cat(features), torch.cat(labels)
+            features, y = self.feature_cache[key]
+            indices = torch.cat(
+                [
+                    torch.where(y == label)[0][: int(counts[site, j])]
+                    for j, label in enumerate(support)
+                ]
+            )
+            if len(indices) != self.config.site_sizes[site]:
+                raise ValueError("reservoir cannot supply requested class counts")
+            all_features.append(features[indices])
+            all_labels.append(y[indices])
+        return CachedHeads(self.model), (torch.cat(all_features),), torch.cat(all_labels)
 
     def evaluation_data(self, request):
         key = (
@@ -229,6 +297,7 @@ class Worker:
                 clip=self.config.clip_norm,
                 sigma=request["sigma"],
                 mu=request.get("mu", 0.0),
+                microbatch_size=request.get("gradient_batch_size", 1),
             )
             result = tensor_state(self.model)
             result = {k: v * request.get("weight", 1.0) for k, v in result.items()}
