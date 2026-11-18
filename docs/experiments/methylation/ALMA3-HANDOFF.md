@@ -132,3 +132,5 @@ When complete: inspect the combined report and figures; verify 168 model records
 counts and same zero-shot scores across levels. Copy final figures/summary CSVs
 into docs, update ALMA3-SWEEP.md with measured results, and commit. Preserve the
 best-local comparator and explicitly label this as synthetic validation.
+
+Parallel sweep checkpoint: 2 completed seed/level points. Durable scores: `docs/experiments/methylation/results/alma3-skew-sweep`.

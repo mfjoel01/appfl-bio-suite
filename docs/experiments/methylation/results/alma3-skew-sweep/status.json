@@ -1,5 +1,8 @@
 {
-  "completed_points": [],
+  "completed_points": [
+    "seed-42/seed-42-convergence-0.json",
+    "seed-44/seed-44-convergence-0.json"
+  ],
   "expected_points": 21,
   "output": "/lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/appfl-bio-suite-alma3/local/output/alma3-skew-sweep",
   "stage": "validation-only; no test access"
