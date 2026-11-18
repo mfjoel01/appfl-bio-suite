@@ -137,8 +137,12 @@ def report_sweep(out):
     fig.text(
         0.01,
         0.008,
-        "Validation only; seed-bootstrap 95% bands. Synthetic mechanism study, "
-        "not clinical validation. Analysis performed using ALMA3.",
+        (
+            "Validation only; seed-bootstrap 95% bands. "
+            if len(seeds) > 1
+            else "One-seed development check; no uncertainty estimate. "
+        )
+        + "Synthetic mechanism study, not clinical validation. Analysis performed using ALMA3.",
         fontsize=8,
     )
     fig.tight_layout(rect=(0, 0.05, 1, 0.94))
