@@ -186,3 +186,12 @@ Parallel sweep checkpoint: 19 completed seed/level points. Durable scores: `docs
 Parallel sweep checkpoint: 20 completed seed/level points. Durable scores: `docs/experiments/methylation/results/alma3-skew-sweep`.
 
 Parallel sweep checkpoint: 21 completed seed/level points. Durable scores: `docs/experiments/methylation/results/alma3-skew-sweep`.
+
+## Platform extension (2026-11-18)
+
+User clarified the intended application: hospital-specific nanopore adaptation
+plus differing class ratios. Added optional read-count/calling-error/purity
+simulation, a separate rotation-free platform sweep config and ALMA3-PLATFORM.md.
+The original completed sweep is preserved. New platform training has NOT run;
+no accuracy or adaptation gain is claimed for this extension. Run to a new
+output directory; old results cannot resume against modified training hashes.

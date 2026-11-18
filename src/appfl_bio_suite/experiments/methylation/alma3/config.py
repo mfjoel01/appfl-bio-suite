@@ -21,6 +21,7 @@ class Config:
     coverage: tuple[float, ...] = (0.25, 0.75)
     batch_shift: float = 0.6
     signature_rotation_degrees: float = 0.0
+    nanopore_like: bool = False
     subtype_drift: float = 0.15
     label_alpha: float = 0.5
     bins: int = 20
@@ -108,6 +109,8 @@ class Config:
         ):
             if not math.isfinite(getattr(self, name)):
                 raise ValueError(f"nonfinite {name}")
+        if type(self.nanopore_like) is not bool:
+            raise ValueError("nanopore_like must be boolean")
         if not 0 <= self.signature_rotation_degrees <= 180:
             raise ValueError("signature_rotation_degrees must be in [0,180]")
         if self.signature_rotation_degrees and len(self.class_indices) < 3:

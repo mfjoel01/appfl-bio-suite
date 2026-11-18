@@ -91,6 +91,8 @@ def configuration(spec):
         learning_rate=spec["learning_rate"],
         coverage=(spec["coverage"],),
         batch_shift=spec["batch_shift"],
+        nanopore_like=spec.get("nanopore_like", False),
+        subtype_drift=spec.get("subtype_drift", 0.15),
         signature_rotation_degrees=spec["signature_rotation_degrees"],
         class_indices=spec["class_indices"],
         minimum_per_class=1,

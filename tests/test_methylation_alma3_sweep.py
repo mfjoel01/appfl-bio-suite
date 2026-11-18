@@ -66,3 +66,23 @@ def test_patient_reservoir_replicates_are_distinct_and_reproducible():
     assert torch.equal(a[0], b[0]) and torch.equal(y, z)
     assert not torch.equal(a[0], c[0])
     np.testing.assert_array_equal(np.bincount(y), [4, 4, 4])
+
+
+def test_nanopore_measurement_counts_and_reproducibility():
+    from appfl_bio_suite.experiments.methylation.alma3.cohort import nanopore_measurement
+
+    beta = np.full((20, 1000), 0.8, dtype=np.float32)
+    observed = np.ones_like(beta, dtype=bool)
+    observed[:, :10] = False
+    a, mask = nanopore_measurement(beta, observed, np.random.default_rng(1), 1)
+    b, other = nanopore_measurement(beta, observed, np.random.default_rng(1), 1)
+    np.testing.assert_array_equal(a, b)
+    np.testing.assert_array_equal(mask, other)
+    assert not mask[:, :10].any()
+    assert mask[:, 10:].mean() < 0.95
+    assert np.isfinite(a).all() and a.min() >= 0 and a.max() <= 1
+    assert 0.5 < a[mask].mean() < 0.8
+    spec = json.loads(SPEC.with_name("alma3-platform-sweep.json").read_text())
+    config = configuration(spec)
+    assert config.nanopore_like and config.signature_rotation_degrees == 0
+    assert config.subtype_drift == 0 and config.batch_shift == 0

@@ -48,6 +48,24 @@ def rotate_signature(logits, profiles, support, degrees):
     return logits + (scores @ rotation.T - scores) @ basis
 
 
+def nanopore_measurement(beta, observed, rng, site_fraction):
+    """Synthetic read-count observation; parameters are illustrative, not fitted.
+
+    Neutral beta=0.5 background is a proxy, not a normal-cell reference.
+    Site ordering denotes technical profiles, never countries or ancestry.
+    """
+    purity = rng.uniform(0.55, 0.95, (len(beta), 1))
+    latent = purity * beta + (1 - purity) * 0.5
+    false_positive = 0.02 + 0.06 * site_fraction
+    false_negative = 0.08 + 0.06 * site_fraction
+    probability = false_positive + (1 - false_positive - false_negative) * latent
+    depth = rng.poisson(2 + 6 * (1 - site_fraction), beta.shape)
+    observed = observed & (depth > 0)
+    calls = rng.binomial(depth, probability)
+    measured = np.divide(calls, depth, out=np.full(beta.shape, 0.5), where=depth > 0)
+    return measured.astype(np.float32), observed
+
+
 def cohort(
     profiles,
     chrom,
@@ -114,6 +132,10 @@ def cohort(
     count = max(1 if width < 5000 else 5000, int(width * rate))
     for i in range(n):
         observed[i, rng.choice(width, min(width, count), replace=False)] = True
+    if config.nanopore_like and not unshifted:
+        beta, observed = nanopore_measurement(
+            beta, observed, rng, site / max(1, len(config.site_sizes) - 1)
+        )
     inputs = (
         torch.from_numpy(beta),
         torch.from_numpy(observed),
