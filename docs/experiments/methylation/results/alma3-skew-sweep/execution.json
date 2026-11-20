@@ -1,6 +1,6 @@
 {
   "parent_pid": 2954105,
-  "host": "sophia-login-01",
+  "host": "login-node",
   "python": "3.12.11",
   "seed_pids": {
     "42": 2954454,
@@ -16,7 +16,7 @@
     "matplotlib": "3.10.8"
   },
   "worker_command": [
-    "/lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-runtime/bin/python"
+    "$ALMA3_PYTHON"
   ],
-  "release": "/lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-release-v3.1.2"
+  "release": "$ALMA3_RELEASE"
 }

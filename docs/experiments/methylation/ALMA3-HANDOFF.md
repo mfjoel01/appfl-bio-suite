@@ -10,9 +10,11 @@ without a committed configuration, run instructions, and output locations.
 
 Branch: `feat/alma3-federated-finetune` in `appfl-bio-suite-alma3`.
 The original implementation and five-site validation are complete. See ALMA3.md.
-Real release: `../scratch/alma3-release-v3.1.2`, member `CV:e11`.
-Worker Python: `/lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-runtime/bin/python`.
-Coordinator Python: `/home/mfjoel01/.conda/envs/appfl_env/bin/python`.
+Member `CV:e11`. Commands below use three machine-specific settings:
+- `ALMA3_RELEASE`: the extracted, unmodified v3.1.2 release (see `scripts/methylation/fetch_alma3_release.py`).
+- `ALMA3_PYTHON`: the isolated worker environment (Python 3.12, Torch 2.14.1, ALMA3 3.1.2; see ALMA3.md).
+- `COORDINATOR_PYTHON`: the suite's own environment with APPFL installed.
+Paths and hosts in the committed run records use the same placeholders.
 Run from this worktree with `PYTHONPATH=src NUMPY_MADVISE_HUGEPAGE=0 OPENBLAS_NUM_THREADS=1`.
 Weights/checkpoints stay outside git; licenses accompany derivatives.
 Latest completed output: `local/output/alma3-skew-sweep`.
@@ -50,7 +52,7 @@ To audit and rerender existing results without training:
 ```bash
 python scripts/methylation/audit_alma3_sweep.py local/output/alma3-skew-sweep
 NUMPY_MADVISE_HUGEPAGE=0 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 PYTHONPATH=src \
-/home/mfjoel01/.conda/envs/appfl_env/bin/python -m appfl_bio_suite.experiments.methylation.alma3.sweep_report local/output/alma3-skew-sweep
+$COORDINATOR_PYTHON -m appfl_bio_suite.experiments.methylation.alma3.sweep_report local/output/alma3-skew-sweep
 ```
 
 The following sections preserve historical progress and recovery commands;
@@ -90,11 +92,11 @@ Full run/resume command (add `--resume` only when output already exists):
 
 ```bash
 NUMPY_MADVISE_HUGEPAGE=0 OPENBLAS_NUM_THREADS=1 PYTHONPATH=src \
-/home/mfjoel01/.conda/envs/appfl_env/bin/python -m appfl_bio_suite.experiments.methylation.alma3.sweep \
+$COORDINATOR_PYTHON -m appfl_bio_suite.experiments.methylation.alma3.sweep \
  --config src/appfl_bio_suite/experiments/methylation/configs/alma3-skew-sweep.json \
  --out local/output/alma3-skew-sweep \
- --release /lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-release-v3.1.2 \
- --worker-command /lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-runtime/bin/python \
+ --release $ALMA3_RELEASE \
+ --worker-command $ALMA3_PYTHON \
  --publish docs/experiments/methylation/results/alma3-skew-sweep --commit-progress
 ```
 
@@ -121,11 +123,11 @@ Use this command for the full parallel run; add `--resume` if its output exists:
 
 ```bash
 NUMPY_MADVISE_HUGEPAGE=0 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 PYTHONPATH=src \
-/home/mfjoel01/.conda/envs/appfl_env/bin/python -m appfl_bio_suite.experiments.methylation.alma3.sweep_parallel \
+$COORDINATOR_PYTHON -m appfl_bio_suite.experiments.methylation.alma3.sweep_parallel \
  --config src/appfl_bio_suite/experiments/methylation/configs/alma3-skew-sweep.json \
  --out local/output/alma3-skew-sweep \
- --release /lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-release-v3.1.2 \
- --worker-command /lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-runtime/bin/python \
+ --release $ALMA3_RELEASE \
+ --worker-command $ALMA3_PYTHON \
  --publish docs/experiments/methylation/results/alma3-skew-sweep
 ```
 
@@ -140,7 +142,7 @@ Resume verification passed: all 141 checkpoint hashes and mtimes unchanged; no r
 
 ## Full sweep running
 
-Launched with implementation commit `18272de` on `sophia-login-01`.
+Launched with implementation commit `18272de` on a cluster login node.
 Initial controller PID 2954105; coordinator seed PIDs 2954454/2954455/2954456.
 These PIDs may become stale: inspect matching command lines and progress before
 resuming. Output `local/output/alma3-skew-sweep`; 21 seed/level points expected.

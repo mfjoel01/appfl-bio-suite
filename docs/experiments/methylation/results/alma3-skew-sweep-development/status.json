@@ -3,6 +3,6 @@
     "seed-41-convergence-0.json",
     "seed-41-convergence-1.json"
   ],
-  "output": "/lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/appfl-bio-suite-alma3/local/output/alma3-skew-sweep-development",
+  "output": "local/output/alma3-skew-sweep-development",
   "stage": "validation-only; no test access"
 }

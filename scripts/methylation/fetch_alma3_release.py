@@ -3,7 +3,7 @@
 
 Downloads only the release layer, verifies its OCI digest, then each release
 checksum. The destination must be new and outside the repository. Never executes
-container contents. For the normal Sophia path, use the Apptainer definition.
+container contents. On a cluster with Apptainer, use the Apptainer definition.
 """
 
 import argparse

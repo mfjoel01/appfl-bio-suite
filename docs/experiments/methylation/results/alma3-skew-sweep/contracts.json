@@ -68,9 +68,9 @@
       "coverage": 0.25,
       "member": "CV:e11"
     },
-    "release": "/lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-release-v3.1.2",
+    "release": "$ALMA3_RELEASE",
     "worker_command": [
-      "/lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-runtime/bin/python"
+      "$ALMA3_PYTHON"
     ],
     "code_sha256": {
       "sweep.py": "63f597984832283a0aee0d218ed898df8dcc94ad4e5b400d07e846f01341aec0",
@@ -157,9 +157,9 @@
       "coverage": 0.25,
       "member": "CV:e11"
     },
-    "release": "/lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-release-v3.1.2",
+    "release": "$ALMA3_RELEASE",
     "worker_command": [
-      "/lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-runtime/bin/python"
+      "$ALMA3_PYTHON"
     ],
     "code_sha256": {
       "sweep.py": "63f597984832283a0aee0d218ed898df8dcc94ad4e5b400d07e846f01341aec0",
@@ -246,9 +246,9 @@
       "coverage": 0.25,
       "member": "CV:e11"
     },
-    "release": "/lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-release-v3.1.2",
+    "release": "$ALMA3_RELEASE",
     "worker_command": [
-      "/lus/grand/projects/GeomicVar/mjoel/BIOSIM_SUITE/scratch/alma3-runtime/bin/python"
+      "$ALMA3_PYTHON"
     ],
     "code_sha256": {
       "sweep.py": "63f597984832283a0aee0d218ed898df8dcc94ad4e5b400d07e846f01341aec0",
