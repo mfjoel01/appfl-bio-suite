@@ -122,7 +122,7 @@ facing the workers. Unknown keys and missing settings are errors. Experiment set
 coordinator identity and software versions come from the bundle and cannot be
 overridden in this file.
 
-Stage your experiment data using the experiment guide in the ZIP before activation.
+Stage your experiment data using `{{ experiment_guide }}`, beside this file, before activation.
 The onboarding ZIP contains software configuration, not the scientific datasets.
 
 ## Prepare the runtime
@@ -227,8 +227,10 @@ As root, using the prepared runtime's executable:
 
 Activation verifies runtime access as the service account, creates a dedicated multi-user
 endpoint, installs the mapping and worker template, and starts it. It refuses to alter an
-endpoint it does not own. Existing institutional endpoints should continue to use the
-manual integration instructions in Part 1; this command manages dedicated endpoints.
+endpoint it does not own. {% if manual_setup %}Existing institutional endpoints should continue to use the
+manual integration instructions in Part 1; this command manages dedicated endpoints.{% else %}It manages dedicated endpoints only: to attach this
+experiment to an existing institutional endpoint instead, ask your coordinator for the
+manual setup guide.{% endif %}
 Globus authentication may require an interactive login.
 
 As the same administrator, obtain the UUID:

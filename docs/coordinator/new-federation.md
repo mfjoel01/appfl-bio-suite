@@ -216,13 +216,25 @@ appfl-bio-suite endpoint smoke
 
 ## Step 6 — Onboard each partner
 
-Generate their bundle:
+Generate their onboarding ZIP:
+
+```bash
+appfl-bio-suite experiment package gwas --federation local/federation.yaml \
+  --site site-north --out local/onboarding
+```
+
+They run `appfl-bio-suite join` on it, which sets up the runtime and the endpoint, and
+send back a `registration.json`. [onboarding.md](onboarding.md) covers what the ZIP holds
+and how to register them.
+
+A partner who must attach the experiment to an endpoint they build by hand gets the
+manual bundle instead:
 
 ```bash
 appfl-bio-suite partner-bundle gwas --site site-north
 ```
 
-That produces a directory containing:
+That produces a directory containing, beside the ZIP's specification and setup guide:
 
 - **`1-endpoint-setup.md`** — how to set up their endpoint. Same for every experiment.
 - **`2-<experiment>.md`** — what differs for this experiment, with a verification command
@@ -237,8 +249,8 @@ Send them the directory. There are **no placeholders** for them to interpret —
 deliberate, and it is the single biggest improvement over how this used to be done.
 Essentially every question partners asked was about which placeholder applied to them.
 
-They send back their endpoint UUID and one confirmation line. Put the UUID into
-`local/federation.yaml`.
+From the manual bundle they send back their endpoint UUID and one confirmation line. Put
+the UUID into `local/federation.yaml`.
 
 > Documents in a bundle are copied from `docs/partner/` and nowhere else. That is enforced
 > in code, not by convention, so "did I accidentally include my internal notes" is not a

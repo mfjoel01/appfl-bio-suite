@@ -1,6 +1,7 @@
-# Part 2 — Federated GWAS: placing your data
+# {% if manual_setup %}Part 2 — {% endif %}Federated GWAS: placing your data
 
-Assumes Part 1 (`1-endpoint-setup.md`, beside this file) is done and your endpoint is running.
+{% if uses_join %}Your endpoint is set up by `0-onboarding.md`, beside this file. The data can be placed
+before or after its `join` step, and must be in place before activation.{% else %}Assumes Part 1 (`1-endpoint-setup.md`, beside this file) is done and your endpoint is running.{% endif %}
 
 ---
 
@@ -63,8 +64,8 @@ ls {{ data_dir }}
 ## Step 3 — Verify, and send us the number
 
 Still as `{{ service_account }}`, in the environment where you installed
-`appfl-bio-suite` (the bootstrap environment from `0-onboarding.md`, or your Part 1
-environment), with the ZIP we sent you:
+`appfl-bio-suite` ({% if uses_join %}the bootstrap environment from `0-onboarding.md`{% else %}the bootstrap environment from `0-onboarding.md`, or your Part 1
+environment{% endif %}), with the ZIP we sent you:
 
 ```bash
 appfl-bio-suite site check-data /path/to/{{ bundle_zip }}

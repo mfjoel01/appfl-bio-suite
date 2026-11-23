@@ -111,7 +111,8 @@ appfl-bio-suite endpoint smoke [SITE]               round-trip: does it actually
 appfl-bio-suite identity validate <mapping.json>    catch mapping bugs offline, in a second
 appfl-bio-suite simulate EXPERIMENT --scenario NAME  generate and split synthetic data
 appfl-bio-suite run EXPERIMENT                      run it
-appfl-bio-suite partner-bundle EXPERIMENT --site X  a partner's complete setup package
+appfl-bio-suite experiment package EXPERIMENT ...   one onboarding ZIP per partner
+appfl-bio-suite partner-bundle EXPERIMENT --site X  a partner's manual-setup bundle
 appfl-bio-suite watch build | serve | export        the federation, on a map
 appfl-bio-suite ga4gh duo | drs | trs | tes         data use, data objects, tools, tasks
 ```
@@ -125,10 +126,11 @@ what each is doing. Every generator, config, document template and check reads f
 Nothing in `src/` contains a coordinator identity, an endpoint UUID, or a site name, and
 CI verifies that.
 
-**Generated partner bundles, not templates.** `partner-bundle` emits a directory with a
-partner's configuration fully resolved — their site ID, their data assignment, *your*
-identity, their scheduler's provider block — plus their two setup documents with no
-placeholders left to interpret.
+**Generated partner bundles, not templates.** `experiment package` emits a ZIP per
+partner with their configuration fully resolved — their site ID, their data assignment,
+*your* identity, their scheduler — plus their setup and data guides with no placeholders
+left to interpret. `join` sets the site up from it. `partner-bundle` adds Part 1's files
+for a partner building their endpoint by hand.
 
 **A closed set for partner-facing content.** Bundles are built from `docs/partner/` and
 nowhere else, enforced in code, so nothing outside that tree can reach a partner.

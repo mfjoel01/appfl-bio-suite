@@ -1057,10 +1057,14 @@ def simulate_cmd(
 def partner_bundle_cmd(
     experiment: str, site: str, out_dir: Path | None, federation_path: str | None
 ) -> None:
-    """Generate one partner's complete, fully-filled-in setup bundle.
+    """Generate one partner's manual-setup bundle, every value filled in.
+
+    For a partner attaching the experiment to an endpoint they build by hand (Part 1).
+    Most partners should get the ZIP from `experiment package` instead, which `join`
+    sets up end to end and which carries none of Part 1's files.
 
     Emits their config with every value already resolved -- their client id, their data
-    assignment, YOUR identity, their expected sample count -- plus their two setup
+    assignment, YOUR identity, their expected sample count -- plus their setup
     documents, with no placeholders left for them to interpret.
 
     Every question partners have asked has been about which placeholder applied to them.
@@ -1079,7 +1083,7 @@ def partner_bundle_cmd(
         )
     fed = _load(federation_path)
     try:
-        destination = generate_bundle(fed, experiment, site, out_dir)
+        destination = generate_bundle(fed, experiment, site, out_dir, manual_setup=True)
     except (ValueError, RuntimeError, OSError) as exc:
         raise click.ClickException(str(exc)) from exc
     click.echo(f"\nBundle written to: {destination}")
