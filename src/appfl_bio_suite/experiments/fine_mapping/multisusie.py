@@ -93,7 +93,10 @@ def prepare_inputs(
                 j1 = min(j0 + 256, n_var)
                 if float(np.max(np.abs(g.G[i0:i1, j0:j1] - g.G[j0:j1, i0:i1].T))) > 1e-8:
                     raise ValueError("Genotype Gram matrix is not symmetric")
-        if ((g.u < 0) | (g.u > 2 * g.n)).any():
+        # After covariate adjustment ``u`` is a moment of adjusted dosages and may be
+        # negative; the dosage bound applies to the raw allele totals kept beside it.
+        totals = g.u if g.u_raw is None else g.u_raw
+        if totals.shape != (m,) or ((totals < 0) | (totals > 2 * g.n)).any():
             raise ValueError("Allele totals are outside dosage bounds")
 
     # Ancestry order must not depend on the order in which sites report.
@@ -109,7 +112,8 @@ def prepare_inputs(
         if g.n <= 2:
             raise ValueError("Each pooled ancestry needs at least three samples")
         centered = g.G - np.outer(g.u, g.u) / g.n
-        mac = np.minimum(g.u, 2 * g.n - g.u)
+        totals = g.allele_totals
+        mac = np.minimum(totals, 2 * g.n - totals)
         keep = (mac >= max(options.min_mac, 2 * g.n * options.maf) - 1e-10) & (
             np.diag(centered) > 1e-10
         )

@@ -196,6 +196,8 @@ def build_client_configs(
                     train[field] = value
             if exp.pops:
                 train["pops"] = list(exp.pops)
+            if exp.covariate_adjustment == "fwl":
+                train["covariates"] = exp.covariates_file or "covariates.tsv"
             _apply_ga4gh(federation, experiment, entry, train, data_kwargs)
         else:
             # A registered experiment with no branch here would get a client config
@@ -345,6 +347,8 @@ def build_server_config(
         ("multisusie_rho", "multisusie_rho"),
         ("multisusie_min_abs_corr", "multisusie_min_abs_corr"),
         ("multisusie_min_mac", "multisusie_min_mac"),
+        ("covariate_adjustment", "covariate_adjustment"),
+        ("susiex_finite_sample_adjust", "susiex_finite_sample_adjust"),
         ("credible_set_level", "level"),
         ("pval_thresh", "pval_thresh"),
         ("maf", "maf"),
@@ -354,7 +358,9 @@ def build_server_config(
         ("tol", "tol"),
     ):
         if experiment != "fine-mapping" and (
-            field.startswith("fine_mapping_") or field.startswith("multisusie_")
+            field.startswith("fine_mapping_")
+            or field.startswith("multisusie_")
+            or field in ("covariate_adjustment", "susiex_finite_sample_adjust")
         ):
             continue
         value = getattr(exp, field, None)

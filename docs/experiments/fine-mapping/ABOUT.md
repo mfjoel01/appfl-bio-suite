@@ -259,13 +259,14 @@ are compared against the coordinator implementation at zero tolerance by
 
 ## Real-data validation (MAGE + 1000 Genomes NYGC 30x)
 
-Beyond the synthetic simulation grid, [MAGE_VALIDATION.md](MAGE_VALIDATION.md) documents
-end-to-end validation on **MAGE v1.0** (`N = 730` clean donors across 5 continental groups and
-26 populations after removing the documented `NA11919` / `HG00237` sample swap) paired with
-regional 1000 Genomes NYGC 30x GRCh38 slices across 16 eQTL loci. Federated SuSiEx and
-Federated MultiSuSiE match centralized pooled genotypes (`max |ΔPIP| = 0.0` and `4.64e-12`,
-respectively), while MultiSuSiE captures `27/46` (`59%`) published MAGE credible sets compared
-against solo biobanks (`17–22%`) and single-ancestry subsets (`2–17%`).
+Beyond the synthetic simulation grid, [MAGE_VALIDATION.md](MAGE_VALIDATION.md) validates
+FedFM on **MAGE v1.0** LCL expression with the same individuals' 1000 Genomes NYGC 30x
+genotypes, across 16 eQTL loci. A pooled SuSiE run with the published covariate adjustment
+replicates the published MAGE fine-mapping (41 of 46 credible sets matched, PIP r = 0.91).
+Each of three ancestry-structured sites alone recovers 5–17 of the pooled analysis's 58
+credible sets; the federation recovers all 58, with PIPs equal to the pooled run to 1e-13,
+including a federated covariate adjustment (sites send covariate cross-moments; see
+`covariates.py`).
 
 ## Running it
 

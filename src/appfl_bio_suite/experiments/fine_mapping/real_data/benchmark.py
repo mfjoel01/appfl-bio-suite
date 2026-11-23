@@ -27,6 +27,7 @@ from appfl_bio_suite.experiments.fine_mapping.aggregator import FineMappingAggre
 from appfl_bio_suite.experiments.fine_mapping.backend_outputs import export_susiex
 from appfl_bio_suite.experiments.fine_mapping.dataset import get_dataset
 from appfl_bio_suite.experiments.fine_mapping.fedfm.fed_fine_mapping import (
+    finite_sample_adjust,
     write_ld_panel,
     write_sumstats,
 )
@@ -205,8 +206,19 @@ def run_federated_arm(
     n_workers: int = 1,
     skip_existing: bool = True,
     overwrite: bool = False,
+    covariate_adjustment: str = "none",
+    single_population: bool = False,
+    susiex_finite_sample_adjust: bool = False,
 ) -> dict:
-    """Run shipped ``get_dataset -> SiteFineMappingTrainer -> FineMappingAggregator``."""
+    """Run shipped ``get_dataset -> SiteFineMappingTrainer -> FineMappingAggregator``.
+
+    ``covariate_adjustment="fwl"`` has each site also send its covariate cross-moments and
+    the coordinator regress the covariates out of genotypes and phenotype together
+    (``covariates.py``); with one site that is the site adjusting on its own.
+    ``single_population`` pools every individual into one block (plain SuSiE).
+    """
+    if covariate_adjustment not in ("none", "fwl"):
+        raise ValueError("covariate_adjustment must be 'none' or 'fwl'")
     federation_root = Path(federation_root).resolve()
     out_dir = Path(out_dir).resolve()
     panel = pd.read_csv(federation_root / "meta" / "panel_manifest.tsv", sep="\t")
@@ -262,6 +274,8 @@ def run_federated_arm(
                 "pops": present_pops,
                 "locus_limit": locus_limit,
                 "uplink_gram_dtype": "float64",
+                "covariates": "covariates.tsv" if covariate_adjustment == "fwl" else None,
+                "single_population": bool(single_population),
             },
             logger=log,
             client_id=site,
@@ -291,6 +305,8 @@ def run_federated_arm(
             "tol": float(tol),
             "multisusie_rho": float(multisusie_rho),
             "multisusie_min_abs_corr": float(multisusie_min_abs_corr),
+            "covariate_adjustment": covariate_adjustment,
+            "susiex_finite_sample_adjust": bool(susiex_finite_sample_adjust),
             "n_workers": max(1, int(n_workers)),
             "keep_work": False,
             "make_figures": False,
@@ -564,6 +580,8 @@ def _run_centralized_locus(task: dict) -> dict:
         Xp_ok = Xp_by_pop[pop][:, keep]
         yp = yp_by_pop[pop]
         R, ss, _freq, _ = _ols_ld_and_sumstats(Xp_ok, yp, v_ok)
+        if task.get("finite_sample_adjust"):
+            ss = finite_sample_adjust(ss, len(yp))
         row[f"min_p_{pop}"] = float(ss["p"].min()) if len(ss) else np.nan
         sst_files.append(write_sumstats(ss, priv / f"{pop}.sumstats"))
         # Preserve exact raw allele frequency in .frq even in FWL mode
@@ -618,6 +636,7 @@ def _run_centralized_locus(task: dict) -> dict:
             "tol": task["tol"],
             "maf": maf,
             "fwl": fwl,
+            "finite_sample_adjust": bool(task.get("finite_sample_adjust")),
         },
     )
     shutil.rmtree(priv, ignore_errors=True)
@@ -645,8 +664,17 @@ def run_centralized_arm(
     n_workers: int = 1,
     skip_existing: bool = True,
     overwrite: bool = False,
+    single_population: bool = False,
+    susiex_finite_sample_adjust: bool = False,
 ) -> dict:
-    """Independent centralized pooled comparator reading directly from ``meta/pooled_plink``."""
+    """Independent centralized pooled comparator reading directly from ``meta/pooled_plink``.
+
+    ``single_population`` fits every sample as one population rather than one column per
+    continental group. With the MultiSuSiE backend that is SuSiE on sufficient statistics,
+    which is how the published MAGE credible sets were made (one pooled model per gene,
+    covariates regressed from genotypes and expression), so with ``fwl=True`` this arm is
+    the replication of the published analysis rather than a multi-ancestry method.
+    """
     federation_root = Path(federation_root).resolve()
     out_dir = Path(out_dir).resolve()
     meta_dir = federation_root / "meta"
@@ -680,10 +708,14 @@ def run_centralized_arm(
     fam = read_fam(f"{pooled_prefix}.fam")
     cohort = pd.read_csv(meta_dir / "cohort_metadata.tsv", sep="\t", dtype={"IID": str})
     cohort_idx = cohort.set_index("IID").loc[fam["IID"].tolist()]
-    pops = [p for p in population_order if p in set(cohort_idx["continentalGroup"])]
-    pop_rows = {
-        pop: np.flatnonzero(cohort_idx["continentalGroup"].to_numpy() == pop) for pop in pops
-    }
+    if single_population:
+        pops = ["ALL"]
+        pop_rows = {"ALL": np.arange(len(fam))}
+    else:
+        pops = [p for p in population_order if p in set(cohort_idx["continentalGroup"])]
+        pop_rows = {
+            pop: np.flatnonzero(cohort_idx["continentalGroup"].to_numpy() == pop) for pop in pops
+        }
 
     cov_df = pd.read_csv(meta_dir / "covariates.tsv", sep="\t", dtype={"sample_id": str})
     Z_cov = cov_df.set_index("sample_id").loc[fam["IID"].tolist()].to_numpy(dtype=np.float64)
@@ -753,6 +785,7 @@ def run_centralized_arm(
                 "max_iter": max_iter,
                 "tol": tol,
                 "ms_opts": ms_opts,
+                "finite_sample_adjust": bool(susiex_finite_sample_adjust),
                 "data_dir": data_dir,
                 "art_root": art_root,
                 "work_root": work_root,
@@ -1768,3 +1801,298 @@ def run_validation_suite(
         json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8"
     )
     return report
+
+
+# ---------------------------------------------------------------------------
+# Replication design: reproduce MAGE, then single sites vs pooled, then federated = pooled
+# ---------------------------------------------------------------------------
+
+
+def _instance_fit(arm_dir: Path, locus_id: str) -> tuple[dict[str, float], list[set[str]]]:
+    insts = list((Path(arm_dir) / "data" / "instances").glob(f"{locus_id}_*"))
+    if len(insts) != 1:
+        return {}, []
+    va = pd.read_csv(insts[0] / "variants.tsv", sep="\t")
+    pips = dict(
+        zip(va["snp_id"].astype(str), pd.to_numeric(va["pip"], errors="coerce"), strict=True)
+    )
+    return {k: float(v) for k, v in pips.items() if np.isfinite(v)}, _load_instance_cs_sets(
+        insts[0]
+    )
+
+
+def _best_jaccard(target: set[str], sets: Sequence[set[str]]) -> float:
+    return max((len(target & s) / len(target | s) for s in sets), default=0.0)
+
+
+def score_against_published(arm_dir: Path, federation_root: Path) -> tuple[dict, pd.DataFrame]:
+    """How closely an arm reproduces MAGE's published credible sets.
+
+    A published set is *matched* when some reported set has Jaccard >= 0.5 with it and
+    *identical* at Jaccard 1. *Captured* (any shared variant) is kept for continuity with
+    earlier reports but is lenient: one large set can capture several published ones.
+    """
+    meta = Path(federation_root) / "meta"
+    panel = pd.read_csv(meta / "panel_manifest.tsv", sep="\t")
+    pub = pd.read_csv(meta / "published_cs_variants.tsv", sep="\t")
+    pub["snp"] = pub["variant_kgpID"].map(normalize_variant_id)
+    rows, ours, theirs = [], [], []
+    for loc in panel.itertuples(index=False):
+        pips, sets = _instance_fit(arm_dir, str(loc.locus_id))
+        pv = pub[pub["ensemblID"] == loc.ensembl_id]
+        pub_sets = [set(g["snp"]) for _, g in pv.groupby("variantCredibleSet")]
+        pub_union = set().union(*pub_sets) if pub_sets else set()
+        ours_union = set().union(*sets) if sets else set()
+        best = [_best_jaccard(p, sets) for p in pub_sets]
+        lead = normalize_variant_id(loc.published_lead_kgp)
+        top = max(pips, key=pips.get) if pips else ""
+        for snp, mage_pip in zip(pv["snp"], pv["variantPIP"], strict=True):
+            ours.append(pips.get(snp, 0.0))
+            theirs.append(float(mage_pip))
+        rows.append(
+            {
+                "locus_id": loc.locus_id,
+                "published_cs": len(pub_sets),
+                "reported_cs": len(sets),
+                "singletons": sum(len(s) == 1 for s in sets),
+                "captured": sum(bool(p & ours_union) for p in pub_sets),
+                "matched": sum(b >= 0.5 for b in best),
+                "identical": sum(b == 1.0 for b in best),
+                "reported_overlapping_published": sum(bool(s & pub_union) for s in sets),
+                "lead_is_top": top == lead,
+                "published_lead_pip": float(loc.published_lead_pip),
+                "lead_pip": pips.get(lead, np.nan),
+            }
+        )
+    per_locus = pd.DataFrame(rows)
+    total = per_locus.drop(columns=["locus_id"]).sum(numeric_only=True)
+    summary = {
+        "published_cs": int(total["published_cs"]),
+        "reported_cs": int(total["reported_cs"]),
+        "singletons": int(total["singletons"]),
+        "captured": int(total["captured"]),
+        "matched": int(total["matched"]),
+        "identical": int(total["identical"]),
+        "precision": float(total["reported_overlapping_published"] / max(total["reported_cs"], 1)),
+        "lead_is_top": int(per_locus["lead_is_top"].sum()),
+        "loci": len(per_locus),
+        "pip_pearson_published_cs": (
+            float(np.corrcoef(ours, theirs)[0, 1]) if len(ours) > 2 else np.nan
+        ),
+    }
+    return summary, per_locus
+
+
+def score_against_reference(arm_dir: Path, reference_dir: Path, federation_root: Path) -> dict:
+    """How much of a reference arm's (the pooled analysis') result an arm recovers."""
+    panel = pd.read_csv(Path(federation_root) / "meta" / "panel_manifest.tsv", sep="\t")
+    out = dict(reference_cs=0, recovered=0, reported_cs=0, sizes=[])
+    for lid in panel["locus_id"].astype(str):
+        _, ref_sets = _instance_fit(reference_dir, lid)
+        _, sets = _instance_fit(arm_dir, lid)
+        out["reference_cs"] += len(ref_sets)
+        out["reported_cs"] += len(sets)
+        out["sizes"].extend(len(s) for s in sets)
+        out["recovered"] += sum(_best_jaccard(r, sets) >= 0.5 for r in ref_sets)
+    sizes = out.pop("sizes")
+    out["median_cs_size"] = float(np.median(sizes)) if sizes else np.nan
+    return out
+
+
+def replication_arm_specs(
+    clean_root: Path,
+    swap_root: Path | None,
+    out_dir: Path,
+    *,
+    maf: float = 0.005,
+    n_signals: int = 10,
+    run_susiex: bool = True,
+    locus_limit: int | None = None,
+    n_workers: int = 8,
+    wide_roots: Mapping[str, Path] | None = None,
+    site_local_roots: Mapping[str, Path] | None = None,
+) -> list[dict]:
+    """Arms of the replication design; all adjust covariates by FWL, as MAGE did.
+
+    ``*_susie_*`` fit every sample as one population (SuSiE: the published MAGE model);
+    ``*_multisusie_*`` and ``*_susiex_*`` are the multi-ancestry methods. Site arms run the
+    federated path with one site, which is that site adjusting and fitting on its own.
+
+    Two sensitivity analyses are optional, each keyed ``{"730": root, "731": root}``:
+    ``wide_roots`` are federations at the published ±1 Mb window (pooled SuSiE only), and
+    ``site_local_roots`` use covariates each site derives from its own data
+    (``build_mage_federation(covariate_source="site_local")``).
+    """
+    common = dict(maf=maf, n_signals=n_signals, level=0.95, max_iter=1000, locus_limit=locus_limit)
+    ms = dict(common, backend="multisusie", tol=1e-5, multisusie_min_abs_corr=0.5)
+    sx = dict(common, backend="susiex", tol=1e-6)
+    specs: list[tuple[str, str, Path, dict]] = []
+    roots = [("730", clean_root)] + ([("731", swap_root)] if swap_root is not None else [])
+    for tag, root in roots:
+        specs.append(
+            (f"cen_susie_fwl_{tag}", "centralized", root, dict(ms, single_population=True))
+        )
+        specs.append((f"fed_susie_fwl_{tag}", "federated", root, dict(ms, single_population=True)))
+    # Diagnostic: the same pooled SuSiE with covariates regressed from expression only.
+    specs.append(
+        (
+            "cen_susie_yresid_730",
+            "centralized",
+            clean_root,
+            dict(ms, single_population=True, fwl=False),
+        )
+    )
+    specs.append(("cen_multisusie_fwl_730", "centralized", clean_root, dict(ms)))
+    specs.append(("fed_multisusie_fwl_730", "federated", clean_root, dict(ms)))
+    if run_susiex:
+        specs.append(("cen_susiex_fwl_730", "centralized", clean_root, dict(sx)))
+        specs.append(("fed_susiex_fwl_730", "federated", clean_root, dict(sx)))
+        if swap_root is not None:
+            # Diagnostic: SuSiEx with one population should reduce to SuSiE.
+            specs.append(
+                (
+                    "cen_susiex1pop_fwl_731",
+                    "centralized",
+                    swap_root,
+                    dict(sx, single_population=True),
+                )
+            )
+    for site in _active_site_ids(clean_root):
+        specs.append(
+            (
+                f"{site}_susie_fwl",
+                "federated",
+                clean_root,
+                dict(ms, single_population=True, sites=[site]),
+            )
+        )
+        specs.append((f"{site}_multisusie_fwl", "federated", clean_root, dict(ms, sites=[site])))
+    for tag, root in (wide_roots or {}).items():
+        specs.append(
+            (f"cen_susie_fwl_{tag}_1mb", "centralized", root, dict(ms, single_population=True))
+        )
+    for tag, root in (site_local_roots or {}).items():
+        susie = dict(ms, single_population=True)
+        specs.append((f"cen_susie_sitecov_{tag}", "centralized", root, susie))
+        if tag == "730":
+            specs.append((f"fed_susie_sitecov_{tag}", "federated", root, susie))
+            for site in _active_site_ids(root):
+                specs.append(
+                    (f"{site}_susie_sitecov", "federated", root, dict(susie, sites=[site]))
+                )
+
+    out = []
+    for name, kind, root, kw in specs:
+        kwargs = dict(kw, federation_root=root, out_dir=Path(out_dir) / name, arm_id=name)
+        if kind == "federated":
+            kwargs["covariate_adjustment"] = "fwl"
+        else:
+            kwargs.setdefault("fwl", True)
+        if kw["backend"] == "multisusie":
+            kwargs["n_workers"] = n_workers
+        out.append({"kind": kind, "kwargs": kwargs})
+    return out
+
+
+def run_replication_suite(
+    clean_root: Path,
+    out_root: Path,
+    swap_root: Path | None = None,
+    maf: float = 0.005,
+    n_signals: int = 10,
+    max_workers: int = 4,
+    run_susiex: bool = True,
+    locus_limit: int | None = None,
+    wide_roots: Mapping[str, Path] | None = None,
+    site_local_roots: Mapping[str, Path] | None = None,
+) -> dict:
+    """Run the replication design and write its three report tables.
+
+    1. ``replication_vs_mage.tsv`` -- every arm scored against the published credible sets;
+       the pooled SuSiE arm on the published sample set (N=731) is the replication.
+    2. ``sites_vs_pooled.tsv`` -- each site alone against the pooled fit of the same method.
+    3. ``federated_vs_pooled.tsv`` -- federated against pooled, per method.
+
+    ``clean_root``/``swap_root`` are federations built with ``phenotype="raw"``, so the
+    covariate adjustment itself is federated (sites send covariate cross-moments).
+    """
+    out_root = Path(out_root).resolve()
+    arms_dir = out_root / "arms"
+    reports = out_root / "reports"
+    arms_dir.mkdir(parents=True, exist_ok=True)
+    reports.mkdir(parents=True, exist_ok=True)
+    specs = replication_arm_specs(
+        Path(clean_root).resolve(),
+        Path(swap_root).resolve() if swap_root is not None else None,
+        arms_dir,
+        maf=maf,
+        n_signals=n_signals,
+        run_susiex=run_susiex,
+        locus_limit=locus_limit,
+        wide_roots=wide_roots,
+        site_local_roots=site_local_roots,
+    )
+    # SuSiEx arms are the long poles; start them first.
+    specs.sort(key=lambda s: s["kwargs"]["backend"] != "susiex")
+    if int(max_workers) > 1:
+        ctx = multiprocessing.get_context("spawn")
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=min(int(max_workers), len(specs)), mp_context=ctx
+        ) as pool:
+            runs = list(pool.map(_execute_arm_task, specs))
+    else:
+        runs = [_execute_arm_task(s) for s in specs]
+    arm = {s["kwargs"]["arm_id"]: Path(s["kwargs"]["out_dir"]) for s in specs}
+    report = write_replication_reports(arm, Path(clean_root), reports)
+    report["runs"] = runs
+    (reports / "replication_report.json").write_text(
+        json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8"
+    )
+    return report
+
+
+def write_replication_reports(arm: Mapping[str, Path], clean_root: Path, reports: Path) -> dict:
+    """Score finished replication arms (``replication_arm_specs`` names) into report tables."""
+    reports = Path(reports)
+    reports.mkdir(parents=True, exist_ok=True)
+
+    mage_rows = []
+    for name, path in arm.items():
+        summary, per_locus = score_against_published(path, clean_root)
+        per_locus.insert(0, "arm_id", name)
+        per_locus.to_csv(reports / f"replication_loci_{name}.tsv", sep="\t", index=False)
+        mage_rows.append({"arm_id": name, **summary})
+    pd.DataFrame(mage_rows).to_csv(reports / "replication_vs_mage.tsv", sep="\t", index=False)
+
+    site_rows = []
+    designs = (
+        ("susie", "cen_susie_fwl_730", "_susie_fwl", "fed_susie_fwl_730"),
+        ("multisusie", "cen_multisusie_fwl_730", "_multisusie_fwl", "fed_multisusie_fwl_730"),
+        ("susie_sitecov", "cen_susie_sitecov_730", "_susie_sitecov", "fed_susie_sitecov_730"),
+    )
+    for method, ref_name, site_suffix, fed_name in designs:
+        if ref_name not in arm:
+            continue
+        reference = arm[ref_name]
+        compared = [n for n in arm if n.startswith("site_") and n.endswith(site_suffix)]
+        if fed_name in arm:
+            compared.append(fed_name)
+        for name in compared:
+            site_rows.append(
+                {
+                    "method": method,
+                    "arm_id": name,
+                    **score_against_reference(arm[name], reference, clean_root),
+                }
+            )
+    pd.DataFrame(site_rows).to_csv(reports / "sites_vs_pooled.tsv", sep="\t", index=False)
+
+    parity = []
+    for name in arm:
+        if name.startswith("fed_"):
+            cen = arm[name.replace("fed_", "cen_", 1)]
+            _, summary = compare_arm_pairs(cen, arm[name], name.removeprefix("fed_"))
+            parity.append(summary)
+    pd.DataFrame(parity).to_csv(reports / "federated_vs_pooled.tsv", sep="\t", index=False)
+
+    return {"vs_mage": mage_rows, "sites_vs_pooled": site_rows, "parity": parity}

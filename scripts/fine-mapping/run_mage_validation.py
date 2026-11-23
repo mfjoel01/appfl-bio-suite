@@ -53,6 +53,32 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--loopback", action="store_true", help="Run APPFL loopback driver check.")
     p.add_argument("--run", action="store_true", help="Run multi-arm validation benchmark.")
     p.add_argument("--plot", action="store_true", help="Render PNG + PDF validation figures.")
+    p.add_argument(
+        "--replication",
+        action="store_true",
+        help=(
+            "Build raw-expression federations and run the replication design: pooled SuSiE "
+            "against the published MAGE credible sets, single sites against pooled, and "
+            "federated against pooled, all with federated FWL covariate adjustment."
+        ),
+    )
+    p.add_argument(
+        "--replication-out",
+        type=Path,
+        default=Path("local/output/mage-replication"),
+        help="Output directory for the replication design.",
+    )
+    p.add_argument("--no-susiex", action="store_true", help="Skip SuSiEx replication arms.")
+    p.add_argument(
+        "--no-wide-window",
+        action="store_true",
+        help="Skip the sensitivity run at the published ±1 Mb window.",
+    )
+    p.add_argument(
+        "--no-site-covariates",
+        action="store_true",
+        help="Skip the sensitivity run with covariates each site derives from its own data.",
+    )
     p.add_argument("--all", action="store_true", help="Run all stages end to end.")
     return p
 
@@ -121,7 +147,9 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     args = _build_parser().parse_args(argv)
-    if not any([args.stage, args.build, args.loopback, args.run, args.plot, args.all]):
+    if not any(
+        [args.stage, args.build, args.loopback, args.run, args.plot, args.replication, args.all]
+    ):
         args.all = True
 
     from appfl_bio_suite.experiments.fine_mapping.real_data.benchmark import run_validation_suite
@@ -236,6 +264,65 @@ def main(argv: list[str] | None = None) -> int:
     if args.plot or args.all:
         figs = render_all_mage_figures(clean_root, out_root)
         print(f"Rendered {len(figs)} figure files under {out_root / 'figures'}")
+
+    if args.replication or args.all:
+        from appfl_bio_suite.experiments.fine_mapping.real_data.benchmark import (
+            run_replication_suite,
+        )
+
+        fwl_roots = {True: data_base / "federation_clean_fwl"}
+        if not args.no_swap_control:
+            fwl_roots[False] = data_base / "federation_with_swap_fwl"
+        common = dict(
+            raw_dir=raw_dir,
+            cache_dir=cache_dir,
+            n_per_stratum=args.n_per_stratum,
+            min_gap_bp=args.min_gap_bp,
+            maf=args.maf_build,
+            overwrite=args.overwrite,
+            phenotype="raw",
+            selection_window_half_bp=args.window_half_bp,
+        )
+        tags = {True: "730", False: "731"}
+        wide_roots, site_local_roots = {}, {}
+        for exclude_swapped, root in fwl_roots.items():
+            build_mage_federation(
+                out_root=root,
+                window_half_bp=args.window_half_bp,
+                exclude_swapped=exclude_swapped,
+                **common,
+            )
+            tag = tags[exclude_swapped]
+            if not args.no_wide_window:
+                wide_roots[tag] = root.with_name(f"{root.name}_1mb")
+                build_mage_federation(
+                    out_root=wide_roots[tag],
+                    window_half_bp=1_000_000,
+                    exclude_swapped=exclude_swapped,
+                    **common,
+                )
+            if not args.no_site_covariates:
+                site_local_roots[tag] = root.with_name(f"{root.name}_sitecov")
+                build_mage_federation(
+                    out_root=site_local_roots[tag],
+                    window_half_bp=args.window_half_bp,
+                    exclude_swapped=exclude_swapped,
+                    covariate_source="site_local",
+                    **common,
+                )
+        report = run_replication_suite(
+            clean_root=fwl_roots[True],
+            swap_root=fwl_roots.get(False),
+            out_root=args.replication_out.resolve(),
+            maf=args.maf_analysis,
+            n_signals=args.n_signals,
+            max_workers=args.max_workers,
+            run_susiex=not args.no_susiex,
+            locus_limit=args.locus_limit,
+            wide_roots=wide_roots or None,
+            site_local_roots=site_local_roots or None,
+        )
+        print("Replication vs MAGE:", json.dumps(report["vs_mage"], indent=2, default=str))
 
     return 0
 

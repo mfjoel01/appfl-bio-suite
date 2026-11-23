@@ -497,3 +497,78 @@ def load_cached_gene_expression(
     expr_sub = np.asarray(expr_mmap[ordered_idx], dtype=np.float64)
     meta_sub = by_eid.loc[list(ensembl_ids)].reset_index()
     return meta_sub, expr_sub, samples, Z
+
+
+def inverse_normal_transform(values: np.ndarray, axis: int = -1) -> np.ndarray:
+    """Rank-based inverse normal transform along ``axis`` (average ranks for ties)."""
+    from scipy import stats
+
+    arr = np.asarray(values, dtype=np.float64)
+    n = arr.shape[axis]
+    ranks = stats.rankdata(arr, method="average", axis=axis)
+    return stats.norm.ppf((ranks - 0.5) / n)
+
+
+def expression_pcs(expr_samples_by_genes: np.ndarray, n_factors: int) -> np.ndarray:
+    """Top ``n_factors`` principal-component scores of a samples x genes matrix."""
+    centred = expr_samples_by_genes - expr_samples_by_genes.mean(axis=0, keepdims=True)
+    u, s, _ = np.linalg.svd(centred, full_matrices=False)
+    return u[:, :n_factors] * s[:n_factors]
+
+
+def site_local_expression_and_covariates(
+    cache_dir: Path,
+    ensembl_ids: Sequence[str],
+    site_of_sample: pd.Series,
+    site_order: Sequence[str],
+    exclude_swapped: bool = True,
+    n_factors: int = 15,
+    shared_covariates: Sequence[str] = ("sex", "PC1", "PC2", "PC3", "PC4", "PC5"),
+) -> tuple[np.ndarray, pd.DataFrame]:
+    """Expression and covariates as each site would derive them from its own data.
+
+    The released expression was TMM-normalized and inverse-normal transformed over all
+    731 samples, and the released PEER factors were estimated on all of them; a site in a
+    federation can do neither. Here each site re-applies the inverse normal transform to its
+    own samples (rank-based, so this equals transforming its own TMM values) and computes
+    ``n_factors`` expression principal components from all autosomal genes of its own
+    samples, the per-subset choice MAGE used for n = 142 (15 factors) and a standard PEER
+    substitute. Sex and the five genotype PCs stay shared: genotype PCs are what a site gets
+    by projecting onto the public 1000 Genomes reference, which these samples are.
+
+    Site-specific columns are named ``<site>:ePC<j>`` and ``<site>:intercept`` (first site
+    omitted, as the reference level) and are zero for other sites' samples, so every site
+    can carry the same column list and the pooled fit is the block model with site-specific
+    factor effects.
+    """
+    tag = "clean" if exclude_swapped else "raw_with_swap"
+    root = Path(cache_dir) / tag
+    genes = pd.read_csv(root / "genes.tsv", sep="\t")
+    cov = pd.read_csv(root / "covariates.tsv", sep="\t", dtype={"sample_id": str})
+    samples = cov["sample_id"].tolist()
+    expr_all = np.load(root / "expression_autosomal.npy").astype(np.float64)  # genes x samples
+    row_of = {eid: int(i) for eid, i in zip(genes["ensembl_id"], genes["row_index"], strict=True)}
+    panel_rows = [row_of[eid] for eid in ensembl_ids]
+
+    sites = site_of_sample.reindex(samples)
+    if sites.isna().any():
+        raise ValueError("every sample needs a site to derive site-local covariates")
+    expr_panel = np.empty((len(panel_rows), len(samples)), dtype=np.float64)
+    shared = [c for c in shared_covariates if c in cov.columns]
+    table = cov[["sample_id", *shared]].copy()
+    for i, site in enumerate(site_order):
+        cols = np.flatnonzero(sites.to_numpy() == site)
+        if cols.size == 0:
+            continue
+        site_int = inverse_normal_transform(expr_all[:, cols], axis=1)  # genes x n_site
+        expr_panel[:, cols] = site_int[panel_rows]
+        k = min(int(n_factors), site_int.shape[0], cols.size - 1)
+        scores = expression_pcs(site_int.T, k)
+        if i > 0:
+            table[f"{site}:intercept"] = 0.0
+            table.loc[cols, f"{site}:intercept"] = 1.0
+        for j in range(k):
+            name = f"{site}:ePC{j + 1}"
+            table[name] = 0.0
+            table.loc[cols, name] = scores[:, j]
+    return expr_panel, table

@@ -599,6 +599,17 @@ class Experiment(_Strict):
     pops: list[str] | None = None
     secure_aggregation: dict[str, Any] | None = None
     uplink_gram_dtype: Literal["float64", "float32"] | None = None
+    # Covariate adjustment (Frisch-Waugh-Lovell). With "fwl" every site also sends the
+    # cross-moments of the covariates in its bundle's ``covariates_file`` (an IID column
+    # plus one column per covariate, the same columns everywhere), and the coordinator
+    # regresses them out of genotypes and phenotype together, as a pooled analysis would.
+    # Federation-wide so the sites and the coordinator cannot disagree about it.
+    covariate_adjustment: Literal["none", "fwl"] | None = None
+    covariates_file: str | None = None
+    # Rescale SuSiEx inputs so its standardized effects are marginal correlations
+    # (fed_fine_mapping.finite_sample_adjust). Coordinator-side; recommended for molecular
+    # QTLs, where a single variant can explain a large share of the trait's variance.
+    susiex_finite_sample_adjust: bool | None = None
 
     # Coordinator-side. The ground-truth causal variants, for scoring a simulated run;
     # a real federation has no such file and leaves this unset.

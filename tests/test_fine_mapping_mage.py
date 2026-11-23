@@ -768,3 +768,158 @@ def test_plink_cache_invalidates_maf_and_sample_selection(tmp_path, monkeypatch)
     keep.write_text("0 sample2\n")
     vcf_slice.extract_locus_plink(**kwargs, maf=0.02)
     assert len(calls) == 3
+
+
+@pytest.mark.parametrize(
+    ("single_population", "backend", "adjust"),
+    [(False, "multisusie", False), (True, "multisusie", False), (False, "susiex", True)],
+)
+def test_federated_fwl_matches_centralized_fwl(
+    tmp_path, monkeypatch, single_population, backend, adjust
+):
+    """Sites send covariate cross-moments; the coordinator's FWL equals pooled FWL."""
+    pytest.importorskip("MultiSuSiE")
+    try:
+        root = Path(__file__).resolve().parents[1]
+        for tool in ("plink", "plink2", "SuSiEx"):
+            _resolve_binary(tool, root)
+    except FileNotFoundError:
+        pytest.skip("PLINK/SuSiEx binaries unavailable")
+
+    raw = tmp_path / "raw"
+    fed_root = tmp_path / "federation"
+    meta_synth = _write_synthetic_mage_raw(raw, include_swap=True, n_per_pop=10, rng_seed=99)
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *a, **kw: pytest.fail("Unexpected network access in offline test"),
+    )
+    monkeypatch.setattr(federation_builder, "stage_mage_data", lambda *a, **kw: {})
+    monkeypatch.setattr(
+        federation_builder,
+        "extract_locus_plink",
+        _mock_extract_from_synthetic(
+            meta_synth["genos_by_gene"], meta_synth["samples"], meta_synth["genes"]
+        ),
+    )
+    federation_builder.build_mage_federation(
+        out_root=fed_root,
+        raw_dir=raw,
+        cache_dir=tmp_path / "cache",
+        n_per_stratum=1,
+        maf=0.01,
+        exclude_swapped=True,
+        phenotype="raw",
+    )
+    site_cov = pd.read_csv(fed_root / "site_atlantic" / "data" / "covariates.tsv", sep="\t")
+    site_man = pd.read_csv(fed_root / "site_atlantic" / "data" / "site_manifest.tsv", sep="\t")
+    assert site_cov["IID"].tolist() == site_man["IID"].tolist()
+
+    common = dict(
+        backend=backend,
+        maf=0.005,
+        n_signals=3,
+        max_iter=200,
+        tol=1e-4,
+        locus_limit=2,
+        single_population=single_population,
+        susiex_finite_sample_adjust=adjust,
+    )
+    fed = benchmark.run_federated_arm(
+        fed_root, tmp_path / "fed", "fed", covariate_adjustment="fwl", **common
+    )
+    cen = benchmark.run_centralized_arm(fed_root, tmp_path / "cen", "cen", fwl=True, **common)
+    assert fed["n_loci"] == cen["n_loci"] == 2
+    record = json.loads(
+        (tmp_path / "fed" / "data" / "covariate_adjustment.json").read_text(encoding="utf-8")
+    )
+    assert record["method"] == "fwl" and len(record["covariates"]) > 0
+
+    detail, summary = benchmark.compare_arm_pairs(tmp_path / "cen", tmp_path / "fed", "fwl")
+    assert summary["n_loci"] == 2
+    assert summary["worst_max_pip_abs_diff"] < 1e-8
+    assert summary["frac_exact_cs_identical"] == 1.0
+
+    vs_ref = benchmark.score_against_reference(tmp_path / "fed", tmp_path / "cen", fed_root)
+    assert vs_ref["recovered"] == vs_ref["reference_cs"] == vs_ref["reported_cs"]
+    vs_mage, per_locus = benchmark.score_against_published(tmp_path / "fed", fed_root)
+    assert len(per_locus) == 4  # the whole panel; the two unfitted loci report nothing
+    assert vs_mage["published_cs"] >= vs_mage["captured"] >= vs_mage["matched"]
+    assert vs_mage["matched"] >= vs_mage["identical"]
+    assert per_locus["reported_cs"].iloc[2:].eq(0).all()
+    if single_population:
+        variants = pd.read_csv(
+            next((tmp_path / "fed").glob("data/instances/*/variants.tsv")), sep="\t"
+        )
+        assert [c for c in variants.columns if c.startswith("eligible_")] == ["eligible_ALL"]
+
+
+def test_replication_suite_with_site_local_covariates_end_to_end(tmp_path, monkeypatch):
+    """Build raw-expression and site-local-covariate bundles, run the design, draw it."""
+    pytest.importorskip("MultiSuSiE")
+    try:
+        root = Path(__file__).resolve().parents[1]
+        for tool in ("plink", "plink2", "SuSiEx"):
+            _resolve_binary(tool, root)
+    except FileNotFoundError:
+        pytest.skip("PLINK/SuSiEx binaries unavailable")
+    from appfl_bio_suite.experiments.fine_mapping.real_data import figures_replication
+
+    raw = tmp_path / "raw"
+    meta_synth = _write_synthetic_mage_raw(raw, include_swap=True, n_per_pop=10, rng_seed=99)
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *a, **kw: pytest.fail("Unexpected network access in offline test"),
+    )
+    monkeypatch.setattr(federation_builder, "stage_mage_data", lambda *a, **kw: {})
+    monkeypatch.setattr(
+        federation_builder,
+        "extract_locus_plink",
+        _mock_extract_from_synthetic(
+            meta_synth["genos_by_gene"], meta_synth["samples"], meta_synth["genes"]
+        ),
+    )
+    common = dict(
+        raw_dir=raw, cache_dir=tmp_path / "cache", n_per_stratum=1, maf=0.01, phenotype="raw"
+    )
+    roots = {}
+    for name, kw in {
+        "clean": dict(exclude_swapped=True),
+        "swap": dict(exclude_swapped=False),
+        "sitecov": dict(exclude_swapped=True, covariate_source="site_local", n_site_factors=2),
+    }.items():
+        roots[name] = tmp_path / name
+        federation_builder.build_mage_federation(out_root=roots[name], **common, **kw)
+
+    cov = pd.read_csv(roots["sitecov"] / "site_atlantic" / "data" / "covariates.tsv", sep="\t")
+    own = [c for c in cov.columns if c.startswith("site_atlantic:")]
+    other = [c for c in cov.columns if ":" in c and not c.startswith("site_atlantic:")]
+    assert own and other
+    assert (cov[own].abs().sum() > 0).all() and (cov[other] == 0).all().all()
+
+    report = benchmark.run_replication_suite(
+        clean_root=roots["clean"],
+        swap_root=roots["swap"],
+        out_root=tmp_path / "out",
+        n_signals=3,
+        max_workers=1,
+        run_susiex=False,
+        locus_limit=2,
+        site_local_roots={"730": roots["sitecov"]},
+    )
+    parity = pd.read_csv(tmp_path / "out" / "reports" / "federated_vs_pooled.tsv", sep="\t")
+    assert set(parity["comparison"]) == {
+        "susie_fwl_730",
+        "susie_fwl_731",
+        "multisusie_fwl_730",
+        "susie_sitecov_730",
+    }
+    assert (parity["worst_max_pip_abs_diff"] < 1e-8).all()
+    assert (parity["frac_exact_cs_identical"] == 1.0).all()
+    sites = pd.read_csv(tmp_path / "out" / "reports" / "sites_vs_pooled.tsv", sep="\t")
+    assert set(sites["method"]) == {"susie", "multisusie", "susie_sitecov"}
+    fed_rows = sites[sites["arm_id"].str.startswith("fed_")]
+    assert (fed_rows["recovered"] == fed_rows["reference_cs"]).all()
+    assert len(report["vs_mage"]) == len(list((tmp_path / "out" / "arms").iterdir()))
+
+    figs = figures_replication.render_replication_figures(roots["clean"], tmp_path / "out")
+    assert len(figs) == 6 and all(p.is_file() and p.stat().st_size > 1000 for p in figs)

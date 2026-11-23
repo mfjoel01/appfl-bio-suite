@@ -188,7 +188,18 @@ reproduction command, offline report and PNG/PDF/SVG exports in the primary chec
 
 ## Real-data validation (MAGE + 1000G NYGC 30x)
 
-See [MAGE_VALIDATION.md](MAGE_VALIDATION.md) and
-`scripts/fine-mapping/run_mage_validation.py` to stage MAGE v1.0 expression/covariates,
-slice 1000 Genomes NYGC 30x GRCh38 regional genotypes, run the 15-arm parity/control
-benchmark, verify APPFL serial loopback, and render the five publication figures.
+See [MAGE_VALIDATION.md](MAGE_VALIDATION.md). `scripts/fine-mapping/run_mage_validation.py
+--replication` stages MAGE v1.0, slices the 1000 Genomes NYGC 30x genotypes, builds
+raw-expression site bundles and runs the replication design (published analysis replicated,
+single sites against pooled, federated against pooled), with sensitivity runs at the published
+±1 Mb window and with covariates each site derives itself (`--no-wide-window`,
+`--no-site-covariates` to skip them). `scripts/fine-mapping/mage_replication_diagnostics.py`
+reproduces the covariate and SuSiEx diagnostics. `--all` also runs the first-version
+control suite, the APPFL serial loopback check and its figures.
+
+To adjust for covariates in a federation of your own, put a `covariates.tsv` (an `IID` column
+plus one column per covariate, the same columns at every site) in each site bundle and set
+`covariate_adjustment: fwl` in the fine-mapping experiment of `federation.yaml` (and
+`covariates_file` if the file has another name). Sites then also send the covariate
+cross-moments described in
+[MAGE_VALIDATION.md](MAGE_VALIDATION.md#federated-covariate-adjustment-fwl).

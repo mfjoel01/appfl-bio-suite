@@ -21,6 +21,7 @@ from .mage import (
     load_cached_gene_expression,
     prepare_mage_cache,
     residualize_covariates,
+    site_local_expression_and_covariates,
     stage_mage_data,
 )
 from .panel import build_mage_gene_catalog, load_published_mage_cs, select_mage_panel
@@ -141,8 +142,28 @@ def build_mage_federation(
     site_populations: Mapping[str, Sequence[str]] = SITE_POPULATIONS,
     drs_hostname: str = "mage-local.appfl-bio-suite.org",
     overwrite: bool = False,
+    phenotype: str = "residualized",
+    selection_window_half_bp: int | None = None,
+    covariate_source: str = "published",
+    n_site_factors: int = 15,
 ) -> dict:
-    """Materialize a complete multi-site FedFM real-data validation bundle from MAGE + 1000G."""
+    """Materialize a complete multi-site FedFM real-data validation bundle from MAGE + 1000G.
+
+    ``phenotype="residualized"`` ships expression with the covariates already regressed out
+    by the coordinator (the original design). ``phenotype="raw"`` ships the released
+    inverse-normal TMM expression untouched, so no phenotype preprocessing happens centrally
+    and covariate adjustment is left to the federated FWL step (``covariates.py``). Either
+    way each site's bundle carries its own rows of the covariate table as ``covariates.tsv``.
+
+    ``selection_window_half_bp`` (default: ``window_half_bp``) is the window the panel is
+    chosen with; a wider ``window_half_bp`` then widens the analysis around the same loci.
+    ``covariate_source="site_local"`` replaces the published pooled covariates with ones
+    each site derives from its own data (``mage.site_local_expression_and_covariates``).
+    """
+    if phenotype not in ("residualized", "raw"):
+        raise ValueError(f"phenotype must be 'residualized' or 'raw', got {phenotype!r}")
+    if covariate_source not in ("published", "site_local"):
+        raise ValueError("covariate_source must be 'published' or 'site_local'")
     root = repo_root()
     mage_base = root / "local" / "data" / "mage"
     raw_dir = Path(raw_dir) if raw_dir is not None else mage_base / "raw"
@@ -161,13 +182,16 @@ def build_mage_federation(
     samples_df = pd.read_csv(cache_paths["samples"], sep="\t", dtype={"sample_kgpID": str})
     samples_df = assign_mage_sites(samples_df, site_populations=site_populations)
 
-    catalog = build_mage_gene_catalog(raw_dir, window_half_bp=window_half_bp)
+    selection_half = int(selection_window_half_bp or window_half_bp)
+    catalog = build_mage_gene_catalog(raw_dir, window_half_bp=selection_half)
     panel = select_mage_panel(
         catalog,
         n_per_stratum=n_per_stratum,
         min_gap_bp=min_gap_bp,
         exclude_hla=True,
     )
+    panel["start_bp"] = (panel["tss"] - int(window_half_bp)).clip(lower=1)
+    panel["end_bp"] = panel["tss"] + int(window_half_bp)
     ensembl_ids = panel["ensembl_id"].tolist()
     meta_sub, expr_raw, expr_samples, Z_all = load_cached_gene_expression(
         cache_dir, ensembl_ids, exclude_swapped=exclude_swapped
@@ -184,6 +208,17 @@ def build_mage_federation(
         cov_cols = [c for c in cov_table.columns if c == "sex" or c.startswith("PEER")]
     else:
         raise ValueError(f"Unsupported covariate_mode {covariate_mode!r}")
+    if covariate_source == "site_local":
+        site_of = samples_df.set_index("sample_kgpID")["site_id"]
+        expr_raw, cov_table = site_local_expression_and_covariates(
+            cache_dir,
+            ensembl_ids,
+            site_of,
+            [s for s in site_populations if s in set(site_of)],
+            exclude_swapped=exclude_swapped,
+            n_factors=n_site_factors,
+        )
+        cov_cols = [c for c in cov_table.columns if c != "sample_id"]
     Z_use = cov_table[cov_cols].to_numpy(dtype=np.float64)
     _ = Z_all
 
@@ -270,13 +305,22 @@ def build_mage_federation(
         selected_loci.to_csv(site_data / "selected_loci.tsv", sep="\t", index=False)
 
         col_indices = [sample_to_expr_col[sid] for sid in sub_ordered["IID"].tolist()]
+        site_cov = (
+            cov_table.astype({"sample_id": str})
+            .set_index("sample_id")
+            .loc[sub_ordered["IID"].tolist(), cov_cols]
+            .reset_index(drop=True)
+        )
+        site_cov.insert(0, "IID", sub_ordered["IID"].tolist())
+        site_cov.to_csv(site_data / "covariates.tsv", sep="\t", index=False)
+        site_expr = expr_raw if phenotype == "raw" else expr_resid
         for g_idx, row in enumerate(panel.itertuples()):
             inst = f"{row.locus_id}_{ARCHITECTURE_ID}_rep{REPLICATE_ID}"
             pheno = pd.DataFrame(
                 {
                     "FID": sub_ordered["FID"].tolist(),
                     "IID": sub_ordered["IID"].tolist(),
-                    "y": expr_resid[g_idx, col_indices],
+                    "y": site_expr[g_idx, col_indices],
                 }
             )
             pheno.to_csv(pheno_dir / f"{inst}.pheno", sep="\t", index=False)
@@ -332,7 +376,10 @@ def build_mage_federation(
         "n_variants_pooled": int(len(pooled_bim)),
         "exclude_swapped": bool(exclude_swapped),
         "covariate_mode": covariate_mode,
+        "phenotype": phenotype,
+        "covariate_source": covariate_source,
         "window_half_bp": int(window_half_bp),
+        "selection_window_half_bp": selection_half,
         "maf": float(maf),
         "snps_only": bool(snps_only),
         "architecture_id": ARCHITECTURE_ID,
@@ -358,7 +405,10 @@ def build_mage_federation(
         "mage": {
             "exclude_swapped": bool(exclude_swapped),
             "covariate_mode": covariate_mode,
+            "phenotype": phenotype,
+            "covariate_source": covariate_source,
             "window_half_bp": int(window_half_bp),
+            "selection_window_half_bp": selection_half,
         },
     }
     (out_root / "pipeline_config.yaml").write_text(

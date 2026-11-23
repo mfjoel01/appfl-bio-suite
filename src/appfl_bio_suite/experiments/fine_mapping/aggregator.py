@@ -72,6 +72,10 @@ from appfl_bio_suite.experiments.fine_mapping.fedfm.fine_mapping import (  # noq
     _resolve_binary,
 )
 from appfl_bio_suite.experiments.fine_mapping.trainer import (  # noqa: E402
+    KEY_COV_U,
+    KEY_COV_X,
+    KEY_COV_Y,
+    KEY_COV_Z,
     KEY_GRAM,
     KEY_MANIFEST,
     KEY_SCALARS,
@@ -163,6 +167,11 @@ class FineMappingAggregator(BaseAggregator):
                 raise ImportError(multisusie_install_hint()) from exc
 
         self.inference_options = {k: cfg.get(k, v) for k, v in DEFAULT_OPTIONS.items()}
+        # Opt-in: rescale SuSiEx inputs to marginal correlations (see
+        # fed_fine_mapping.finite_sample_adjust). Added only when set, so default runs
+        # pass SuSiEx exactly the options they always have.
+        if bool(cfg.get("susiex_finite_sample_adjust", False)):
+            self.inference_options["finite_sample_adjust"] = True
         self.population_order = list(
             cfg.get("population_order", ["EUR", "AFR", "AMR", "EAS", "CSA", "MID"])
         )
@@ -170,6 +179,14 @@ class FineMappingAggregator(BaseAggregator):
         self.pval_thresh = float(cfg.get("pval_thresh", DEFAULT_PVAL_THRESH))
         self.maf = float(cfg.get("maf", DEFAULT_MAF))
         self.n_workers = int(cfg.get("n_workers", 1))
+        # "fwl": regress the sites' covariates out of genotypes and phenotype together,
+        # from their covariate cross-moments (covariates.py). "none": fit the moments as
+        # sent. Requested here and in the client config together, by the launcher.
+        self.covariate_adjustment = str(cfg.get("covariate_adjustment", "none"))
+        if self.covariate_adjustment not in ("none", "fwl"):
+            raise ValueError("covariate_adjustment must be 'none' or 'fwl'")
+        self._cov_geno: dict[str, dict] = {}
+        self._cov_pheno: dict[tuple[str, str, str], np.ndarray] = {}
         self.keep_work = bool(cfg.get("keep_work", False))
         self.make_figures = bool(cfg.get("make_figures", True))
 
@@ -303,6 +320,21 @@ class FineMappingAggregator(BaseAggregator):
                         n_incomplete_variants=int(block["n_incomplete_variants"]),
                     )
                 )
+                zx_key = f"{KEY_COV_X}{KEY_SEP}{locus_id}{KEY_SEP}{pop}"
+                if zx_key in payload:
+                    from appfl_bio_suite.experiments.fine_mapping.covariates import (
+                        CovariateGeno,
+                    )
+
+                    self._cov_geno.setdefault(locus_id, {})[(str(cid), pop)] = CovariateGeno(
+                        zx=_to_numpy(payload[zx_key]).astype(np.float64),
+                        zz=_to_numpy(
+                            payload[f"{KEY_COV_Z}{KEY_SEP}{locus_id}{KEY_SEP}{pop}"]
+                        ).astype(np.float64),
+                        zu=_to_numpy(
+                            payload[f"{KEY_COV_U}{KEY_SEP}{locus_id}{KEY_SEP}{pop}"]
+                        ).astype(np.float64),
+                    )
 
             # snp_ids for a phenotype block are the geno block's, by construction at the
             # site: the same rows and the same surviving columns produced both.
@@ -314,6 +346,11 @@ class FineMappingAggregator(BaseAggregator):
                 inst, pop = block["instance"], block["pop"]
                 c = _to_numpy(payload[f"{KEY_XTY}{KEY_SEP}{inst}{KEY_SEP}{pop}"])
                 q, w, n = _to_numpy(payload[f"{KEY_SCALARS}{KEY_SEP}{inst}{KEY_SEP}{pop}"])
+                zy_key = f"{KEY_COV_Y}{KEY_SEP}{inst}{KEY_SEP}{pop}"
+                if zy_key in payload:
+                    self._cov_pheno[(str(cid), pop, inst)] = _to_numpy(payload[zy_key]).astype(
+                        np.float64
+                    )
                 pheno_by_instance.setdefault(inst, {}).setdefault(pop, []).append(
                     PhenoAggregate(
                         site=str(cid),
@@ -328,6 +365,40 @@ class FineMappingAggregator(BaseAggregator):
                 )
 
         return geno_by_locus, pheno_by_instance, loci, manifests
+
+    def _apply_covariate_adjustment(self, geno_by_locus, pheno_by_instance, manifests) -> None:
+        """Regress the sites' covariates out of genotypes and phenotype (covariates.py)."""
+        sent = {cid: m.get("covariates") for cid, m in manifests.items()}
+        if self.covariate_adjustment == "none":
+            if any(sent.values()):
+                self.logger.warning(
+                    "sites sent covariate cross-moments but covariate_adjustment is 'none'; "
+                    "fitting the unadjusted moments"
+                )
+            return
+        names = list(sent.values())
+        if any(not n for n in names) or any(n != names[0] for n in names):
+            raise ValueError(
+                "covariate_adjustment='fwl' needs every site to send the same covariates, "
+                f"in the same order; got {sent}"
+            )
+        from appfl_bio_suite.experiments.fine_mapping.covariates import fwl_adjust_locus
+
+        for locus_id, blocks in geno_by_locus.items():
+            instances = {
+                inst: [b for group in pheno_by_instance[inst].values() for b in group]
+                for inst in pheno_by_instance
+                if inst.startswith(f"{locus_id}_")
+            }
+            fwl_adjust_locus(blocks, instances, self._cov_geno.get(locus_id, {}), self._cov_pheno)
+        record = {"method": "fwl", "covariates": names[0], "sites": sorted(sent)}
+        (self.data_dir / "covariate_adjustment.json").write_text(
+            json.dumps(record, indent=2) + "\n", encoding="utf-8"
+        )
+        self.logger.info(
+            f"covariates ({len(names[0])}) regressed out of genotypes and phenotype at "
+            f"{len(geno_by_locus)} locus/loci"
+        )
 
     def _truth_map(self) -> dict[tuple[str, str, int], list[str]]:
         """Ground-truth causal variants, keyed by (locus, architecture, replicate)."""
@@ -362,6 +433,7 @@ class FineMappingAggregator(BaseAggregator):
 
         geno_by_locus, pheno_by_instance, loci, manifests = self._decode(client_ids, local_models)
         self._check_ga4gh(client_ids, manifests)
+        self._apply_covariate_adjustment(geno_by_locus, pheno_by_instance, manifests)
         truth_map = self._truth_map()
 
         # The ancestry columns to build, in a stable order. Union across sites, ordered by
@@ -467,6 +539,7 @@ class FineMappingAggregator(BaseAggregator):
                         "coverage": self.level,
                         "pval_thresh": self.pval_thresh,
                         "maf": self.maf,
+                        "covariate_adjustment": self.covariate_adjustment,
                     },
                 )
             rows.extend(fitted)
