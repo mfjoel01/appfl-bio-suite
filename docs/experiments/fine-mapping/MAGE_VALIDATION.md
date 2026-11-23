@@ -294,3 +294,31 @@ The ±1 Mb federations need about 4x the genotype data and LD matrices up to ~12
 per locus; on a shared node, keep `--max-workers` low. `--all` additionally runs the
 first-version suite and its figures (`local/output/mage-validation`), which use
 expression-only adjustment.
+
+### Reproduce the original-model and held-out checks
+
+The original-model check uses the released **all-associations** nominal FastQTL results.
+Install `pysam` in the benchmark Python environment and provide an R environment with
+`susieR` 0.12.16. The following commands use the 731-sample ±1 Mb bundle built above.
+The download command extracts the indexed nominal table from Zenodo record 10535719 and
+requires about 4.7 GB on disk. Set `RSCRIPT` to the pinned environment's Rscript.
+
+```bash
+export PYTHONPATH=src
+nominal=local/data/mage/nominal/eQTL_FastQTL_results.nominal_pass.allAssociations.MAGE.v1.0.txt.gz
+python scripts/fine-mapping/mage_original_susie.py --nominal "$nominal" --download
+python scripts/fine-mapping/mage_original_susie.py --nominal "$nominal" --rscript "${RSCRIPT:-Rscript}"
+python scripts/fine-mapping/mage_original_susie.py --nominal "$nominal" --report
+
+python scripts/fine-mapping/mage_heldout.py --stage build
+python scripts/fine-mapping/mage_heldout.py --stage fit --workers 6
+```
+
+The R check uses the authors' slope/SE, in-sample covariate-adjusted LD, seed, model options,
+and per-variant credible-set export convention. File loading uses the staged PLINK dosages
+aligned to ALT and the released nominal variant IDs. The runner checks the tested variant
+count for every gene against the release. The report compares set overlap in both
+directions for the R fit and the earlier ±1 Mb pooled fit. The held-out comparison uses
+the clean 730-person cohort and a [prespecified 22-locus manifest](mage/heldout_design.md).
+The authors' [model invocation and export code](https://github.com/mccoy-lab/MAGE/blob/f929fb5106055a124c0d18e6431829d428717452/analysis_pipeline/05_eQTL_mapping/run_susie/scripts/run_susie.R)
+record the upstream implementation.

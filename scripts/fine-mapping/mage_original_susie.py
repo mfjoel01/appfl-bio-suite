@@ -14,7 +14,6 @@ import pandas as pd
 import pysam
 
 from appfl_bio_suite.experiments.fine_mapping.fedfm.utils import read_bed_variants
-from appfl_bio_suite.experiments.fine_mapping.real_data.benchmark import score_against_published
 from appfl_bio_suite.experiments.fine_mapping.real_data.mage import (
     MAGE_DATA_ZIP_URL,
     _parse_zip_central_directory,
@@ -155,12 +154,29 @@ def main():
     out = Path("local/output/mage-original-susie")
     panel = pd.read_csv(meta / "panel_manifest.tsv", sep="\t")
     if args.report:
+        from appfl_bio_suite.experiments.fine_mapping.real_data.benchmark import (
+            score_against_published,
+        )
+
         instances = out / "data/instances"
-        for locus in panel.locus_id:
-            if not (instances / f"{locus}_mage" / "fit.tsv").is_file():
-                raise RuntimeError(f"Incomplete fit for {locus}")
+        pub = pd.read_csv(meta / "published_cs_variants.tsv", sep="\t")
+        checks = []
+        for locus in panel.itertuples():
+            inst = instances / f"{locus.locus_id}_mage"
+            fit = pd.read_csv(inst / "fit.tsv", sep="\t").iloc[0]
+            pips = pd.read_csv(inst / "variants.tsv", sep="\t").set_index("snp_id").pip
+            ref = pub[pub.ensemblID == locus.ensembl_id].set_index("variant_kgpID")
+            diff = pips.loc[ref.index] - ref.variantPIP
+            checks.append(
+                dict(
+                    locus_id=locus.locus_id,
+                    **fit.to_dict(),
+                    max_abs_diff_published_pip=diff.abs().max(),
+                )
+            )
         set_diagnostics(panel, meta, out)
         summary, per_locus = score_against_published(out, root)
+        per_locus = per_locus.merge(pd.DataFrame(checks), on="locus_id", validate="one_to_one")
         per_locus.to_csv(out / "replication_loci.tsv", sep="\t", index=False)
         (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
         return
