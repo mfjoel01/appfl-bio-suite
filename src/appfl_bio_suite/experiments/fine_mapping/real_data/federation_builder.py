@@ -146,6 +146,7 @@ def build_mage_federation(
     selection_window_half_bp: int | None = None,
     covariate_source: str = "published",
     n_site_factors: int = 15,
+    panel_gene_ids: Sequence[str] | None = None,
 ) -> dict:
     """Materialize a complete multi-site FedFM real-data validation bundle from MAGE + 1000G.
 
@@ -184,12 +185,19 @@ def build_mage_federation(
 
     selection_half = int(selection_window_half_bp or window_half_bp)
     catalog = build_mage_gene_catalog(raw_dir, window_half_bp=selection_half)
-    panel = select_mage_panel(
-        catalog,
-        n_per_stratum=n_per_stratum,
-        min_gap_bp=min_gap_bp,
-        exclude_hla=True,
-    )
+    if panel_gene_ids is None:
+        panel = select_mage_panel(
+            catalog,
+            n_per_stratum=n_per_stratum,
+            min_gap_bp=min_gap_bp,
+            exclude_hla=True,
+        )
+    else:
+        if not len(panel_gene_ids) or len(set(panel_gene_ids)) != len(panel_gene_ids):
+            raise ValueError("Expected a nonempty panel of distinct gene IDs")
+        panel = catalog.set_index("ensembl_id").loc[list(panel_gene_ids)].reset_index()
+        panel["stratum"] = "prespecified"
+        panel["locus_id"] = "H-" + panel["ensembl_id"]
     panel["start_bp"] = (panel["tss"] - int(window_half_bp)).clip(lower=1)
     panel["end_bp"] = panel["tss"] + int(window_half_bp)
     ensembl_ids = panel["ensembl_id"].tolist()
