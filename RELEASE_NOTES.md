@@ -32,6 +32,23 @@ these stopped or misled the onboarding as written in 0.3.2.
 - The partner guide's commands use the bundle's real filename, the fine-mapping guide
   covers a `.zip` delivery and states the space needed, and a link to a guide that is
   not in the bundle is gone.
+- **The onboarding ZIP carries one setup path.** `experiment package` no longer ships
+  Part 1's manual endpoint guide, worker template, identity mapping, validator or
+  config block. Part 1's template activated a hand-made conda environment under the same
+  filename `site setup` writes for its own runtime, so a partner copying it ran workers
+  in an environment nothing had verified. The experiment guide is now `1-<experiment>.md`
+  and describes the `join` setup; FLamby is installed into the prepared runtime.
+  `partner-bundle` still writes the manual bundle.
+- **Sites can be added to an experiment at any time.** A bundle's experiment digest
+  covers the shared settings and its own site entry, not the other sites or
+  `secure_aggregation` (which lists them). Adding, removing or registering another site
+  no longer stops a partner who has not registered yet from registering.
+- `bundle_manifest.json` records each file's SHA-256 and the bundle digest a receipt
+  carries, so a ZIP can be matched to a fresh packaging and to a partner's
+  `registration.json`.
+- `experiment register` accepts a site that names its own `service_account`. It
+  compared the receipt with the experiment's default account, which the bundle had
+  never recorded for that site, so every such site was refused.
 
 # appfl-bio-suite 0.3.2
 

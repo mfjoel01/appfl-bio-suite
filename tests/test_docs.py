@@ -17,6 +17,7 @@ project:
 
 from __future__ import annotations
 
+import itertools
 import re
 
 import pytest
@@ -179,13 +180,16 @@ def test_bundle_reads_only_partner_docs(tmp_path):
     from appfl_bio_suite.core.partner import generate_bundle, partner_docs_root
 
     federation = load_federation(repo_root() / "federation.yaml.example")
-    destination = generate_bundle(federation, "gwas", "site-north", tmp_path)
+    packet = generate_bundle(federation, "gwas", "site-north", tmp_path / "packet")
+    manual = generate_bundle(
+        federation, "gwas", "site-north", tmp_path / "manual", manual_setup=True
+    )
 
     partner_root = partner_docs_root().resolve()
     sources = {p.resolve() for p in partner_root.rglob("*.md")}
     source_texts = {p.read_text(encoding="utf-8") for p in sources}
 
-    for produced in destination.glob("*.md"):
+    for produced in [*packet.glob("*.md"), *manual.glob("*.md")]:
         rendered = produced.read_text(encoding="utf-8")
         # Every rendered doc must derive from a docs/partner/ source. Compare on the
         # unrendered skeleton: template variables differ after rendering, so a structural
@@ -227,8 +231,12 @@ def test_generated_bundle_has_no_placeholders(tmp_path):
     from appfl_bio_suite.core.partner import generate_bundle
 
     federation = load_federation(repo_root() / "federation.yaml.example")
-    for experiment, site in (("gwas", "site-north"), ("flamby-heart-disease", "site-east")):
-        destination = generate_bundle(federation, experiment, site, tmp_path / experiment)
+    for (experiment, site), manual in itertools.product(
+        (("gwas", "site-north"), ("flamby-heart-disease", "site-east")), (False, True)
+    ):
+        destination = generate_bundle(
+            federation, experiment, site, tmp_path / f"{experiment}-{manual}", manual_setup=manual
+        )
         for path in destination.rglob("*"):
             if path.suffix not in (".md", ".yaml", ".j2", ".json"):
                 continue
@@ -309,7 +317,9 @@ def test_unknown_scheduler_fields_are_marked_not_left_blank(tmp_path):
         "partition",
     ]
 
-    destination = generate_bundle(federation, "flamby-heart-disease", "partner", tmp_path / "out")
+    destination = generate_bundle(
+        federation, "flamby-heart-disease", "partner", tmp_path / "out", manual_setup=True
+    )
     template = (destination / "user_config_template.yaml.j2").read_text(encoding="utf-8")
     provider = yaml.safe_load(template)["engine"]["provider"]
 
@@ -335,7 +345,9 @@ def test_setup_guide_creates_the_environment_the_workers_activate(tmp_path):
     from appfl_bio_suite.core.partner import generate_bundle
 
     federation = _partner_federation(tmp_path, conda_env="finemap_env")
-    destination = generate_bundle(federation, "flamby-heart-disease", "partner", tmp_path / "out")
+    destination = generate_bundle(
+        federation, "flamby-heart-disease", "partner", tmp_path / "out", manual_setup=True
+    )
     guide = (destination / "1-endpoint-setup.md").read_text(encoding="utf-8")
     template = (destination / "user_config_template.yaml.j2").read_text(encoding="utf-8")
 
@@ -366,7 +378,11 @@ def test_setup_guide_mapping_is_the_installable_file(tmp_path):
     from appfl_bio_suite.core.partner import generate_bundle
 
     destination = generate_bundle(
-        _partner_federation(tmp_path), "flamby-heart-disease", "partner", tmp_path / "out"
+        _partner_federation(tmp_path),
+        "flamby-heart-disease",
+        "partner",
+        tmp_path / "out",
+        manual_setup=True,
     )
     guide = (destination / "1-endpoint-setup.md").read_text(encoding="utf-8")
     shipped = (destination / "example_identity_mapping_config.json").read_text(encoding="utf-8")

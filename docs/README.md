@@ -49,11 +49,12 @@ You should have received a **generated bundle** containing setup and experiment 
 with coordinator values already filled in. Use those, not the templates here — the templates contain
 unrendered placeholders.
 
-If you did not receive a bundle, ask the coordinator to run
-`appfl-bio-suite partner-bundle <experiment> --site <you>`.
+If you did not receive a bundle, ask the coordinator for your onboarding ZIP
+(`appfl-bio-suite experiment package <experiment> --site <you>`).
 
-The sources live in [partner/](partner/): Part 1 is endpoint setup, identical for every
-experiment; Part 2 is what differs for yours.
+The sources live in [partner/](partner/): `onboarding.md` is the guided `join` setup;
+`endpoint-setup.md` is the manual endpoint setup (Part 1), identical for every
+experiment; `experiments/` holds what differs for yours.
 
 ## I want to understand or reproduce an experiment
 

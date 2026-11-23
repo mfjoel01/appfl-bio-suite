@@ -1,5 +1,6 @@
 """Onboarding contracts: reject drift before mutation, and prove remote readiness."""
 
+import hashlib
 import json
 import zipfile
 from pathlib import Path
@@ -447,17 +448,162 @@ def test_register_cli_writes_ready_and_updated_config(
     assert entry.endpoint_uuid == str(receipt.endpoint_id)
     assert entry.output_dir == str(receipt.site.work_dir)
     # Registering another partner must not invalidate already-issued bundles.
-    assert api.experiment_digest(load_federation(updated), "gwas") == bundle.experiment_digest
+    assert (
+        api.experiment_digest(load_federation(updated), "gwas", bundle.client_id)
+        == bundle.experiment_digest
+    )
 
 
-def test_membership_change_invalidates_bundle(bundle, local, tmp_path):
-    receipt = make_receipt(bundle, api.resolve_site(bundle, local))
+def _federation_with(tmp_path, change):
     raw = yaml.safe_load((repo_root() / "federation.yaml.example").read_text())
-    raw["experiments"]["gwas"]["sites"].pop()
+    change(raw)
     source = tmp_path / "changed.yaml"
     source.write_text(yaml.safe_dump(raw))
-    with pytest.raises(ValueError, match="settings changed"):
-        api.updated_federation(bundle, receipt, source)
+    return source
+
+
+def _change_membership(raw):
+    """Add a site, drop another, and register a third: everything but Site1 moves."""
+    sites = raw["experiments"]["gwas"]["sites"]
+    raw["sites"].append({"id": "site-west", "name": "Western Institute", "scheduler": "slurm"})
+    sites.append(
+        {
+            "site": "site-west",
+            "client_id": "Site4",
+            "data_dir": "/home/gwas_svc/data/site4",
+            "output_dir": "/home/gwas_svc/outputs",
+        }
+    )
+    sites[:] = [s for s in sites if s["client_id"] != "Site3"]
+    next(s for s in sites if s["client_id"] == "Site2")["endpoint_uuid"] = str(uuid4())
+    raw["experiments"]["gwas"]["secure_aggregation"] = {
+        "run_id": "attempt-2",
+        "participants": [s["client_id"] for s in sites],
+    }
+
+
+def test_other_sites_joining_or_leaving_keeps_a_bundle_valid(bundle, local, tmp_path):
+    """Sites join an experiment at any time; bundles already sent must keep working."""
+    receipt = make_receipt(bundle, api.resolve_site(bundle, local))
+    source = _federation_with(tmp_path, _change_membership)
+    document = api.updated_federation(bundle, receipt, source)
+    entry = next(s for s in document["experiments"]["gwas"]["sites"] if s["client_id"] == "Site1")
+    assert entry["endpoint_uuid"] == str(receipt.endpoint_id)
+    assert {s["client_id"] for s in document["experiments"]["gwas"]["sites"]} == {
+        "Site1",
+        "Site2",
+        "Site4",
+    }
+
+
+def test_own_entry_change_invalidates_bundle(bundle, local, tmp_path):
+    def change(raw):
+        raw["experiments"]["gwas"]["sites"][0]["expected_samples"] = 1
+
+    receipt = make_receipt(bundle, api.resolve_site(bundle, local))
+    with pytest.raises(ValueError, match="settings changed.*Site1"):
+        api.updated_federation(bundle, receipt, _federation_with(tmp_path, change))
+
+
+def test_site_with_its_own_service_account_registers(local, tmp_path):
+    """A site may map to its own account; registration compares against that one."""
+
+    def change(raw):
+        raw["experiments"]["gwas"]["sites"][0]["service_account"] = "site_north_svc"
+
+    source = _federation_with(tmp_path, change)
+    bundle = api.read_bundle(generate_bundle(load_federation(source), "gwas", "Site1", tmp_path))
+    assert bundle.service_account == "site_north_svc"
+    receipt = make_receipt(bundle, api.resolve_site(bundle, local))
+    document = api.updated_federation(bundle, receipt, source)
+    entry = next(s for s in document["experiments"]["gwas"]["sites"] if s["client_id"] == "Site1")
+    assert entry["endpoint_uuid"] == str(receipt.endpoint_id)
+
+
+def test_removed_site_cannot_register(bundle, local, tmp_path):
+    def change(raw):
+        raw["experiments"]["gwas"]["sites"].pop(0)
+
+    receipt = make_receipt(bundle, api.resolve_site(bundle, local))
+    with pytest.raises(ValueError, match="does not participate"):
+        api.updated_federation(bundle, receipt, _federation_with(tmp_path, change))
+
+
+def _package(tmp_path, *extra):
+    result = CliRunner().invoke(
+        main,
+        [
+            "experiment",
+            "package",
+            "gwas",
+            "--federation",
+            str(repo_root() / "federation.yaml.example"),
+            "--site",
+            "Site1",
+            "--out",
+            str(tmp_path),
+            *extra,
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    return tmp_path / "gwas_Site1.zip"
+
+
+def test_package_zip_carries_only_the_join_path(tmp_path):
+    """The ZIP's one setup path is `join`; Part 1's hand-built endpoint is not in it.
+
+    Part 1's worker template activates a conda environment the partner creates by hand,
+    while `site setup` writes its own template, under the same name, for the runtime it
+    installs. Shipping both left a partner to choose, and the wrong choice ran workers
+    in an environment nothing had verified.
+    """
+    with zipfile.ZipFile(_package(tmp_path)) as archive:
+        names = set(archive.namelist())
+        guides = {n: archive.read(n).decode() for n in names if n.endswith(".md")}
+    assert names == {
+        "0-onboarding.md",
+        "1-gwas.md",
+        "onboarding.json",
+        "site.yaml",
+        "runtime-constraints.txt",
+        "bundle_manifest.json",
+    }
+    for name, text in guides.items():
+        for stale in ("1-endpoint-setup.md", "Part 1", "Part 2", "conda activate"):
+            assert stale not in text, f"{name} still refers to {stale!r}"
+    assert "`1-gwas.md`" in guides["0-onboarding.md"]
+
+
+def test_manifest_checksums_identify_a_bundle(tmp_path):
+    """Two packagings of one site are identical file for file; the manifest says so."""
+    first = _package(tmp_path / "a")
+    second = _package(tmp_path / "b")
+    manifests = []
+    for archive_path in (first, second):
+        with zipfile.ZipFile(archive_path) as archive:
+            manifest = json.loads(archive.read("bundle_manifest.json"))
+            for name in manifest["files"]:
+                digest = hashlib.sha256(archive.read(name)).hexdigest()
+                assert manifest["sha256"][name] == digest, name
+        assert manifest["bundle_digest"] == api.digest(api.read_bundle(archive_path))
+        manifests.append(manifest)
+    assert manifests[0]["sha256"] == manifests[1]["sha256"]
+
+
+def test_attached_wheel_refreshes_manifest_checksums(bundle_dir, tmp_path):
+    version = appfl_bio_suite.__version__
+    wheel = tmp_path / f"appfl_bio_suite-{version}-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr(
+            f"appfl_bio_suite-{version}.dist-info/METADATA",
+            f"Name: appfl-bio-suite\nVersion: {version}\n",
+        )
+    api.attach_wheel(bundle_dir, wheel)
+    manifest = json.loads((bundle_dir / "bundle_manifest.json").read_text())
+    assert set(manifest["sha256"]) == set(manifest["files"]) >= {wheel.name, "onboarding.json"}
+    for name, digest in manifest["sha256"].items():
+        assert hashlib.sha256((bundle_dir / name).read_bytes()).hexdigest() == digest, name
+    assert manifest["bundle_digest"] == api.digest(api.read_bundle(bundle_dir))
 
 
 def test_probe_executes_in_subprocess_and_reads_installed_revision(bundle, local, tmp_path):

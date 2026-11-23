@@ -1,6 +1,6 @@
-# Part 2 — Federated fine-mapping: placing your data
+# {% if manual_setup %}Part 2 — {% endif %}Federated fine-mapping: placing your data
 
-{% if single_user %}Your endpoint is set up by `0-onboarding.md`, beside this file. The data can be placed
+{% if uses_join %}Your endpoint is set up by `0-onboarding.md`, beside this file. The data can be placed
 before or after its `join` step, and must be in place before activation.{% else %}Assumes Part 1 (`1-endpoint-setup.md`, beside this file) is done and your endpoint is running.{% endif %}
 
 ---
@@ -33,7 +33,7 @@ in pieces, check its checksum, and then delete your copy. **Leave free space in
 transfer limit that this would run into, tell us and we will split the run into smaller
 pieces; that is a change on our side only.
 
-**Nothing to install beyond Part 1.** The analysis is numpy and pandas. There is no
+**Nothing to install beyond {% if uses_join %}what `join` sets up{% else %}Part 1{% endif %}.** The analysis is numpy and pandas. There is no
 statistical package, no genetics toolchain, and no compiler involved on your side.
 
 ---
@@ -170,8 +170,8 @@ data.
 ## Step 3 — Verify, and send us the number
 
 Still as `{{ service_account }}`, in the environment where you installed
-`appfl-bio-suite` (the bootstrap environment from `0-onboarding.md`, or your Part 1
-environment), with the ZIP we sent you:
+`appfl-bio-suite` ({% if uses_join %}the bootstrap environment from `0-onboarding.md`{% else %}the bootstrap environment from `0-onboarding.md`, or your Part 1
+environment{% endif %}), with the ZIP we sent you:
 
 ```bash
 appfl-bio-suite site check-data /path/to/{{ bundle_zip }}

@@ -180,6 +180,13 @@ def digest(bundle: Bundle) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def file_checksums(directory: Path, names) -> dict[str, str]:
+    """SHA-256 of each named file in ``directory``, keyed by name."""
+    return {
+        name: hashlib.sha256((directory / name).read_bytes()).hexdigest() for name in sorted(names)
+    }
+
+
 def write_json(path: Path, value) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -247,7 +254,9 @@ def write_specification(
         extras=context["partner_extras"].split(",") if context["partner_extras"] else [],
         constraints=pins,
         client_config=client_config,
-        experiment_digest=experiment_digest(federation, context["experiment"]),
+        experiment_digest=experiment_digest(
+            federation, context["experiment"], context["client_id"]
+        ),
     )
     spec_path = destination / "onboarding.json"
     write_json(spec_path, bundle.model_dump())
@@ -258,14 +267,23 @@ def write_specification(
     return [spec_path, local, constraints]
 
 
-def experiment_digest(federation, experiment: str) -> str:
+def experiment_digest(federation, experiment: str, client_id: str) -> str:
+    """What one site's bundle was built from: the shared settings and that site's entry.
+
+    Sites join an experiment at any time, so no other site's entry is included: adding,
+    removing or registering one leaves every bundle already sent valid. Registration
+    fills in this site's own endpoint UUID and paths, so those are left out as well.
+
+    `secure_aggregation` is left out for the same reason. Its `participants` lists every
+    site, and its `run_id` is new for each attempt; the coordinator applies both at
+    launch, and nothing a partner sets up depends on them.
+    """
     exp = federation.experiment(experiment)
-    settings = exp.model_dump(mode="json", exclude={"sites"})
-    # Registration changes UUIDs and paths, but membership/data assignments are immutable.
-    settings["sites"] = [
-        entry.model_dump(mode="json", exclude={"endpoint_uuid", "data_dir", "output_dir"})
-        for entry in exp.sites
-    ]
+    entry = federation.experiment_site(experiment, client_id)
+    settings = exp.model_dump(mode="json", exclude={"sites", "secure_aggregation"})
+    settings["site"] = entry.model_dump(
+        mode="json", exclude={"endpoint_uuid", "data_dir", "output_dir"}
+    )
     return hashlib.sha256(json.dumps(settings, sort_keys=True).encode()).hexdigest()
 
 
@@ -967,15 +985,22 @@ def register_site(
 
 def updated_federation(bundle: Bundle, receipt: Receipt, source: Path) -> dict:
     """Prepare a validated coordinator config with the partner's actual UUID and paths."""
-    from appfl_bio_suite.core.config import Federation, load_federation
+    from appfl_bio_suite.core.config import Federation, FederationError, load_federation
 
     fed = load_federation(source)
-    if experiment_digest(fed, bundle.experiment) != bundle.experiment_digest:
-        raise ValueError("Experiment settings changed since packaging; generate new bundles")
+    try:
+        entry = fed.experiment_site(bundle.experiment, bundle.client_id)
+    except FederationError as exc:
+        raise ValueError(str(exc)) from exc
+    if experiment_digest(fed, bundle.experiment, bundle.client_id) != bundle.experiment_digest:
+        raise ValueError(
+            f"Experiment settings changed since packaging (shared settings or "
+            f"{bundle.client_id}'s own entry); generate a new bundle for {bundle.client_id}"
+        )
     if fed.coordinator.identity != bundle.coordinator_identity:
         raise ValueError("Coordinator identity changed since packaging")
-    fed.experiment_site(bundle.experiment, bundle.client_id)
-    if fed.experiment(bundle.experiment).service_account != bundle.service_account:
+    # The site's own account when it names one, as the bundle recorded it.
+    if fed.experiment(bundle.experiment).service_account_for(entry) != bundle.service_account:
         raise ValueError("Service account changed since packaging")
     document = yaml.safe_load(source.read_text())
     for item in document["experiments"][bundle.experiment]["sites"]:
@@ -1013,6 +1038,9 @@ def attach_wheel(directory: Path, wheel: Path) -> None:
     manifest_path = directory / "bundle_manifest.json"
     manifest = json.loads(manifest_path.read_text())
     manifest["files"] = sorted(set([*manifest["files"], wheel.name]))
+    # onboarding.json now names the wheel, so its checksum and the bundle digest moved.
+    manifest["bundle_digest"] = digest(updated)
+    manifest["sha256"] = file_checksums(directory, manifest["files"])
     write_json(manifest_path, manifest)
 
 

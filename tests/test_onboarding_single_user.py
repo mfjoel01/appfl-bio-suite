@@ -112,22 +112,23 @@ def test_local_site_rejects_scheduler_settings(tmp_path):
         load_federation(path)
 
 
-def test_single_user_local_bundle_declares_both(fed, su_dir, su_bundle):
+def test_single_user_local_bundle_declares_both(fed, su_dir, su_bundle, tmp_path):
     assert su_bundle.scheduler == "local"
     assert su_bundle.endpoint_mode == "single-user"
     assert {"data_dir", "work_dir"} <= set(su_bundle.defaults)
     assert not {"account", "partition", "queue"} & set(su_bundle.defaults)
     assert unresolved_fields(fed, "gwas", "site-south") == []
-    template = (su_dir / "user_config_template.yaml.j2").read_text()
+    manual = generate_bundle(fed, "gwas", "site-south", tmp_path / "manual", manual_setup=True)
+    template = (manual / "user_config_template.yaml.j2").read_text()
     assert "LocalProvider" in template and "REPLACE_WITH" not in template
     guide = (su_dir / "0-onboarding.md").read_text()
     assert "single-user" in guide and "--credentials-file" in guide
     # Commands name the file the coordinator actually sends, and show no <...> values.
     assert "join gwas_Site2.zip" in guide and "site.zip" not in guide
     assert "GLOBUS_COMPUTE_CLIENT_ID=<" not in guide and "Client UUID" in guide
-    assert "site check-data /path/to/gwas_Site2.zip" in (su_dir / "2-gwas.md").read_text()
+    assert "site check-data /path/to/gwas_Site2.zip" in (su_dir / "1-gwas.md").read_text()
     assert "As root, using the prepared runtime" not in guide
-    assert "does not apply to you" in (su_dir / "1-endpoint-setup.md").read_text()
+    assert "does not apply to you" in (manual / "1-endpoint-setup.md").read_text()
 
 
 def test_default_bundle_is_still_multi_user(tmp_path):

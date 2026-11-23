@@ -26,16 +26,35 @@ Use the PyPI wheel rather than one you built locally, so that every partner's ch
 matches the published release.
 
 This emits a ZIP per participating site. Use repeated `--site SITE_ID` options for a
-subset. `partner-bundle` also emits the machine-readable specification for compatibility
-with the existing single-site workflow. Send each partner its own ZIP.
+subset. Send each partner its own ZIP.
 
-Each ZIP contains a schema-versioned specification, exact runtime constraints, the
-partner's client configuration and data requirements, a local settings template, and
-the existing endpoint/data guides. The specification records a digest of experiment
-settings; receipts bind to the complete specification. ZIP creation uses the generated
-manifest's allowlist, excluding unrelated files left in the output directory. Checksums
-identify revisions; they do not authenticate a sender. Distribute bundles through your
-normal trusted collaboration channel.
+Each ZIP holds what `join` uses and nothing else:
+
+- `onboarding.json`, the schema-versioned specification, with the partner's client
+  configuration and data requirements
+- `site.yaml`, the local settings template, with your values as suggestions
+- `runtime-constraints.txt`, the exact runtime constraints
+- `0-onboarding.md`, the setup guide, and `1-<experiment>.md`, the experiment's data guide
+- `study-data-use-request.json`, when the study declares data-use terms
+- `bundle_manifest.json`, and the suite wheel when you pass `--wheel`.
+
+It has none of Part 1's hand-built endpoint files: `setup` writes the endpoint
+configuration for the runtime it installs. For a partner attaching the experiment to an
+endpoint they build by hand, `partner-bundle` writes a directory with Part 1, its worker
+template and identity mapping, beside the same specification.
+
+The specification records a digest of the experiment's shared settings and the
+recipient's own site entry. Sites can join or leave the experiment at any time without
+invalidating ZIPs already sent. Changing a shared setting or that site's own entry does
+invalidate its ZIP, and `experiment register` says to generate a new one. Receipts bind
+to the complete specification.
+
+The manifest records each file's SHA-256 and the bundle digest a partner's receipt
+carries. Packaging is deterministic, so a ZIP is current exactly when its manifest's
+checksums match those of a fresh `experiment package` for the same site. ZIP creation
+uses the manifest's allowlist, excluding unrelated files left in the output directory.
+Checksums identify revisions; they do not authenticate a sender. Distribute bundles
+through your normal trusted collaboration channel.
 
 The partner runs `appfl-bio-suite join gwas_Site1.zip`, or prepares `site.yaml` first and runs
 `appfl-bio-suite join gwas_Site1.zip --local site.yaml`. The guided command remembers cluster
