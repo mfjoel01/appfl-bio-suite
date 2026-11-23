@@ -300,8 +300,8 @@ expression-only adjustment.
 The original-model check uses the released **all-associations** nominal FastQTL results.
 Install `pysam` in the benchmark Python environment and provide an R environment with
 `susieR` 0.12.16. The following commands use the 731-sample ±1 Mb bundle built above.
-The download command extracts the indexed nominal table from Zenodo record 10535719 and
-requires about 4.7 GB on disk. Set `RSCRIPT` to the pinned environment's Rscript.
+The download command extracts the indexed nominal and all-variant published PIP tables from
+Zenodo record 10535719 and requires about 6.8 GB on disk. Set `RSCRIPT` to the pinned environment's Rscript.
 
 ```bash
 export PYTHONPATH=src
@@ -317,7 +317,8 @@ python scripts/fine-mapping/mage_heldout.py --stage fit --workers 6
 The R check uses the authors' slope/SE, in-sample covariate-adjusted LD, seed, model options,
 and per-variant credible-set export convention. File loading uses the staged PLINK dosages
 aligned to ALT and the released nominal variant IDs. The runner checks the tested variant
-count for every gene against the release. The report compares set overlap in both
+count for every gene against the release. The report verifies PIPs for all tested variants
+and compares set overlap in both
 directions for the R fit and the earlier ±1 Mb pooled fit. The held-out comparison uses
 the clean 730-person cohort and a [prespecified 22-locus manifest](mage/heldout_design.md).
 The authors' [model invocation and export code](https://github.com/mccoy-lab/MAGE/blob/f929fb5106055a124c0d18e6431829d428717452/analysis_pipeline/05_eQTL_mapping/run_susie/scripts/run_susie.R)

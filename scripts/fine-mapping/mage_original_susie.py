@@ -25,13 +25,13 @@ from appfl_bio_suite.experiments.fine_mapping.real_data.vcf_slice import (
 )
 
 
-def fetch_nominal(path):
+def fetch_indexed_release(path, basename):
     """Stream the two requested archive members while bounding memory usage."""
     url = MAGE_DATA_ZIP_URL
     members = _parse_zip_central_directory(url, http_content_length(url))
     path.parent.mkdir(parents=True, exist_ok=True)
     for dest in (path, Path(str(path) + ".tbi")):
-        name = "eQTL_FastQTL_results.nominal_pass.allAssociations.MAGE.v1.0.txt.gz"
+        name = basename
         if dest != path:
             name += ".tbi"
         (entry,) = [v for k, v in members.items() if Path(k).name == name]
@@ -161,9 +161,15 @@ def main():
     parser.add_argument("--locus", help="Fit one manifest locus")
     parser.add_argument("--report", action="store_true")
     parser.add_argument("--download", action="store_true", help="Stage the nominal file and index")
+    pip_filename = "eQTL_finemapping.allAssociations.MAGE.v1.0.txt.gz"
+    parser.add_argument("--published-pips", type=Path, help="Indexed MAGE all-variant PIP table")
     args = parser.parse_args()
+    pip_path = args.published_pips or args.nominal.with_name(pip_filename)
     if args.download:
-        fetch_nominal(args.nominal)
+        fetch_indexed_release(
+            args.nominal, "eQTL_FastQTL_results.nominal_pass.allAssociations.MAGE.v1.0.txt.gz"
+        )
+        fetch_indexed_release(pip_path, pip_filename)
         return
     base = Path("local/data/mage")
     root = base / "federation_with_swap_fwl_1mb"
@@ -191,6 +197,26 @@ def main():
                     max_abs_diff_published_pip=diff.abs().max(),
                 )
             )
+        with pysam.TabixFile(str(pip_path)) as released:
+            for locus, check in zip(panel.itertuples(), checks, strict=True):
+                inst = instances / f"{locus.locus_id}_mage"
+                observed = pd.read_csv(inst / "variants.tsv", sep="\t").set_index("snp_id").pip
+                published = {}
+                for line in released.fetch(
+                    f"chr{locus.chrom}", locus.start_bp - 1, locus.end_bp + 1
+                ):
+                    row = line.split("\t")
+                    if row[6] == locus.ensembl_id:
+                        if row[4] in published:
+                            raise ValueError(f"Duplicate released PIP for {row[4]}")
+                        published[row[4]] = float(row[8])
+                if set(published) != set(observed.index):
+                    raise ValueError(f"Released and fitted variant IDs differ for {locus.locus_id}")
+                delta = (observed - pd.Series(published)).abs()
+                if not np.isfinite(delta).all():
+                    raise ValueError(f"Nonfinite PIP for {locus.locus_id}")
+                check["max_abs_diff_all_pips"] = delta.max()
+                check["mean_abs_diff_all_pips"] = delta.mean()
         set_diagnostics(panel, meta, out)
         summary, per_locus = score_against_published(out, root)
         per_locus = per_locus.merge(pd.DataFrame(checks), on="locus_id", validate="one_to_one")
