@@ -99,6 +99,13 @@ sets than published at ±250 kb (POT1 +3; THOC3, DHRS4 +2; five loci +1) and 9 m
 ±1 Mb; the prior-variance estimator and individual-level versus z-score inputs are the known
 remaining differences. Dropping the swapped library (731 → 730) costs four matches.
 
+At ±1 Mb, three published sets miss the 0.5 Jaccard threshold in the sufficient-statistic
+fit. Its best PCMTD1 set contains 13 of the 88 published variants (Jaccard 0.148), and it
+misses two published singleton sets at DHRS4 (L3 and L6). In the reverse direction, 12
+reported sets fall below the threshold: four at DHRS4, three at POT1, two at PCMTD1,
+and one each at ACOT1, GS1-124K5.4 and NFATC1. This gives the net difference of nine
+sets (55 reported versus 46 published).
+
 ### 2. Each site alone against the pooled analysis
 
 Pooled SuSiE on all 730 is the reference (58 sets). Each site runs the same model and the
