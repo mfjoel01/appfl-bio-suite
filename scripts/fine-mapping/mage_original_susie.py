@@ -1,6 +1,7 @@
 """Re-fit the original MAGE panel with released FastQTL slopes and pinned susieR."""
 
 import argparse
+import gzip
 import json
 import struct
 import subprocess
@@ -84,9 +85,24 @@ def prepare(locus, base, meta, tabix, inputs):
             f"published={locus.variants_tested}, missing examples={sorted(missing)[:5]}"
         )
     dosage = read_bed_variants(prefix, selected.index.to_numpy(), len(samples))
-    alt = selected[1].str.split(":").str[-1]
+    # The NYGC ID can abbreviate long indels or encode an unnormalized position.
+    # Resolve alleles using the actual VCF record, keyed by its stable variant ID.
+    vcf = base / "cache/vcf" / f"chr{locus.chrom}_{locus.start_bp}_{locus.end_bp}.vcf.gz"
+    alleles = {}
+    with gzip.open(vcf, "rb") as records:
+        for record in records:
+            if record.startswith(b"#"):
+                continue
+            _, _, snp, vcf_ref, vcf_alt, _ = record.split(b"\t", 5)
+            snp = snp.decode()
+            if snp in associations:
+                alleles[snp] = (vcf_ref.decode(), vcf_alt.decode())
+    ref = selected[1].map(lambda snp: alleles[snp][0])
+    alt = selected[1].map(lambda snp: alleles[snp][1])
     flip = selected[4] != alt
-    if not (selected.loc[flip, 5] == alt[flip]).all() or not np.isfinite(dosage).all():
+    same = (selected[4] == alt) & (selected[5] == ref)
+    reverse = (selected[4] == ref) & (selected[5] == alt)
+    if not (same | reverse).all() or not np.isfinite(dosage).all():
         raise ValueError("Invalid dosage or allele orientation")
     dosage[:, flip] = 2 - dosage[:, flip]
     inputs.mkdir(parents=True, exist_ok=True)
@@ -141,6 +157,7 @@ def main():
         "--nominal", type=Path, required=True, help="Indexed MAGE all-associations BGZF"
     )
     parser.add_argument("--rscript", default="Rscript")
+    parser.add_argument("--prepare-only", action="store_true", help="Align inputs without fitting")
     parser.add_argument("--locus", help="Fit one manifest locus")
     parser.add_argument("--report", action="store_true")
     parser.add_argument("--download", action="store_true", help="Stage the nominal file and index")
@@ -189,6 +206,8 @@ def main():
             inputs = out / "inputs" / locus.locus_id
             dest = out / "data/instances" / f"{locus.locus_id}_mage"
             prepare(locus, base, meta, tabix, inputs)
+            if args.prepare_only:
+                continue
             subprocess.run(
                 [args.rscript, str(Path(__file__).with_suffix(".R")), str(inputs), str(dest)],
                 check=True,

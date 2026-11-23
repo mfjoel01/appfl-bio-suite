@@ -18,7 +18,11 @@ A <- crossprod(Z)
 X <- X - Z %*% solve(A, crossprod(Z, X))
 y <- y - Z %*% solve(A, crossprod(Z, y))
 # BLAS cross-product of standardized columns is the sample correlation matrix.
-LD <- crossprod(scale(X)) / (n - 1)
+X_scaled <- scale(X)
+marginal_r <- as.vector(crossprod(X_scaled, scale(y))) / (n - 1)
+z_from_data <- marginal_r * sqrt((n - qr(Z)$rank - 1) / (1 - marginal_r^2))
+LD <- crossprod(X_scaled) / (n - 1)
+rm(X_scaled, X)
 fit <- susie_rss(z = variants$z, n = n, R = LD, var_y = var(as.vector(y)),
                  L = 10, coverage = 0.95, min_abs_corr = 0.5,
                  estimate_residual_variance = TRUE)
@@ -31,5 +35,6 @@ for (label in names(fit$sets$cs)) component[fit$sets$cs[[label]]] <- label
 sets <- na.omit(data.frame(component = component, snp_id = variants$snp_id))
 write.table(sets, file.path(output, "credible_sets.tsv"), sep = "\t",
             row.names = FALSE, quote = FALSE)
-write.table(data.frame(n = n, variants = p, iterations = fit$niter, converged = fit$converged),
+write.table(data.frame(n = n, variants = p, iterations = fit$niter, converged = fit$converged,
+                       nominal_z_correlation = cor(z_from_data, variants$z)),
             file.path(output, "fit.tsv"), sep = "\t", row.names = FALSE, quote = FALSE)
