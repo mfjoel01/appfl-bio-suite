@@ -41,7 +41,7 @@ SITE_NAME = {
 
 # (arm, label) in display order; arms missing from a run are skipped.
 REPLICATION_BARS = (
-    ("cen_susie_fwl_731", "SuSiE, published setup (N = 731)"),
+    ("cen_susie_fwl_731", "Pooled SuSiE, ±250 kb (N = 731)"),
     ("cen_susie_fwl_731_1mb", "  same, ±1 Mb window"),
     ("cen_susie_sitecov_731", "  same, site-derived covariates"),
     ("cen_susie_fwl_730", "SuSiE, swapped library removed (730)"),
@@ -338,8 +338,8 @@ def figR3_regional(
         axes[-1, j].set_xlabel(f"chr{loc.chrom} position (Mb)")
     fs.footnote(
         fig,
-        "Darker points are credible-set members, grey points other variants; MAGE releases "
-        "PIPs only for its credible-set variants, so the top row has no background. The "
+        "Darker points show credible-set members. Grey points show other variants. "
+        "The published track uses the MAGE credible-set table. The "
         "vertical line marks the published lead. Pooled and federated PIPs agree to 1e-13, "
         "so one track shows both. Clean cohort (N = 730) except the published row (731).",
         y=-0.03,
