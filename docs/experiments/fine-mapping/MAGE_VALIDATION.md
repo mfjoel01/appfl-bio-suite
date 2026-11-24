@@ -86,12 +86,21 @@ variants.
 | Pooled analysis | N | Sets | Singletons | Matched | Identical | Lead is top | PIP r |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Published MAGE (SuSiE) | 731 | 46 | 25 | — | — | — | — |
-| **SuSiE, FWL (published setup)** | 731 | 58 | 28 | **41/46** | 30/46 | 12/16 | **0.91** |
+| **Original susieR 0.12.16, released z-scores, ±1 Mb** | 731 | 46 | 25 | **46/46** | **46/46** | 15/16 | **1.00** |
+| SuSiE, FWL (one-population MultiSuSiE, ±250 kb) | 731 | 58 | 28 | **41/46** | 30/46 | 12/16 | **0.91** |
 | same, published ±1 Mb window | 731 | 55 | 27 | 43/46 | 31/46 | 12/16 | 0.94 |
 | SuSiE, FWL | 730 | 58 | 26 | 37/46 | 26/46 | 12/16 | 0.91 |
 | SuSiE, expression-only adjustment | 730 | 48 | 22 | 24/46 | 18/46 | 6/16 | 0.70 |
 
-The pooled SuSiE run reproduces 41 of the 46 published sets (30 exactly) and their PIPs
+The original-model check reproduced **all 46 sets with identical membership**, including
+the 25 singletons, and reported no additional sets. All 16 fits converged. Across **186,404
+variant–gene pairs**, the largest absolute difference from the released PIP was
+**4.97 × 10⁻⁹**. At GS1-124K5.4, both analyses give the same highest-PIP variant
+(PIP 0.407), outside the published credible set. The “lead is top” metric compares the
+published within-set lead (PIP 0.099) with the maximum across the whole locus, which
+explains the 15/16 entry. [Per-locus original-model results](mage/replication_loci.tsv).
+
+The pooled sufficient-statistic SuSiE run reproduces 41 of the 46 published sets (30 exactly) and their PIPs
 (r = 0.91); at the published ±1 Mb window, 43 (31 exactly, r = 0.94). Of the four loci whose top variant differs, two have diffuse published leads
 (PIP 0.10 at GS1-124K5.4, 0.13 at POT1) and at the other two (DHRS4, NFATC1) we give the
 published lead PIP ≥ 0.97 and another variant an equal or higher PIP. It reports 12 more
@@ -104,7 +113,10 @@ fit. Its best PCMTD1 set contains 13 of the 88 published variants (Jaccard 0.148
 misses two published singleton sets at DHRS4 (L3 and L6). In the reverse direction, 12
 reported sets fall below the threshold: four at DHRS4, three at POT1, two at PCMTD1,
 and one each at ACOT1, GS1-124K5.4 and NFATC1. This gives the net difference of nine
-sets (55 reported versus 46 published).
+sets (55 reported versus 46 published). The original-model check recovers all three missed
+sets and resolves all 12 additional calls. The comparison changes both the input statistics
+and the fitting implementation, so it does not isolate their individual contributions.
+[Bidirectional set-level comparisons](mage/set_matches.tsv).
 
 ### 2. Each site alone against the pooled analysis
 
@@ -268,7 +280,8 @@ used expression-only adjustment; its comparisons still hold as relative controls
   compute them; computing them per site costs agreement with the published sets (above).
 - **Window.** ±250 kb for the main design; the published ±1 Mb window is run as a sensitivity
   analysis for pooled SuSiE only.
-- **Sixteen loci, one dataset.** There are no per-locus replicates, so differences between
+- **One dataset.** The published-model replication covers 16 loci. The distinct held-out panel
+  covers 22 further loci in the same cohort. There are no per-locus replicates, so differences between
   arms are descriptive, not tested.
 - **The published sets are a reference, not ground truth.** They come from the same samples.
 

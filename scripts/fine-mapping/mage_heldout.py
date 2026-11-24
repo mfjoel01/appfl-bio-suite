@@ -1,9 +1,11 @@
 """Run the prespecified MAGE parity comparison from the repository root."""
 
 import argparse
+import os
 from pathlib import Path
 
 import pandas as pd
+from joblib import parallel_config
 
 from appfl_bio_suite.experiments.fine_mapping.real_data.benchmark import (
     compare_arm_pairs,
@@ -41,7 +43,11 @@ def main():
         )
         pooled, fed = out / f"pooled_{method}", out / f"federated_{method}"
         run_centralized_arm(root, pooled, pooled.name, fwl=True, **settings)
-        run_federated_arm(root, fed, fed.name, covariate_adjustment="fwl", **settings)
+        # Multi-ancestry cross-products can exceed compute-node temporary storage.
+        with parallel_config(
+            temp_folder=os.environ.get("JOBLIB_TEMP_FOLDER") or str(out.resolve())
+        ):
+            run_federated_arm(root, fed, fed.name, covariate_adjustment="fwl", **settings)
         parity, _ = compare_arm_pairs(pooled, fed, method)
         table = loci.merge(parity, on="locus_id", how="left", validate="one_to_one")
         table["comparison"] = method
