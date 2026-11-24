@@ -1,6 +1,8 @@
-# Part 2 — Fed-Heart-Disease: getting your data
+# {% if manual_setup %}Part 2 — {% endif %}Fed-Heart-Disease: getting your data
 
-Assumes Part 1 (`1-endpoint-setup.md`, beside this file) is done and your endpoint is running.
+{% if uses_join %}Your endpoint is set up by `0-onboarding.md`, beside this file. Do Steps 1 to 3 after
+its setup step has prepared the runtime and before activation: the workers run that
+runtime, so FLamby must be importable from it.{% else %}Assumes Part 1 (`1-endpoint-setup.md`, beside this file) is done and your endpoint is running.{% endif %}
 
 This part is short: you download a small public dataset, verify it loads, and tell us one
 number.
@@ -33,9 +35,13 @@ find the data afterwards. Running it as the service account avoids a whole class
 
 ```bash
 sudo -iu {{ service_account }}     # or however you switch to the service account
-conda activate {{ conda_env }}   # the same environment from Part 1
+{% if uses_join %}source /shared/project/onboarding/runtime/bin/activate   # the runtime setup prepared
 ```
 
+Use your own state directory from `0-onboarding.md` in place of `/shared/project/onboarding`.
+{% else %}conda activate {{ conda_env }}   # the same environment from Part 1
+```
+{% endif %}
 Get FLamby from GitHub — it is not published on PyPI:
 
 ```bash
@@ -137,7 +143,8 @@ Just one line:
 
 > Fed-Heart-Disease centre {{ center }} loads, {{ expected_train_samples }} training samples.
 
-That is everything. Combined with the endpoint UUID from Part 1, we have what we need.
+That is everything. {% if uses_join %}Together with the `registration.json` from `0-onboarding.md`, it is
+what we need.{% else %}Combined with the endpoint UUID from Part 1, we have what we need.{% endif %}
 
 **Leave the endpoint running.** We drive the run from our side; there is nothing further
 for you to do, and nothing to monitor.
@@ -148,7 +155,8 @@ for you to do, and nothing to monitor.
 
 **`ModuleNotFoundError: flamby`**
 Step 1 ran in the wrong environment or as the wrong user. Re-run the verification command
-as `{{ service_account }}` with the Part 1 environment active.
+as `{{ service_account }}` with {% if uses_join %}the prepared runtime active (`source .../runtime/bin/activate`
+in your state directory){% else %}the Part 1 environment active{% endif %}.
 
 **FLamby cannot find the dataset / `dataset_location.yaml` error**
 The download ran as a different user, or into a path `{{ service_account }}` cannot read,

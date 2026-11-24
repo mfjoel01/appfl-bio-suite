@@ -268,10 +268,14 @@ def _check_binaries(report: PreflightReport, experiment: str | None, federation=
     """
     from appfl_bio_suite.core.experiments import REGISTRY
 
+    # `.get`, not `.experiment()`: preflight is run against experiments a federation does
+    # not declare -- `preflight --experiment fine-mapping --check env` on an install whose
+    # config only has GWAS -- and that is a question about the environment, not an error.
+    declared = federation.experiments.get(experiment) if federation is not None else None
     if (
         experiment == "fine-mapping"
-        and federation is not None
-        and federation.experiment(experiment).fine_mapping_backend == "multisusie"
+        and declared is not None
+        and declared.fine_mapping_backend == "multisusie"
     ):
         try:
             from MultiSuSiE.susiepy_ss import susie_multi_ss  # noqa: F401
@@ -672,6 +676,19 @@ def _check_endpoints(report: PreflightReport, federation, experiment: str | None
             continue
 
         for entry in exp.sites:
+            if not entry.endpoint_uuid:
+                # Reported, not probed: there is no endpoint to ask about yet, and a
+                # request for `None` only comes back as a confusing API error.
+                report.add(
+                    f"endpoint {name}/{entry.client_id}",
+                    Level.FAIL,
+                    "no endpoint registered yet",
+                    "This site is in the experiment but has not finished onboarding.\n"
+                    "Once it sends its registration.json, `appfl-bio-suite experiment\n"
+                    "register` verifies its worker and records the endpoint_uuid.\n"
+                    "A run cannot launch until every site has one.",
+                )
+                continue
             status = get_status(entry.endpoint_uuid, label=entry.client_id)
             if status.online:
                 report.add(f"endpoint {name}/{entry.client_id}", Level.OK, status.uuid)

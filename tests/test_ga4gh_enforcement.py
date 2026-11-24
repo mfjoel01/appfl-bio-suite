@@ -279,6 +279,24 @@ def test_the_request_reaches_the_site_as_a_request_not_a_verdict(tmp_path):
     assert kwargs["verify_bundles"] == "metadata"
 
 
+def test_waiving_the_launch_gate_does_not_waive_the_site_check(tmp_path):
+    """`enforce_data_use: false` is the coordinator's gate. The site's is not theirs.
+
+    The launch report says "their own workers will still refuse", and that has to be
+    true: the flag used to be forwarded, so a site computed over terms it had denied.
+    """
+    fed = federation_for(tmp_path, {"permission": "DUO:0000011"}, STUDY)
+    fed.experiment("fine-mapping").ga4gh.enforce_data_use = False
+    kwargs = build_client_configs(fed, "fine-mapping")[0]["data_configs"]["dataset_kwargs"]
+    assert kwargs["enforce_data_use"] is True
+    with pytest.raises(PermissionError, match=r"do not permit this\s+study"):
+        SiteFineMappingDataset(
+            kwargs["data_dir"],
+            "site",
+            **{k: v for k, v in kwargs.items() if k not in ("data_dir", "site_id")},
+        )
+
+
 def test_the_requester_defaults_to_the_coordinator_identity(tmp_path):
     """The same identity partners already authorize, so DUO:0000026 checks something real."""
     request = dict(STUDY)

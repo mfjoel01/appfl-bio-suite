@@ -17,30 +17,104 @@ ZIP instead, so that its checksum is bound into the specification, add the publi
 wheel itself:
 
 ```bash
-pip download "appfl-bio-suite==0.3.1" --no-deps -d dist/
+pip download "appfl-bio-suite==0.3.2" --no-deps -d dist/
 appfl-bio-suite experiment package gwas --federation local/federation.yaml \
-  --out local/onboarding --wheel dist/appfl_bio_suite-0.3.1-py3-none-any.whl
+  --out local/onboarding --wheel dist/appfl_bio_suite-0.3.2-py3-none-any.whl
 ```
 
 Use the PyPI wheel rather than one you built locally, so that every partner's checksum
 matches the published release.
 
 This emits a ZIP per participating site. Use repeated `--site SITE_ID` options for a
-subset. `partner-bundle` also emits the machine-readable specification for compatibility
-with the existing single-site workflow. Send each partner its own ZIP.
+subset. Send each partner its own ZIP.
 
-Each ZIP contains a schema-versioned specification, exact runtime constraints, the
-partner's client configuration and data requirements, a local settings template, and
-the existing endpoint/data guides. The specification records a digest of experiment
-settings; receipts bind to the complete specification. ZIP creation uses the generated
-manifest's allowlist, excluding unrelated files left in the output directory. Checksums
-identify revisions; they do not authenticate a sender. Distribute bundles through your
-normal trusted collaboration channel.
+Each ZIP holds what `join` uses and nothing else:
 
-The partner runs `appfl-bio-suite join site.zip`, or prepares `site.yaml` first and runs
-`appfl-bio-suite join site.zip --local site.yaml`. The guided command remembers cluster
-settings and hands off MEP activation explicitly. The single-user Globus pattern is
-still under separate development and will be incorporated after validation.
+- `onboarding.json`, the schema-versioned specification, with the partner's client
+  configuration and data requirements
+- `site.yaml`, the local settings template, with your values as suggestions
+- `runtime-constraints.txt`, the exact runtime constraints
+- `0-onboarding.md`, the setup guide, and `1-<experiment>.md`, the experiment's data guide
+- `study-data-use-request.json`, when the study declares data-use terms
+- `bundle_manifest.json`, and the suite wheel when you pass `--wheel`.
+
+It has none of Part 1's hand-built endpoint files: `setup` writes the endpoint
+configuration for the runtime it installs. For a partner attaching the experiment to an
+endpoint they build by hand, `partner-bundle` writes a directory with Part 1, its worker
+template and identity mapping, beside the same specification.
+
+The specification records a digest of the experiment's shared settings and the
+recipient's own site entry. Sites can join or leave the experiment at any time without
+invalidating ZIPs already sent. Changing a shared setting or that site's own entry does
+invalidate its ZIP, and `experiment register` says to generate a new one. Receipts bind
+to the complete specification.
+
+The manifest records each file's SHA-256 and the bundle digest a partner's receipt
+carries. Packaging is deterministic, so a ZIP is current exactly when its manifest's
+checksums match those of a fresh `experiment package` for the same site. ZIP creation
+uses the manifest's allowlist, excluding unrelated files left in the output directory.
+Checksums identify revisions; they do not authenticate a sender. Distribute bundles
+through your normal trusted collaboration channel.
+
+The partner runs `appfl-bio-suite join gwas_Site1.zip`, or prepares `site.yaml` first and runs
+`appfl-bio-suite join gwas_Site1.zip --local site.yaml`. The guided command remembers cluster
+settings and hands off endpoint activation explicitly, for whichever endpoint mode the
+bundle declares (below).
+
+## Endpoint mode and host-local workers
+
+Each site entry declares how its endpoint runs, and the bundle carries that declaration.
+The partner never chooses it, and `join` never infers it from who runs the command:
+
+```yaml
+experiments:
+  fine-mapping:
+    sites:
+      - site: site-east
+        client_id: east
+        endpoint_mode: single-user   # default: multi-user
+```
+
+- **`multi-user`** (default): an administrator with root activates a MEP that maps your
+  Globus identity onto the service account. You reach it with your own login.
+- **`single-user`**: the endpoint runs as the service account itself and registers under
+  a **Globus service-account client you issue to that site**. It needs no root and no
+  identity mapping. It accepts tasks only from that client, so you reach it through a
+  `--site-credentials` route for the same client.
+
+For a host with no batch scheduler (a cloud VM, a workstation), set the site's
+`scheduler: local` and omit `partition`, `queue` and `account`. Workers then run on the
+endpoint host through parsl's `LocalProvider`, and `join` asks only for the data and
+work directories.
+
+For a single-user site, mint one service-account client **per site** in a Globus Auth
+project, never one shared across the federation: sites holding the same client can
+submit to each other's endpoints. Create two secrets for it: one the site places in a
+0600 file for `site activate --credentials-file`, one you keep for the coordinator. Send
+the client ID and the site's secret through your normal secure channel, never in the
+bundle.
+
+Build the coordinator's routing manifest from the [service-account
+guide](service-account-trial.md#coordinator-routing-manifest). A run needs a route for
+**every** endpoint in it. A multi-user site in the same run as single-user ones gets an
+explicit route saying you reach it with your own login:
+
+```json
+{
+  "version": 1,
+  "endpoints": {
+    "<site-east endpoint UUID>": {
+      "client_id": "<site-east service-account client ID>",
+      "client_secret_env": "BIOSIM_SITE_EAST_SECRET",
+      "expected_user": "finemap_svc"
+    },
+    "<site-north endpoint UUID>": {"coordinator_login": true, "expected_user": "finemap_svc"}
+  }
+}
+```
+
+There is still no fallback: an endpoint without a route is refused, so a forgotten
+entry cannot send a site's tasks under the wrong identity.
 
 The partner can change scheduler account/queue, local paths and network interface.
 Everything experiment-owned comes from your federation configuration. A missing local
@@ -59,8 +133,12 @@ appfl-bio-suite experiment register registration.json \
   --out local/site1-ready.json --timeout 600
 ```
 
+For a single-user site, add `--site-credentials local/site-credentials.json` (or set
+`APPFL_BIO_SUITE_GLOBUS_CREDENTIALS`). The probe then authenticates as that endpoint's
+route, and registration refuses to start without one rather than waiting on a 403.
+
 This rejects a stale/wrong-site receipt, verifies that experiment settings have not
-changed, and submits a real worker probe using your Globus login. It checks the service
+changed, and submits a real worker probe using your Globus login (or the site's route). It checks the service
 account, runtime versions and directory access. Only success produces a ready record and
 a new federation YAML containing the partner's endpoint UUID and local data/output paths.
 Use that new federation file as input when registering the next partner. Existing output
@@ -106,6 +184,13 @@ probe runs as the intended service account on a scheduled worker with access to 
 shared installation, data, and output directories. No live endpoint was started as part
 of implementing this feature.
 
-The [single-user service-account trial](service-account-trial.md) remains a separate
-experimental path. Its eventual integration must retain bundle revision and readiness
-checks while replacing the MEP activation/identity-mapping step.
+Single-user activation is covered the same way: refusal as root or as any other account,
+refusal without service-account credentials or with a credentials file others can read,
+endpoint ownership, restart of a managed endpoint, and registration through a route.
+`globus-compute-endpoint configure`/`start` are mocked there too. A first live deployment
+on a cloud VM (Ubuntu 24.04) reached a running endpoint and a passing owner probe, and
+found what the mocks could not: the endpoint's `PATH`, its self-daemonizing under
+systemd, and credential mistakes. Those are fixed and covered by tests, but a reboot of
+that host and a re-activation with the fixed release have not been repeated live. The
+[service-account trial](service-account-trial.md) records the cross-site isolation checks
+that remain open. Both endpoint modes keep the bundle revision and readiness checks.

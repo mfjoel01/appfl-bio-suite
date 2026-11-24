@@ -50,6 +50,11 @@ def check_sites(manifest: Path, timeout: float = 300) -> int:
     if len(endpoints) != 2:
         raise ValueError("The trial requires exactly two endpoint routes.")
     credentials = load_site_credentials(manifest, endpoints)
+    if any(credential.coordinator_login for credential in credentials.values()):
+        raise ValueError(
+            "The isolation trial compares two service-account clients; a coordinator_login "
+            "route has no site identity to isolate."
+        )
     clients = {endpoint: credentials[endpoint].client() for endpoint in endpoints}
     for endpoint in endpoints:
         result = smoke_test(endpoint, timeout=timeout, client=clients[endpoint])

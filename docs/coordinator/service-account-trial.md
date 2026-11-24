@@ -12,6 +12,8 @@
 - [ ] Test secret rotation/revocation with independent token caches and running work.
 - [ ] Finish recoverable credential provisioning and teardown before dashboard integration.
 - [ ] Add root-free partner bundles and operator guidance before changing onboarding defaults.
+  Implemented: bundles for sites declared `endpoint_mode: single-user` (see
+  [onboarding](onboarding.md#endpoint-mode-and-host-local-workers)); first live deployment pending.
 
 This implementation is for review and controlled testing; these unchecked items are not completed
 by the local training tests below.
@@ -46,8 +48,8 @@ Install the same release from PyPI on every machine (the
 environment, the coordinator's example files, and the CPU installation variant):
 
 ```bash
-python -m pip install "appfl-bio-suite==0.3.1" \
-    -c https://raw.githubusercontent.com/mfjoel01/appfl-bio-suite/v0.3.1/constraints.txt
+python -m pip install "appfl-bio-suite==0.3.2" \
+    -c https://raw.githubusercontent.com/mfjoel01/appfl-bio-suite/v0.3.2/constraints.txt
 ```
 
 The synthetic trial below requires no cohort download or experiment data staging.
@@ -108,7 +110,10 @@ export APPFL_BIO_SUITE_GLOBUS_CREDENTIALS="$PWD/local/site-credentials.json"
 
 All requested endpoints must have routes and populated secret variables. There is no
 fallback to the coordinator's personal login when a route is missing. Each route must
-have a distinct client identity. Credential references are never inserted into configs
+have a distinct client identity. An endpoint you reach with your own login (a partner's
+multi-user endpoint, in the same run as single-user sites) needs an explicit route
+saying so: `{"coordinator_login": true, "expected_user": "..."}`. The isolation check
+below refuses such routes, since they have no site identity to isolate. Credential references are never inserted into configs
 sent to workers. Apps have independent in-memory tokens and executors have independent
 task groups; credentials can be reauthenticated on the next coordinator run.
 

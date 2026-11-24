@@ -98,6 +98,23 @@ PROFILES = [
     {"dataset_id": "d", "permission": "DUO:0000042", "modifiers": [{"id": "DUO:0000001"}]},
     # A malformed permission.
     {"dataset_id": "d", "permission": "not-a-term", "modifiers": []},
+    # A time limit written in a form that does not sort as a date.
+    {
+        "dataset_id": "d",
+        "permission": "DUO:0000042",
+        "modifiers": [{"id": "DUO:0000025", "value": ["31-12-2020"]}],
+    },
+    # Blank approved values, and an explicit null where a list belongs.
+    {
+        "dataset_id": "d",
+        "permission": "DUO:0000042",
+        "modifiers": [{"id": "DUO:0000026", "value": [""]}],
+    },
+    {
+        "dataset_id": "d",
+        "permission": "DUO:0000011",
+        "modifiers": [{"id": "DUO:0000028", "value": None}, {"id": "DUO:0000016"}],
+    },
 ]
 
 REQUESTS = [
@@ -120,6 +137,9 @@ REQUESTS = [
         "return_to_resource_agreed": True,
     },
     {"requester": "", "purposes": ["DUO:0000038"], "acknowledged": ["DUO:0000012"]},
+    # No purpose at all. The typed request refuses this; the dict the site receives may not.
+    {"requester": "me@example.org", "purposes": []},
+    {"requester": "", "purposes": None, "acknowledged": None, "project": ""},
 ]
 
 # Fixed, so a case that depends on the date (DUO:0000025) is decided identically on both

@@ -7,18 +7,18 @@ Prepare Python 3.12 on the coordinator and each worker. Clone the release tag fo
 example files and constraints, then install the same release from PyPI:
 
 ```bash
-git clone --branch v0.3.1 https://github.com/mfjoel01/appfl-bio-suite.git
+git clone --branch v0.3.2 https://github.com/mfjoel01/appfl-bio-suite.git
 cd appfl-bio-suite
 python3.12 -m venv .venv
 source .venv/bin/activate
-python -m pip install "appfl-bio-suite==0.3.1" -c constraints.txt
+python -m pip install "appfl-bio-suite==0.3.2" -c constraints.txt
 python -m pip check
 ```
 
 For the synthetic CPU pilot, replace the install command above with:
 
 ```bash
-python -m pip install "appfl-bio-suite==0.3.1" -c constraints.txt \
+python -m pip install "appfl-bio-suite==0.3.2" -c constraints.txt \
   -c examples/service-account-trial/constraints-cpu.txt \
   --extra-index-url https://download.pytorch.org/whl/cpu
 ```

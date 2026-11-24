@@ -46,6 +46,7 @@ never reach the map at all. Those describe the inside of a partner's cluster.
 from __future__ import annotations
 
 import base64
+import html
 import json
 import logging
 import queue
@@ -137,7 +138,9 @@ class Participation:
 
     experiment: str
     client_id: str
-    endpoint_uuid: str
+    # None between `experiment package` and `experiment register`: the site is a member
+    # of the federation, and on the map, before it has an endpoint to name.
+    endpoint_uuid: str | None
     data_kind: str
     samples: int | None = None
 
@@ -277,7 +280,7 @@ def _site_client(
         # Chips, in the order they should read.
         "institution": site.name,
         "experiments": ", ".join(p.experiment for p in parts),
-        "endpoints": len(parts),
+        "endpoints": sum(1 for p in parts if p.endpoint_uuid),
         "scheduler": site.scheduler,
     }
 
@@ -287,7 +290,11 @@ def _site_client(
         client[part.experiment] = part.label
 
     for part in parts:
-        if include_endpoint_uuids:
+        if part.endpoint_uuid is None:
+            # Said on the card, in either mode: a site still onboarding is the one whose
+            # state a coordinator opens the map to check.
+            client[f"endpoint · {part.experiment}"] = "not registered yet"
+        elif include_endpoint_uuids:
             # Opted in: a visible chip, for an internal deployment where the map is the
             # convenient place to look one up.
             client[f"endpoint · {part.experiment}"] = part.endpoint_uuid
@@ -329,6 +336,8 @@ def build_network_events(
     statuses: dict[str, str] | None = None,
     include_endpoint_uuids: bool = False,
     generated_at: datetime | None = None,
+    live_status: str | None = None,
+    home_url: str | None = None,
 ) -> list[dict[str, Any]]:
     """The network view as a hivewatch event stream.
 
@@ -341,6 +350,12 @@ def build_network_events(
     ``statuses`` maps site id to a hivewatch client status (``active``, ``idle``,
     ``dropped``, ``failed``). Omitted, every site is ``active`` -- the map then states
     membership, not liveness, which is the honest reading when nothing has been probed.
+
+    ``live_status`` names a file published beside the map that ``watch live`` keeps
+    current; the viewer polls it. See :mod:`appfl_bio_suite.core.live_status`.
+
+    ``home_url`` is the page the viewer's logo leads back to, relative to the map data
+    (``../`` for the project site, where the map sits in ``map/``).
     """
     active = participations(federation, experiment)
     if not active:
@@ -372,6 +387,10 @@ def build_network_events(
         "generated_at": now,
         "source": str(federation.source_path) if federation.source_path else "federation config",
     }
+    if live_status:
+        config["live_status"] = live_status
+    if home_url:
+        config["home_url"] = home_url
 
     return [
         {
@@ -484,6 +503,14 @@ def _network_artifacts(federation: Federation, catalog_path=None, **kwargs) -> t
 # static export, including the globe's geography and rendering dependencies.
 _VIEWER_ASSETS = Path(__file__).parent / "watch_assets"
 _UPSTREAM_STARTUP = "initDraggableLogPanel();\nif (METADATA_URL || EVENTS_URL)"
+# Upstream reads its data only from ?metadata_url=. A page can name a default instead
+# (<html data-bio-default-metadata=...>), which is how the project site serves the map at
+# its bare root address.
+_UPSTREAM_METADATA = 'const METADATA_URL = params.get("metadata_url");'
+_PATCHED_METADATA = (
+    'const METADATA_URL = params.get("metadata_url")'
+    " || document.documentElement.dataset.bioDefaultMetadata || null;"
+)
 
 _INDEX = """<!doctype html>
 <meta charset="utf-8">
@@ -534,6 +561,7 @@ def _patched_viewer() -> str:
         or script_end == -1
         or "</head>" not in html
         or "</body>" not in html
+        or html.count(_UPSTREAM_METADATA) != 1
     ):
         raise WatchError(
             "The installed hivewatch viewer has an unsupported layout. "
@@ -544,6 +572,7 @@ def _patched_viewer() -> str:
         + "// appfl-bio-suite: viewer.js initializes the federation view.\n"
         + html[script_end:]
     )
+    html = html.replace(_UPSTREAM_METADATA, _PATCHED_METADATA, 1)
     html = re.sub(r'<img class="logo-img"[^>]*>\s*', "", html, count=1)
     css = (_VIEWER_ASSETS / "viewer.css").read_text(encoding="utf-8")
     html = html.replace("</head>", f'<style id="bio-viewer-style">\n{css}\n</style>\n</head>', 1)
@@ -564,9 +593,14 @@ def _patched_viewer() -> str:
 
 @contextmanager
 def map_server(
-    *, host: str = "0.0.0.0", port: int = DEFAULT_PORT, runs_dir: Path | str = DEFAULT_RUNS_DIR
+    *, host: str = "127.0.0.1", port: int = DEFAULT_PORT, runs_dir: Path | str = DEFAULT_RUNS_DIR
 ) -> Iterator[Any]:
     """Keep the same viewer used by export available for the server's lifetime.
+
+    Loopback by default, unlike upstream's 0.0.0.0. The server has no authentication and
+    answers any origin, and the runs directory holds site names, sample counts and live
+    run telemetry; on a shared login node "all interfaces" is every other user of the
+    cluster. Widening it is the caller's explicit choice.
 
     The temporary file belongs to this process; concurrent servers and exports never
     overwrite each other's viewer or the installed package. The context always stops
@@ -634,7 +668,9 @@ def export_site(
         json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
     )
     (out_dir / "map.html").write_text(_patched_viewer(), encoding="utf-8")
-    (out_dir / "index.html").write_text(_INDEX.format(title=title), encoding="utf-8")
+    (out_dir / "index.html").write_text(
+        _INDEX.format(title=html.escape(title, quote=False)), encoding="utf-8"
+    )
     return out_dir
 
 
@@ -682,7 +718,8 @@ def write_sidecar(
                 "country": site.country,
                 "num_samples": part.samples,
             }
-            clients[part.endpoint_uuid] = entry
+            if part.endpoint_uuid:
+                clients[part.endpoint_uuid] = entry
             clients[part.client_id] = entry
 
     payload = {

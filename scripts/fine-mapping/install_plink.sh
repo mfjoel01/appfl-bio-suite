@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-shot installer for PLINK 1.9 and PLINK 2.0 static Linux binaries.
-# Drops them into <repo>/vendor/bin/, which scripts/_env.sh prepends to PATH.
+# Drops them into <repo>/vendor/bin/, which appfl_bio_suite puts on PATH at import.
 #
 # Idempotent: skips download if a working binary already lives in vendor/bin/.
 # No conda, no root, no module — just a static binary fetch.
@@ -38,7 +38,7 @@ install_one() {
     log "If the build date is stale, find a current one at"
     log "  https://www.cog-genomics.org/plink/   (1.9)"
     log "  https://www.cog-genomics.org/plink/2.0/  (2.0)"
-    log "and re-run with e.g. PLINK1_DATE=YYYYMMDD ./scripts/install_plink.sh"
+    log "and re-run with e.g. PLINK1_DATE=YYYYMMDD ./scripts/fine-mapping/install_plink.sh"
     return 1
   fi
   unzip -q -o "${tmpdir}/p.zip" -d "${tmpdir}/x"
@@ -58,4 +58,5 @@ install_one() {
 install_one "PLINK 1.9" "${PLINK1_URL}" "plink"
 install_one "PLINK 2.0" "${PLINK2_URL}" "plink2"
 
-log "Done. Run ./scripts/run_sampling.sh — the _env.sh helper will put vendor/bin on PATH."
+log "Done. appfl_bio_suite puts vendor/bin on PATH itself; check with:"
+log "  appfl-bio-suite preflight --experiment fine-mapping --check env"

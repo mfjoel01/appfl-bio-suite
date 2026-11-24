@@ -667,14 +667,15 @@ class TrsClient:
         self.timeout = timeout
 
     def _get(self, path: str) -> Any:
+        import http.client
         import urllib.error
         import urllib.request
 
         url = f"{self.base_url}{path}"
-        request = urllib.request.Request(url, headers={"Accept": "application/json"})
-        if self.token:
-            request.add_header("Authorization", f"Bearer {self.token}")
         try:
+            request = urllib.request.Request(url, headers={"Accept": "application/json"})
+            if self.token:
+                request.add_header("Authorization", f"Bearer {self.token}")
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
@@ -682,6 +683,10 @@ class TrsClient:
             raise TrsError(f"{url} returned {exc.code}: {body}") from exc
         except urllib.error.URLError as exc:
             raise TrsError(f"could not reach {url}: {exc.reason}") from exc
+        except (OSError, ValueError, http.client.HTTPException) as exc:
+            # A timeout or dropped connection mid-read, a URL with no scheme, or a body
+            # that is not JSON.
+            raise TrsError(f"no usable response from {url}: {exc}") from exc
 
     def service_info(self) -> dict[str, Any]:
         return self._get("/ga4gh/trs/v2/service-info")

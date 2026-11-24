@@ -28,6 +28,16 @@ class Model(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+# The specification carries the site's client config, which for a DRS-verified bundle
+# includes a checksum per data file -- 2.3 MB for a fine-mapping cohort of 11,850
+# phenotype files. The cap guards against a hostile archive, not a large honest one.
+MAX_SPEC_BYTES = 64_000_000
+
+# The service-account client an endpoint authenticates as, in single-user mode. These are
+# the Compute SDK's own variable names; nothing else is read from a credentials file.
+CREDENTIAL_VARS = ("GLOBUS_COMPUTE_CLIENT_ID", "GLOBUS_COMPUTE_CLIENT_SECRET")
+
+
 class Bundle(Model):
     schema_version: Literal[1] = 1
     experiment: str
@@ -39,7 +49,8 @@ class Bundle(Model):
     coordinator_identity_match: str = Field(min_length=1)
     service_account: str
     endpoint_name: str
-    scheduler: Literal["slurm", "pbspro"]
+    scheduler: Literal["slurm", "pbspro", "local"]
+    endpoint_mode: Literal["multi-user", "single-user"] = "multi-user"
     versions: dict[str, str]
     defaults: dict[str, str]
     constraints: dict[str, str]
@@ -89,7 +100,8 @@ class Bundle(Model):
 
 
 class SiteConfig(Model):
-    account: str = Field(min_length=1)
+    # Required for slurm and pbspro, absent for local; see check_scheduler_settings.
+    account: str | None = None
     partition: str | None = None
     queue: str | None = None
     data_dir: Path
@@ -109,6 +121,38 @@ class SiteConfig(Model):
         if not value.is_absolute() or any(c in str(value) for c in "\r\n"):
             raise ValueError("must be an absolute path without newlines")
         return value
+
+
+def scheduler_fields(scheduler: str) -> tuple[str, ...]:
+    """The local settings a scheduler requires, in prompt order."""
+    return {"slurm": ("account", "partition"), "pbspro": ("account", "queue")}.get(scheduler, ())
+
+
+def without_blanks(values: dict) -> dict:
+    """Drop unset values, so an empty bundle default reads as missing rather than invalid."""
+    return {key: value for key, value in values.items() if value not in (None, "")}
+
+
+def check_scheduler_settings(scheduler: str, site: SiteConfig) -> None:
+    required = scheduler_fields(scheduler)
+    missing = [field for field in required if not getattr(site, field)]
+    extra = [
+        field
+        for field in ("account", "partition", "queue")
+        if field not in required and getattr(site, field)
+    ]
+    if scheduler == "local" and extra:
+        raise ValueError(
+            f"A local site runs workers on this host and has no scheduler; "
+            f"remove {', '.join(extra)}"
+        )
+    if missing or extra:
+        message = f"{scheduler} needs {' and '.join(required)}"
+        if missing:
+            message += f" (missing: {', '.join(missing)})"
+        if extra:
+            message += f"; do not set {', '.join(extra)}"
+        raise ValueError(message)
 
 
 class Receipt(Model):
@@ -134,6 +178,13 @@ class Receipt(Model):
 def digest(bundle: Bundle) -> str:
     canonical = json.dumps(bundle.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def file_checksums(directory: Path, names) -> dict[str, str]:
+    """SHA-256 of each named file in ``directory``, keyed by name."""
+    return {
+        name: hashlib.sha256((directory / name).read_bytes()).hexdigest() for name in sorted(names)
+    }
 
 
 def write_json(path: Path, value) -> None:
@@ -173,12 +224,12 @@ def write_specification(
         "parsl",
         "click",
     )
-    defaults = {
-        "account": context["account"],
-        context["scheduler_slot"]: context["scheduler_slot_value"],
-        "data_dir": context["data_dir"],
-        "work_dir": context["output_dir"],
-    }
+    defaults = {}
+    if context["scheduler"] != "local":
+        defaults["account"] = context["account"]
+        defaults[context["scheduler_slot"]] = context["scheduler_slot_value"]
+    defaults["data_dir"] = context["data_dir"]
+    defaults["work_dir"] = context["output_dir"]
     if context["interface"]:
         defaults["interface"] = context["interface"]
     bundle = Bundle(
@@ -194,6 +245,7 @@ def write_specification(
                 "service_account",
                 "endpoint_name",
                 "scheduler",
+                "endpoint_mode",
             )
         },
         suite_version=__version__,
@@ -202,7 +254,9 @@ def write_specification(
         extras=context["partner_extras"].split(",") if context["partner_extras"] else [],
         constraints=pins,
         client_config=client_config,
-        experiment_digest=experiment_digest(federation, context["experiment"]),
+        experiment_digest=experiment_digest(
+            federation, context["experiment"], context["client_id"]
+        ),
     )
     spec_path = destination / "onboarding.json"
     write_json(spec_path, bundle.model_dump())
@@ -213,14 +267,23 @@ def write_specification(
     return [spec_path, local, constraints]
 
 
-def experiment_digest(federation, experiment: str) -> str:
+def experiment_digest(federation, experiment: str, client_id: str) -> str:
+    """What one site's bundle was built from: the shared settings and that site's entry.
+
+    Sites join an experiment at any time, so no other site's entry is included: adding,
+    removing or registering one leaves every bundle already sent valid. Registration
+    fills in this site's own endpoint UUID and paths, so those are left out as well.
+
+    `secure_aggregation` is left out for the same reason. Its `participants` lists every
+    site, and its `run_id` is new for each attempt; the coordinator applies both at
+    launch, and nothing a partner sets up depends on them.
+    """
     exp = federation.experiment(experiment)
-    settings = exp.model_dump(mode="json", exclude={"sites"})
-    # Registration changes UUIDs and paths, but membership/data assignments are immutable.
-    settings["sites"] = [
-        entry.model_dump(mode="json", exclude={"endpoint_uuid", "data_dir", "output_dir"})
-        for entry in exp.sites
-    ]
+    entry = federation.experiment_site(experiment, client_id)
+    settings = exp.model_dump(mode="json", exclude={"sites", "secure_aggregation"})
+    settings["site"] = entry.model_dump(
+        mode="json", exclude={"endpoint_uuid", "data_dir", "output_dir"}
+    )
     return hashlib.sha256(json.dumps(settings, sort_keys=True).encode()).hexdigest()
 
 
@@ -237,8 +300,10 @@ def read_bundle(path: Path) -> Bundle:
             if len(candidates) != 1:
                 raise ValueError("ZIP must contain exactly one onboarding.json")
             info = archive.getinfo(candidates[0])
-            if info.file_size > 1_000_000:
-                raise ValueError("onboarding.json is too large")
+            if info.file_size > MAX_SPEC_BYTES:
+                raise ValueError(
+                    f"onboarding.json is {info.file_size:,} bytes; the limit is {MAX_SPEC_BYTES:,}"
+                )
             raw = archive.read(info)
     else:
         raw = path.read_bytes()
@@ -256,11 +321,8 @@ def resolve_site(bundle: Bundle, local: Path) -> SiteConfig:
     values = yaml.safe_load(local.read_text())
     if not isinstance(values, dict):
         raise ValueError("site.yaml must contain a mapping")
-    site = SiteConfig.model_validate({**bundle.defaults, **values})
-    slot = "partition" if bundle.scheduler == "slurm" else "queue"
-    other = "queue" if slot == "partition" else "partition"
-    if not getattr(site, slot) or getattr(site, other):
-        raise ValueError(f"{bundle.scheduler} needs {slot}; do not set {other}")
+    site = SiteConfig.model_validate(without_blanks({**bundle.defaults, **values}))
+    check_scheduler_settings(bundle.scheduler, site)
     return site
 
 
@@ -305,7 +367,9 @@ def runtime_report(data_dir: str, work_dir: str, packages: list[str], state_dir:
     }
 
 
-def check_runtime(bundle: Bundle, report: dict, *, check_user: bool = True) -> None:
+def check_runtime(
+    bundle: Bundle, report: dict, *, check_user: bool = True, check_data: bool = True
+) -> None:
     errors = []
     if report.get("bundle_digest") != digest(bundle):
         errors.append("Worker setup does not match this bundle revision")
@@ -318,7 +382,7 @@ def check_runtime(bundle: Bundle, report: dict, *, check_user: bool = True) -> N
             errors.append(f"{name}: expected {version}, found {actual}")
     if check_user and report.get("user") != bundle.service_account:
         errors.append(f"worker must run as {bundle.service_account}")
-    if not report.get("data_readable"):
+    if check_data and not report.get("data_readable"):
         errors.append("data_dir must exist and be readable by the service account")
     if not report.get("work_writable"):
         errors.append("work_dir must be writable by the service account")
@@ -348,30 +412,40 @@ def inspect_runtime(python: Path, bundle: Bundle, site: SiteConfig) -> dict:
     return json.loads(run([str(python), "-c", script], capture_output=True, text=True).stdout)
 
 
-def worker_config(bundle: Bundle, site: SiteConfig, environment: Path) -> str:
-    provider = {
-        "type": "SlurmProvider" if bundle.scheduler == "slurm" else "PBSProProvider",
-        "account": site.account,
-        "partition" if bundle.scheduler == "slurm" else "queue": site.partition
-        if bundle.scheduler == "slurm"
-        else site.queue,
-        "nodes_per_block": 1,
-        "init_blocks": 0,
-        "min_blocks": 0,
-        "max_blocks": 1,
-        "walltime": "00:30:00",
-        "launcher": {"type": "SrunLauncher" if bundle.scheduler == "slurm" else "MpiExecLauncher"},
-        "worker_init": "\n".join(
-            [
-                f"source {shlex.quote(str(environment / 'bin/activate'))}",
-                "export TMPDIR=/tmp",
-                "export OPENBLAS_NUM_THREADS=1",
-                "export OMP_NUM_THREADS=1",
-                "export MKL_NUM_THREADS=1",
-                "export PYTHONUNBUFFERED=1",
-            ]
-        ),
-    }
+def _worker_settings(bundle: Bundle, site: SiteConfig, environment: Path) -> dict:
+    worker_init = "\n".join(
+        [
+            f"source {shlex.quote(str(environment / 'bin/activate'))}",
+            "export TMPDIR=/tmp",
+            "export OPENBLAS_NUM_THREADS=1",
+            "export OMP_NUM_THREADS=1",
+            "export MKL_NUM_THREADS=1",
+            "export PYTHONUNBUFFERED=1",
+        ]
+    )
+    if bundle.scheduler == "local":
+        # Workers on this host: no account, queue, walltime or launcher to choose.
+        provider = {
+            "type": "LocalProvider",
+            "init_blocks": 0,
+            "min_blocks": 0,
+            "max_blocks": 1,
+            "worker_init": worker_init,
+        }
+    else:
+        slurm = bundle.scheduler == "slurm"
+        provider = {
+            "type": "SlurmProvider" if slurm else "PBSProProvider",
+            "account": site.account,
+            "partition" if slurm else "queue": site.partition if slurm else site.queue,
+            "nodes_per_block": 1,
+            "init_blocks": 0,
+            "min_blocks": 0,
+            "max_blocks": 1,
+            "walltime": "00:30:00",
+            "launcher": {"type": "SrunLauncher" if slurm else "MpiExecLauncher"},
+            "worker_init": worker_init,
+        }
     engine = {
         "type": "GlobusComputeEngine",
         "max_workers_per_node": 1,
@@ -380,9 +454,33 @@ def worker_config(bundle: Bundle, site: SiteConfig, environment: Path) -> str:
     }
     if site.interface:
         engine["address"] = {"type": "address_by_interface", "ifname": site.interface}
-    return yaml.safe_dump(
-        {"engine": engine, "idle_heartbeats_soft": 0, "idle_heartbeats_hard": 5760}, sort_keys=False
-    )
+    return {"engine": engine, "idle_heartbeats_soft": 0, "idle_heartbeats_hard": 5760}
+
+
+def worker_config(bundle: Bundle, site: SiteConfig, environment: Path) -> str:
+    """The MEP's per-user template: what each mapped user's endpoint runs."""
+    return yaml.safe_dump(_worker_settings(bundle, site, environment), sort_keys=False)
+
+
+def endpoint_config(bundle: Bundle, site: SiteConfig, environment: Path) -> str:
+    """A single-user endpoint's whole config.yaml: the same engine, no mapping."""
+    settings = {
+        "display_name": f"{bundle.endpoint_name} ({bundle.experiment} / {bundle.client_id})",
+        **_worker_settings(bundle, site, environment),
+        # A single-user endpoint daemonizes itself by default, even without `--detach`.
+        # Under systemd's Type=simple that looks like a clean exit: the service goes
+        # inactive, the forked endpoint is killed with its cgroup, and Restart=on-failure
+        # never fires. Foreground here; activation's own `start --detach` still detaches.
+        "detach_endpoint": False,
+    }
+    return yaml.safe_dump(settings, sort_keys=False)
+
+
+def prepared_files(bundle: Bundle) -> tuple[str, ...]:
+    """What a finished `setup` leaves in the state directory for this endpoint mode."""
+    if bundle.endpoint_mode == "single-user":
+        return ("runtime/bin/python", "endpoint_config.yaml")
+    return ("runtime/bin/python", "identity_mapping.json", "user_config_template.yaml.j2")
 
 
 def setup_site(
@@ -428,6 +526,7 @@ def setup_site(
     write_json(destination / "onboarding.json", bundle.model_dump())
     environment = destination / "runtime"
     if not (environment / "bin/python").exists():
+        check_venv_support(python)
         run([python, "-m", "venv", str(environment)])
     requirement = install_source or bundle.install_spec
     if bundle.wheel_file and not install_source:
@@ -455,9 +554,20 @@ def setup_site(
     )
     run([str(environment / "bin/python"), "-m", "pip", "check"])
     site.work_dir.mkdir(parents=True, exist_ok=True)
+    # Data may arrive after the software: it is checked at activation and verification,
+    # which is when a worker would first read it.
     check_runtime(
-        bundle, inspect_runtime(environment / "bin/python", bundle, site), check_user=False
+        bundle,
+        inspect_runtime(environment / "bin/python", bundle, site),
+        check_user=False,
+        check_data=False,
     )
+    if bundle.endpoint_mode == "single-user":
+        # The endpoint runs as the service account itself: there is no identity to map.
+        (destination / "endpoint_config.yaml").write_text(
+            endpoint_config(bundle, site, environment)
+        )
+        return destination
     from appfl_bio_suite.core.identity import build_mapping_document
 
     write_json(
@@ -496,6 +606,12 @@ def activate_site(state: Path) -> Path:
 
     state = state.resolve()
     bundle, site = load_state(state)
+    if bundle.endpoint_mode != "multi-user":
+        raise ValueError(
+            "This bundle declares a single-user endpoint. As "
+            f"{bundle.service_account}, run: site activate --state {state} "
+            "--credentials-file FILE"
+        )
     if os.geteuid() != 0:
         raise ValueError(
             "Multi-user endpoint activation requires root; ask the cluster administrator"
@@ -542,6 +658,261 @@ def activate_site(state: Path) -> Path:
     return endpoint
 
 
+def read_credentials_file(path: Path) -> dict[str, str]:
+    """The service-account client ID and secret, from a file only its owner can read.
+
+    ``KEY=VALUE`` lines (the format systemd's EnvironmentFile reads), for exactly the two
+    Compute SDK variables. Nothing from the file is echoed in an error: a malformed line
+    may be the secret itself.
+    """
+    info = path.stat()
+    if info.st_uid != os.geteuid():
+        raise ValueError(f"{path} must be owned by the account that runs the endpoint")
+    if info.st_mode & 0o077:
+        raise ValueError(f"{path} must be readable only by its owner (chmod 600 {path})")
+    values: dict[str, str] = {}
+    for number, line in enumerate(path.read_text().splitlines(), 1):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, separator, value = line.removeprefix("export ").partition("=")
+        key, value = key.strip(), value.strip()
+        if not separator or key not in CREDENTIAL_VARS:
+            raise ValueError(
+                f"{path} line {number}: only {' and '.join(CREDENTIAL_VARS)} are accepted"
+            )
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
+        if value.startswith("<") or value.endswith(">"):
+            raise ValueError(
+                f"{path} line {number}: {key} still has the guide's <...> placeholder "
+                "brackets; put the bare value after the ="
+            )
+        values[key] = value
+    return values
+
+
+def credentials_hint(bundle: Bundle) -> str:
+    """Where the guide tells a single-user site to keep its service-account credentials."""
+    return f"~/.config/{bundle.endpoint_name}.env"
+
+
+def check_data(bundle: Bundle, data_dir: Path | None = None) -> list[str]:
+    """Load the site's data with the task's own arguments; a few lines describing it.
+
+    The experiment task passes more than a directory: the study's data-use request, the
+    DRS record to verify against, and so on. A check that passes only the directory is
+    refused by a dataset that declares data-use terms, which reads as "the data is wrong".
+    """
+    import importlib
+
+    from appfl_bio_suite.core.experiments import get_spec
+
+    settings = bundle.client_config["data_configs"]
+    arguments = dict(settings.get("dataset_kwargs") or {})
+    if data_dir is not None:
+        arguments["data_dir"] = str(data_dir.resolve())
+    module = importlib.import_module(
+        f"appfl_bio_suite.experiments.{get_spec(bundle.experiment).package}.dataset"
+    )
+    loaded = getattr(module, settings["dataset_name"])(**arguments)
+    dataset = loaded[0] if isinstance(loaded, tuple) else loaded
+    lines = [f"OK, samples: {len(dataset)}"]
+    if hasattr(dataset, "composition"):
+        lines.append(f"    ancestries: {dataset.composition}")
+    if hasattr(dataset, "loci") and hasattr(dataset, "available_instances"):
+        lines.append(
+            f"    regions: {len(dataset.loci)}  instances: {len(dataset.available_instances)}"
+        )
+    return lines
+
+
+def check_venv_support(python: str) -> None:
+    """Refuse, with the remedy, a Python that cannot create a virtual environment.
+
+    Debian and Ubuntu ship `python3.12` without `ensurepip`; `python -m venv` then fails
+    partway with advice that assumes root.
+    """
+    probe = subprocess.run([python, "-c", "import ensurepip, venv"], capture_output=True)
+    if probe.returncode:
+        raise ValueError(
+            f"{python} cannot create a virtual environment (no ensurepip). On Debian/Ubuntu "
+            "an administrator installs it with `apt install python3.12-venv`; without root, "
+            "`uv python install 3.12` provides a complete Python 3.12 to pass as --python."
+        )
+
+
+def runtime_path(state: Path) -> str:
+    """PATH for the endpoint process: the runtime's executables first.
+
+    Globus Compute launches its interchange as bare `globus-compute-endpoint`, so an
+    endpoint started by absolute path from a shell (or a systemd unit) without the
+    runtime on PATH registers, then dies starting its engine.
+    """
+    return f"{state / 'runtime/bin'}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+
+def check_client_credentials(client_id: str, client_secret: str) -> None:
+    """Ask Globus Auth whether this client ID and secret belong together.
+
+    Without this the mismatch surfaces as a bare 401 from `globus-compute-endpoint start`,
+    after the endpoint directory has been configured.
+    """
+    import globus_sdk
+
+    client = globus_sdk.ConfidentialAppAuthClient(client_id, client_secret)
+    try:
+        client.oauth2_client_credentials_tokens(
+            requested_scopes="https://auth.globus.org/scopes/"
+            "facd7ccc-c5f4-42aa-916b-a0e270e2c2a9/all"
+        )
+    except globus_sdk.AuthAPIError as exc:
+        if exc.http_status in (400, 401):
+            raise ValueError(
+                "Globus rejected the service-account client ID and secret (they do not "
+                "belong together). GLOBUS_COMPUTE_CLIENT_ID is the **Client UUID** on the "
+                "client's page, not the project UUID or a secret's ID. The secret is the "
+                "value shown once when it was generated; if in doubt, ask the coordinator "
+                "for a new one."
+            ) from exc
+        raise
+
+
+# How long a freshly started endpoint must stay up before activation reports it started.
+SETTLE_SECONDS = 20.0
+
+
+def endpoint_alive(endpoint: Path) -> bool:
+    """Whether the endpoint's daemon process, as recorded in its pidfile, is running."""
+    try:
+        os.kill(int((endpoint / "daemon.pid").read_text().strip()), 0)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def systemd_unit(bundle: Bundle, state: Path, credentials_file: Path, user_dir: Path) -> str:
+    """A service that keeps the endpoint running across logouts, crashes and reboots."""
+    lines = [
+        "[Unit]",
+        f"Description=Globus Compute endpoint {bundle.endpoint_name} "
+        f"({bundle.experiment} / {bundle.client_id})",
+        "Wants=network-online.target",
+        "After=network-online.target",
+        "",
+        "[Service]",
+        "Type=simple",
+        f"User={bundle.service_account}",
+        f"EnvironmentFile={credentials_file}",
+        f"Environment=GLOBUS_COMPUTE_USER_DIR={user_dir}",
+        f"Environment=PATH={runtime_path(state)}",
+        f"ExecStart={state / 'runtime/bin/globus-compute-endpoint'} start {bundle.endpoint_name}",
+        "Restart=on-failure",
+        "RestartSec=30",
+        "",
+        "[Install]",
+        "WantedBy=multi-user.target",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def activate_single_user(
+    state: Path, credentials_file: Path | None = None, *, wait: float = 120.0
+) -> dict:
+    """Configure and start a single-user endpoint as the service account itself.
+
+    No root and no identity mapping: tasks run as whoever starts the endpoint, so this
+    refuses to run as anyone but the bundle's service account. The endpoint registers
+    under the service-account client in GLOBUS_COMPUTE_CLIENT_ID/SECRET; without them the
+    SDK would fall back to an interactive personal login, producing an endpoint only that
+    person can submit to.
+    """
+    import pwd
+    import time
+
+    state = state.resolve()
+    bundle, site = load_state(state)
+    if bundle.endpoint_mode != "single-user":
+        raise ValueError("This bundle declares a multi-user endpoint; activate it as root")
+    if os.geteuid() == 0:
+        raise ValueError(
+            f"Run single-user activation as {bundle.service_account}, not root: the endpoint "
+            "runs every task as the account that starts it"
+        )
+    user = pwd.getpwuid(os.geteuid()).pw_name
+    if user != bundle.service_account:
+        raise ValueError(
+            f"Run as {bundle.service_account} (this shell is {user}): the endpoint runs "
+            "every task as the account that starts it"
+        )
+    env = dict(os.environ)
+    if credentials_file is not None:
+        credentials_file = credentials_file.resolve()
+        env.update(read_credentials_file(credentials_file))
+    missing = [name for name in CREDENTIAL_VARS if not env.get(name)]
+    if missing:
+        raise ValueError(
+            f"Set {' and '.join(missing)} for the site's Globus service-account client, or "
+            "pass --credentials-file. Without them the endpoint would register under a "
+            "personal Globus login, which the coordinator cannot submit to."
+        )
+    try:
+        UUID(env["GLOBUS_COMPUTE_CLIENT_ID"])
+    except ValueError as exc:
+        raise ValueError("GLOBUS_COMPUTE_CLIENT_ID must be a client UUID") from exc
+    env["PATH"] = runtime_path(state) + os.pathsep + env.get("PATH", "")
+
+    # The data and work directories, as the account that will read and write them.
+    verify_site(state)
+    check_client_credentials(env["GLOBUS_COMPUTE_CLIENT_ID"], env["GLOBUS_COMPUTE_CLIENT_SECRET"])
+
+    user_dir = Path(env.get("GLOBUS_COMPUTE_USER_DIR") or Path.home() / ".globus_compute")
+    env["GLOBUS_COMPUTE_USER_DIR"] = str(user_dir)
+    endpoint = user_dir / bundle.endpoint_name
+    owner = endpoint / "suite-onboarding.json"
+    command = str(state / "runtime/bin/globus-compute-endpoint")
+    if endpoint.exists():
+        if not owner.exists() or json.loads(owner.read_text()) != {"state": str(state)}:
+            raise ValueError(f"Refusing to modify unmanaged endpoint {endpoint}")
+        # Restarting an endpoint this state already manages; `stop` fails harmlessly if
+        # it is not running.
+        subprocess.run([command, "stop", bundle.endpoint_name], env=env, check=False)
+    else:
+        run([command, "configure", "--multi-user", "false", bundle.endpoint_name], env=env)
+        write_json(owner, {"state": str(state)})
+    (endpoint / "config.yaml").write_text((state / "endpoint_config.yaml").read_text())
+    run([command, "start", "--detach", bundle.endpoint_name], env=env)
+    info = endpoint / "endpoint.json"
+    deadline = time.monotonic() + wait
+    while not info.exists() and time.monotonic() < deadline:
+        time.sleep(1)
+    if not info.exists():
+        raise TimeoutError(
+            f"The endpoint did not record its UUID in {info} within {wait:.0f}s; "
+            f"see {endpoint / 'endpoint.log'}"
+        )
+    # The UUID is recorded at registration, before the engine starts. An endpoint that
+    # registers and then dies would otherwise be reported as started: give the daemon a
+    # moment to write its pidfile, then require it to stay up.
+    appear = time.monotonic() + SETTLE_SECONDS
+    while not endpoint_alive(endpoint) and time.monotonic() < appear:
+        time.sleep(1)
+    steady = time.monotonic() + SETTLE_SECONDS
+    while endpoint_alive(endpoint) and time.monotonic() < steady:
+        time.sleep(1)
+    if not endpoint_alive(endpoint):
+        raise RuntimeError(
+            f"The endpoint registered and then stopped; see {endpoint / 'endpoint.log'}"
+        )
+    endpoint_id = str(UUID(json.loads(info.read_text())["endpoint_id"]))
+    # Only an endpoint that stays up gets a unit to hand to systemd.
+    unit = None
+    if credentials_file is not None:
+        unit = state / f"{bundle.endpoint_name}.service"
+        unit.write_text(systemd_unit(bundle, state, credentials_file, user_dir))
+    return {"endpoint": endpoint, "endpoint_id": endpoint_id, "unit": unit}
+
+
 def verify_site(state: Path, endpoint_id: str | None = None) -> dict:
     state = state.resolve()
     bundle, site = load_state(state)
@@ -562,7 +933,10 @@ def verify_site(state: Path, endpoint_id: str | None = None) -> dict:
     return receipt.model_dump(mode="json")
 
 
-def register_site(bundle: Bundle, receipt_path: Path, output: Path, timeout: float) -> dict:
+def register_site(
+    bundle: Bundle, receipt_path: Path, output: Path, timeout: float, credential=None
+) -> dict:
+    """Probe the site's real worker; ``credential`` is its --site-credentials route."""
     receipt = Receipt.model_validate_json(receipt_path.read_text())
     if (receipt.bundle_digest, receipt.experiment, receipt.client_id) != (
         digest(bundle),
@@ -571,10 +945,26 @@ def register_site(bundle: Bundle, receipt_path: Path, output: Path, timeout: flo
     ):
         raise ValueError("Receipt does not match this site's bundle revision")
     check_runtime(bundle, receipt.runtime)
+    if bundle.endpoint_mode == "single-user" and credential is None:
+        raise ValueError(
+            f"{bundle.client_id} uses a single-user endpoint, which accepts tasks only from "
+            "its service-account client. Pass --site-credentials with a route for "
+            f"endpoint {receipt.endpoint_id}."
+        )
+    if credential is not None and credential.expected_user != bundle.service_account:
+        raise ValueError(
+            f"The credential route expects user {credential.expected_user}, but this "
+            f"site's worker account is {bundle.service_account}"
+        )
     from globus_compute_sdk import Executor
     from globus_compute_sdk.serialize import CombinedCode, ComputeSerializer
 
-    executor = Executor(endpoint_id=str(receipt.endpoint_id))
+    if credential is None:
+        executor = Executor(endpoint_id=str(receipt.endpoint_id))
+    else:
+        executor = Executor(endpoint_id=str(receipt.endpoint_id), client=credential.client())
+        # SDK 4.9 shares one task group across client identities; see site_credentials.
+        executor.task_group_id = None
     executor.serializer = ComputeSerializer(strategy_code=CombinedCode())
     try:
         future = executor.submit(
@@ -595,15 +985,22 @@ def register_site(bundle: Bundle, receipt_path: Path, output: Path, timeout: flo
 
 def updated_federation(bundle: Bundle, receipt: Receipt, source: Path) -> dict:
     """Prepare a validated coordinator config with the partner's actual UUID and paths."""
-    from appfl_bio_suite.core.config import Federation, load_federation
+    from appfl_bio_suite.core.config import Federation, FederationError, load_federation
 
     fed = load_federation(source)
-    if experiment_digest(fed, bundle.experiment) != bundle.experiment_digest:
-        raise ValueError("Experiment settings changed since packaging; generate new bundles")
+    try:
+        entry = fed.experiment_site(bundle.experiment, bundle.client_id)
+    except FederationError as exc:
+        raise ValueError(str(exc)) from exc
+    if experiment_digest(fed, bundle.experiment, bundle.client_id) != bundle.experiment_digest:
+        raise ValueError(
+            f"Experiment settings changed since packaging (shared settings or "
+            f"{bundle.client_id}'s own entry); generate a new bundle for {bundle.client_id}"
+        )
     if fed.coordinator.identity != bundle.coordinator_identity:
         raise ValueError("Coordinator identity changed since packaging")
-    fed.experiment_site(bundle.experiment, bundle.client_id)
-    if fed.experiment(bundle.experiment).service_account != bundle.service_account:
+    # The site's own account when it names one, as the bundle recorded it.
+    if fed.experiment(bundle.experiment).service_account_for(entry) != bundle.service_account:
         raise ValueError("Service account changed since packaging")
     document = yaml.safe_load(source.read_text())
     for item in document["experiments"][bundle.experiment]["sites"]:
@@ -641,6 +1038,9 @@ def attach_wheel(directory: Path, wheel: Path) -> None:
     manifest_path = directory / "bundle_manifest.json"
     manifest = json.loads(manifest_path.read_text())
     manifest["files"] = sorted(set([*manifest["files"], wheel.name]))
+    # onboarding.json now names the wheel, so its checksum and the bundle digest moved.
+    manifest["bundle_digest"] = digest(updated)
+    manifest["sha256"] = file_checksums(directory, manifest["files"])
     write_json(manifest_path, manifest)
 
 

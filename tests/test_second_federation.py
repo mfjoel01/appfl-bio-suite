@@ -73,7 +73,7 @@ def test_configs_resolve(federation):
 def test_partner_bundle_generates(federation, tmp_path, site):
     from appfl_bio_suite.core.partner import generate_bundle
 
-    destination = generate_bundle(federation, "gwas", site, tmp_path)
+    destination = generate_bundle(federation, "gwas", site, tmp_path, manual_setup=True)
 
     for expected in (
         "1-endpoint-setup.md",
@@ -90,7 +90,7 @@ def test_the_bundle_carries_the_second_coordinators_identity(federation, tmp_pat
     """The whole point: the identity comes from the config, never from a literal."""
     from appfl_bio_suite.core.partner import generate_bundle
 
-    destination = generate_bundle(federation, "gwas", "harbour-lab", tmp_path)
+    destination = generate_bundle(federation, "gwas", "harbour-lab", tmp_path, manual_setup=True)
 
     mapping = json.loads(
         (destination / "example_identity_mapping_config.json").read_text(encoding="utf-8")
@@ -115,7 +115,7 @@ def test_the_generated_mapping_actually_resolves(federation, tmp_path):
     from appfl_bio_suite.core.identity import validate_mapping_file
     from appfl_bio_suite.core.partner import generate_bundle
 
-    destination = generate_bundle(federation, "gwas", "harbour-lab", tmp_path)
+    destination = generate_bundle(federation, "gwas", "harbour-lab", tmp_path, manual_setup=True)
     report = validate_mapping_file(
         destination / "example_identity_mapping_config.json",
         identity=federation.coordinator.identity,
@@ -130,7 +130,7 @@ def test_the_endpoint_template_matches_each_sites_scheduler(federation, tmp_path
     from appfl_bio_suite.core.partner import generate_bundle
 
     pbs = (
-        generate_bundle(federation, "gwas", "harbour-lab", tmp_path / "a")
+        generate_bundle(federation, "gwas", "harbour-lab", tmp_path / "a", manual_setup=True)
         / "user_config_template.yaml.j2"
     ).read_text(encoding="utf-8")
     assert "PBSProProvider" in pbs
@@ -139,7 +139,7 @@ def test_the_endpoint_template_matches_each_sites_scheduler(federation, tmp_path
     assert "SlurmProvider" not in pbs
 
     slurm = (
-        generate_bundle(federation, "gwas", "reef-station", tmp_path / "b")
+        generate_bundle(federation, "gwas", "reef-station", tmp_path / "b", manual_setup=True)
         / "user_config_template.yaml.j2"
     ).read_text(encoding="utf-8")
     assert "SlurmProvider" in slurm
@@ -153,7 +153,7 @@ def test_the_endpoint_template_matches_each_sites_scheduler(federation, tmp_path
 def test_the_config_block_carries_this_sites_own_paths(federation, tmp_path):
     from appfl_bio_suite.core.partner import generate_bundle
 
-    destination = generate_bundle(federation, "gwas", "reef-station", tmp_path)
+    destination = generate_bundle(federation, "gwas", "reef-station", tmp_path, manual_setup=True)
     block = yaml.safe_load((destination / "your-config-block.yaml").read_text(encoding="utf-8"))[0]
 
     assert block["client_id"] == "Reef"
@@ -162,16 +162,18 @@ def test_the_config_block_carries_this_sites_own_paths(federation, tmp_path):
     assert "dataset_path" not in block["data_configs"]
 
 
-def test_the_partner_docs_render_with_no_placeholders(federation, tmp_path):
+@pytest.mark.parametrize("manual", [False, True])
+def test_the_partner_docs_render_with_no_placeholders(federation, tmp_path, manual):
     import re
 
     from appfl_bio_suite.core.partner import generate_bundle
 
-    destination = generate_bundle(federation, "gwas", "harbour-lab", tmp_path)
+    destination = generate_bundle(federation, "gwas", "harbour-lab", tmp_path, manual_setup=manual)
     for doc in destination.glob("*.md"):
         text = doc.read_text(encoding="utf-8")
         assert not re.findall(r"\{\{[^}]+\}\}", text), f"{doc.name} has unrendered variables"
-        assert "dr.k.tanaka@marine-genomics.example.org" in text or doc.name.startswith("2-")
+        # The experiment guide is about data, and need not name the coordinator.
+        assert "dr.k.tanaka@marine-genomics.example.org" in text or doc.name.endswith("-gwas.md")
 
 
 def test_a_disabled_experiment_is_not_offered(federation):

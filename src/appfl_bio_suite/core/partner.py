@@ -86,11 +86,17 @@ def _assert_inside_partner_docs(path: Path) -> Path:
     return resolved
 
 
-def render_context(federation: Federation, experiment: str, site_key: str) -> dict[str, Any]:
+def render_context(
+    federation: Federation, experiment: str, site_key: str, *, manual_setup: bool = False
+) -> dict[str, Any]:
     """Every value a partner-facing template may reference.
 
     Deliberately flat and fully resolved: a template that has to compute anything is a
     template that can compute it wrong.
+
+    ``manual_setup`` selects which bundle the documents are rendered for: the
+    `experiment package` ZIP, set up by `join`, or the `partner-bundle` directory that
+    also carries the hand-built endpoint of Part 1.
     """
     from appfl_bio_suite import __version__, install_spec
 
@@ -125,6 +131,9 @@ def render_context(federation: Federation, experiment: str, site_key: str) -> di
         "site_id": site.id,
         "site_name": site.name,
         "client_id": entry.client_id,
+        # The file the coordinator sends, as `experiment package` names it. The guide's
+        # commands use it verbatim so nothing has to be substituted by the reader.
+        "bundle_zip": f"{experiment}_{entry.client_id}.zip",
         "output_dir": entry.output_dir,
         # Where the partner puts their data. GWAS sites are told exactly where, because
         # the coordinator must know the path to configure the run. FLamby sites choose
@@ -147,7 +156,10 @@ def render_context(federation: Federation, experiment: str, site_key: str) -> di
         "expected_train_samples": entry.expected_train_samples or "",
         "expected_samples": entry.expected_samples or "",
         # -- their cluster ------------------------------------------------
+        "endpoint_mode": entry.endpoint_mode,
+        "single_user": entry.endpoint_mode == "single-user",
         "scheduler": site.scheduler,
+        "local_scheduler": site.scheduler == "local",
         "provider_type": site.provider_type,
         "launcher_type": site.launcher_type,
         "scheduler_slot": site.scheduler_slot,
@@ -155,6 +167,14 @@ def render_context(federation: Federation, experiment: str, site_key: str) -> di
         "account": site.account or "",
         "conda_module": site.conda_module or "",
         "interface": site.interface or "",
+        # -- which setup the documents describe ---------------------------
+        "manual_setup": manual_setup,
+        # Whether this partner's endpoint comes from `join`. A single-user endpoint always
+        # does: Part 1 builds a multi-user one and tells a single-user site to skip it.
+        "uses_join": not manual_setup or entry.endpoint_mode == "single-user",
+        # The experiment guide's filename. The ZIP has no Part 1, so its guide follows
+        # 0-onboarding.md directly instead of leaving a gap in the numbering.
+        "experiment_guide": f"{2 if manual_setup else 1}-{experiment}.md",
         # -- versions -----------------------------------------------------
         "globus_compute_version": "4.9.0",
         "python_version": "3.12",
@@ -240,12 +260,25 @@ def generate_bundle(
     experiment: str,
     site_key: str,
     out_dir: Path | None = None,
+    *,
+    manual_setup: bool = False,
 ) -> Path:
-    """Write one partner's bundle and return its directory."""
+    """Write one partner's bundle and return its directory.
+
+    By default this is what `experiment package` zips: everything `join` reads, and the
+    guides for that one path. ``manual_setup`` adds the hand-built endpoint of Part 1 --
+    its guide, worker template, identity mapping and validator -- for `partner-bundle`.
+
+    The two are kept apart because they disagree. Part 1's worker template activates a
+    conda environment the partner creates by hand; `site setup` writes its own template,
+    under the same filename, for the runtime it installs. A ZIP carrying both left a
+    partner to pick one, and copying the shipped template onto a `join`-built endpoint
+    ran workers in an environment nothing had verified.
+    """
     if get_spec(experiment).serial_runner:
         raise ValueError(f"'{experiment}' is a serial simulation; partner bundles are unavailable")
     entry = federation.experiment_site(experiment, site_key)
-    context = render_context(federation, experiment, site_key)
+    context = render_context(federation, experiment, site_key, manual_setup=manual_setup)
 
     out_dir = out_dir or (Path("local") / "partner_bundles")
     destination = out_dir / f"{experiment}_{entry.client_id}"
@@ -260,12 +293,15 @@ def generate_bundle(
 
     written: list[Path] = []
 
-    # -- 1. the two setup documents, rendered ------------------------------
-    # Part 1 is shared and identical for every experiment; Part 2 is this experiment's.
-    doc_sources = [
-        (docs_root / "endpoint-setup.md", "1-endpoint-setup.md"),
-        (docs_root / "experiments" / f"{experiment}.md", f"2-{experiment}.md"),
-    ]
+    # -- 1. the setup documents, rendered ----------------------------------
+    # 0-onboarding.md is the `join` path, and the only setup guide in the ZIP. The manual
+    # bundle keeps it beside Part 1, which is shared and identical for every experiment.
+    doc_sources = [(docs_root / "onboarding.md", "0-onboarding.md")]
+    if manual_setup:
+        doc_sources.append((docs_root / "endpoint-setup.md", "1-endpoint-setup.md"))
+    doc_sources.append(
+        (docs_root / "experiments" / f"{experiment}.md", context["experiment_guide"])
+    )
     for source, name in doc_sources:
         _assert_inside_partner_docs(source)
         if not source.is_file():
@@ -279,17 +315,43 @@ def generate_bundle(
         target.write_text(rendered, encoding="utf-8")
         written.append(target)
 
-    onboarding_doc = docs_root / "onboarding.md"
-    _assert_inside_partner_docs(onboarding_doc)
-    onboarding_target = destination / "0-onboarding.md"
-    onboarding_text = _render(onboarding_doc.read_text(encoding="utf-8"), context)
-    _check_no_placeholders_remain(onboarding_text, onboarding_doc)
-    onboarding_target.write_text(onboarding_text, encoding="utf-8")
-    written.append(onboarding_target)
+    # -- 2. the study, in DUO terms ----------------------------------------
+    #
+    # Machine-readable beside the prose, because the site's own worker matches this
+    # against its DATA_USE.json and refuses if the terms do not permit it. A partner who
+    # wants to check that themselves, before agreeing to anything, needs the same object
+    # the check will use -- not a paraphrase of it.
+    request = federation.data_use_request(experiment)
+    if request is not None:
+        request_path = destination / "study-data-use-request.json"
+        request_path.write_text(json.dumps(request.to_dict(), indent=2) + "\n", encoding="utf-8")
+        written.append(request_path)
 
-    # -- 2. their client config block --------------------------------------
-    config_path = destination / "your-config-block.yaml"
+    # -- 3. the specification `join` reads ---------------------------------
+    from appfl_bio_suite.core.onboarding import write_specification
+
     block = _client_config_block(federation, experiment, site_key)
+    written.extend(write_specification(destination, context, federation, block))
+
+    if manual_setup:
+        written.extend(_write_manual_setup_files(destination, context, block))
+
+    # -- 4. a manifest, so a stale bundle is detectable --------------------
+    # A partner working from an outdated copy has already cost this project real time.
+    # Recording what generated this one means the question is answerable.
+    _write_bundle_manifest(destination, federation, experiment, entry, written)
+
+    return destination
+
+
+def _write_manual_setup_files(
+    destination: Path, context: dict[str, Any], block: dict
+) -> list[Path]:
+    """The files Part 1 tells a partner to install by hand."""
+    written: list[Path] = []
+
+    # -- their client config block ------------------------------------------
+    config_path = destination / "your-config-block.yaml"
     config_path.write_text(
         "# Your site's entry in the coordinator's client config.\n"
         "# Every value is already filled in -- send it back as-is unless a path is wrong\n"
@@ -303,31 +365,19 @@ def generate_bundle(
     )
     written.append(config_path)
 
-    # -- 2b. the study, in DUO terms ---------------------------------------
-    #
-    # Machine-readable beside the prose, because the site's own worker matches this
-    # against its DATA_USE.json and refuses if the terms do not permit it. A partner who
-    # wants to check that themselves, before agreeing to anything, needs the same object
-    # the check will use -- not a paraphrase of it.
-    request = federation.data_use_request(experiment)
-    if request is not None:
-        request_path = destination / "study-data-use-request.json"
-        request_path.write_text(json.dumps(request.to_dict(), indent=2) + "\n", encoding="utf-8")
-        written.append(request_path)
-
-    # -- 3. their identity mapping, ready to install -----------------------
+    # -- their identity mapping, ready to install ---------------------------
     # The same text Part 1 shows them, byte for byte -- see render_context().
     mapping_path = destination / "example_identity_mapping_config.json"
     mapping_path.write_text(context["identity_mapping"], encoding="utf-8")
     written.append(mapping_path)
 
-    # -- 4. their endpoint template, with their scheduler filled in --------
+    # -- their endpoint template, with their scheduler filled in ------------
     # The same text Part 1 shows them, byte for byte -- see render_context().
     target = destination / "user_config_template.yaml.j2"
     target.write_text(context["worker_template"], encoding="utf-8")
     written.append(target)
 
-    # -- 5. the validator, so they can check their own mapping -------------
+    # -- the validator, so they can check their own mapping -----------------
     validator = repo_root() / "partners" / "templates" / "validate_mapping.py"
     if not validator.is_file():
         validator = Path(__file__).parents[1] / "resources/templates/validate_mapping.py"
@@ -335,17 +385,7 @@ def generate_bundle(
         target = destination / "validate_mapping.py"
         shutil.copy2(validator, target)
         written.append(target)
-
-    from appfl_bio_suite.core.onboarding import write_specification
-
-    written.extend(write_specification(destination, context, federation, block))
-
-    # -- 6. a manifest, so a stale bundle is detectable --------------------
-    # A partner working from an outdated copy has already cost this project real time.
-    # Recording what generated this one means the question is answerable.
-    _write_bundle_manifest(destination, federation, experiment, entry, written)
-
-    return destination
+    return written
 
 
 def unresolved_fields(federation: Federation, experiment: str, site_key: str) -> list[str]:
@@ -364,6 +404,8 @@ def unresolved_fields(federation: Federation, experiment: str, site_key: str) ->
     bundle they are about to send still has a blank in it.
     """
     site = federation.experiment_site(experiment, site_key).resolved_site
+    if site.scheduler == "local":
+        return []
     missing = []
     if not site.account:
         missing.append("account")
@@ -394,8 +436,10 @@ def _write_bundle_manifest(
     from datetime import datetime
 
     from appfl_bio_suite import __version__
+    from appfl_bio_suite.core.onboarding import digest, file_checksums, read_bundle
     from appfl_bio_suite.core.simulation import _git_commit
 
+    names = sorted(p.name for p in written)
     manifest = {
         "experiment": experiment,
         "client_id": entry.client_id,
@@ -404,7 +448,14 @@ def _write_bundle_manifest(
         "suite_version": __version__,
         "suite_commit": _git_commit(),
         "coordinator_identity": federation.coordinator.identity,
-        "files": sorted(p.name for p in written),
+        "files": names,
+        # The digest a partner's registration.json records, so a receipt can be matched
+        # to the bundle it was made from.
+        "bundle_digest": digest(read_bundle(destination)),
+        # Generation is deterministic, so a bundle is current exactly when these match a
+        # fresh one for the same site. Without them, telling an old ZIP from a new one
+        # meant unpacking both and diffing every file.
+        "sha256": file_checksums(destination, names),
     }
     (destination / "bundle_manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"

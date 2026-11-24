@@ -131,6 +131,64 @@ def test_localizing_moves_output_off_the_partners_cluster(federation, tmp_path):
         assert entry.data_dir == str(root / entry.client_id / "data")
 
 
+def test_localizing_moves_the_drs_registry_with_the_objects(tmp_path):
+    """A config started from the shipped example must survive the documented loopback run.
+
+    The example names a DRS registry under local/data/ and leaves each site's `drs_uri`
+    empty. Localizing pointed every site at an object in the SIMULATED data's registry
+    and kept resolving them in the federation's own -- a file that, for anyone who had
+    just copied the example, does not exist. `run fine-mapping --driver serial` then
+    failed before starting, on the first thing the README tells a new coordinator to do.
+    """
+    from appfl_bio_suite.core.ga4gh.drs import build_registry
+    from appfl_bio_suite.core.ga4gh.resolve import resolve_drs_object
+
+    fed = load_federation(EXAMPLE)
+    exp = fed.experiment("fine-mapping")
+    root = tmp_path / "sim"
+    for client_id in [entry.client_id for entry in exp.sites]:
+        data = root / client_id / "data"
+        data.mkdir(parents=True)
+        (data / "site_manifest.tsv").write_text(f"IID\n{client_id}\n")
+        (data / "DATA_USE.json").write_text("{}")
+    build_registry(root, hostname="drs.loopback.test").save(root / "drs_registry.json")
+
+    declared_study = exp.ga4gh.data_use_request
+    # A value a real coordinator would have recorded, which describes some other bundle.
+    exp.sites[0].drs_uri = "drs://drs.example-university.edu/" + "a" * 64
+    exp.sites[0].data_use_profile = "/coordinator/copies/anl/DATA_USE.json"
+
+    localize_for_loopback(fed, "fine-mapping", data_root=root, out_root=tmp_path / "out")
+
+    assert fed.ga4gh.drs.hostname == "drs.loopback.test"
+    assert fed.ga4gh.drs.registry == str(root / "drs_registry.json")
+    # Everything about the federation that is not the simulated data is left alone.
+    assert fed.ga4gh.trs.publish_dir == "local/trs"
+    assert fed.ga4gh.tes.timeout_seconds == 7200
+    assert exp.ga4gh.data_use_request == declared_study
+    for entry in exp.sites:
+        assert entry.data_use_profile == str(root / entry.client_id / "data" / "DATA_USE.json")
+        resolved = resolve_drs_object(fed, entry)
+        assert resolved["name"] == entry.client_id
+        assert resolved["self_uri"] == entry.drs_uri
+
+
+def test_localizing_without_a_simulated_registry_clears_what_it_cannot_repoint(tmp_path):
+    """A real `drs_uri` left in place would be checked against a bundle it never described."""
+    fed = load_federation(EXAMPLE)
+    exp = fed.experiment("fine-mapping")
+    root = _make_site_tree(tmp_path / "sim", [entry.client_id for entry in exp.sites])
+    exp.sites[0].drs_uri = "drs://drs.example-university.edu/" + "a" * 64
+    exp.sites[0].data_use_profile = "/coordinator/copies/anl/DATA_USE.json"
+
+    localize_for_loopback(fed, "fine-mapping", data_root=root, out_root=tmp_path / "out")
+
+    assert [entry.drs_uri for entry in exp.sites] == [None, None, None]
+    assert [entry.data_use_profile for entry in exp.sites] == [None, None, None]
+    # No registry travelled with the data, so the federation's own setting is untouched.
+    assert fed.ga4gh.drs.hostname == "drs.example-university.edu"
+
+
 def test_secure_fine_mapping_configuration_reaches_both_roles(federation):
     fed = federation.model_copy(deep=True)
     exp = fed.experiment("fine-mapping")

@@ -244,6 +244,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         run_site_stage(config, args.data_dir, args.out, args.out_name)
     except PermissionError as exc:
+        if exc.errno is not None:
+            # The operating system's PermissionError -- a bundle this account cannot
+            # read, an output directory it cannot write -- carries an errno; the data
+            # use refusal the loader raises does not. Reporting a chmod problem as a
+            # consent decision sends the coordinator to the wrong person.
+            log.exception("site stage failed")
+            print(f"\nsite stage failed: {exc}", file=sys.stderr)
+            return 1
         # The DUO refusal. Given its own exit code so that a TES engine's task log
         # distinguishes "this site declined" from "this task crashed" -- they call for
         # completely different responses from a coordinator.

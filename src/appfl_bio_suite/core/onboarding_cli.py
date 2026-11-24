@@ -9,6 +9,7 @@ from functools import wraps
 from pathlib import Path
 
 import click
+import yaml
 
 from appfl_bio_suite.core import onboarding as api
 
@@ -26,6 +27,9 @@ def errors(function):
             subprocess.CalledProcessError,
             zipfile.BadZipFile,
             TimeoutError,
+            # A site.yaml or profile that is not valid YAML is the commonest thing a
+            # partner gets wrong here, and deserves the same one-line answer.
+            yaml.YAMLError,
         ) as exc:
             raise click.ClickException(str(exc)) from exc
 
@@ -48,7 +52,8 @@ def init(bundle, out):
     spec = api.read_bundle(bundle)
     with out.open("x") as handle:
         handle.write(yaml.safe_dump(spec.defaults, sort_keys=False))
-    click.echo(f"Edit {out}: scheduler account/queue and local data/work directories.")
+    fields = [*api.scheduler_fields(spec.scheduler), "data_dir", "work_dir"]
+    click.echo(f"Edit {out}: {', '.join(fields)}.")
 
 
 @site.command("setup")
@@ -73,15 +78,59 @@ def setup(bundle, local, state, python, install_source):
         wheel=api.read_wheel(bundle, spec) if not install_source else None,
     )
     click.echo(f"Runtime and configuration prepared in {destination}")
+    if spec.endpoint_mode == "single-user":
+        click.echo(
+            f"Stage the data, then as {spec.service_account} with the site's service-account "
+            "credentials in a 0600 file, run:"
+        )
+        click.echo(
+            f"  appfl-bio-suite site activate --state {destination} "
+            f"--credentials-file {api.credentials_hint(spec)}"
+        )
+        return
     click.echo(f"Administrator: create/authorize POSIX account {spec.service_account}, then run:")
     click.echo(f"  appfl-bio-suite site activate --state {destination}")
 
 
+def single_user_activated(state: Path, activated: dict) -> None:
+    click.echo(f"Endpoint configured at {activated['endpoint']} and started (detached).")
+    click.echo(f"Endpoint UUID: {activated['endpoint_id']}")
+    if activated["unit"] is not None:
+        unit = activated["unit"]
+        command = state / "runtime/bin/globus-compute-endpoint"
+        click.echo(
+            "To keep it running across logouts and reboots, hand it to systemd. First stop "
+            "the detached copy, as this same account (not root):\n"
+            f"  PATH={state / 'runtime/bin'}:$PATH {command} stop {unit.stem}\n"
+            "Then, as root:\n"
+            f"  install -m 644 {unit} /etc/systemd/system/{unit.name}\n"
+            f"  systemctl daemon-reload && systemctl enable --now {unit.name}"
+        )
+
+
 @site.command("activate")
 @click.option("--state", required=True, type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--credentials-file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Single-user only: 0600 file with GLOBUS_COMPUTE_CLIENT_ID and "
+    "GLOBUS_COMPUTE_CLIENT_SECRET lines. Otherwise read from the environment.",
+)
 @errors
-def activate(state):
-    """As root, configure and start the multi-user endpoint using the prepared runtime."""
+def activate(state, credentials_file):
+    """Configure and start the endpoint: as root for multi-user, as the service account
+    for single-user."""
+    bundle, _ = api.load_state(state)
+    if bundle.endpoint_mode == "single-user":
+        activated = api.activate_single_user(state, credentials_file)
+        single_user_activated(state.resolve(), activated)
+        click.echo(
+            f"As {bundle.service_account}, finish with: site verify --state {state.resolve()} "
+            f"--endpoint-id {activated['endpoint_id']}"
+        )
+        return
+    if credentials_file is not None:
+        raise ValueError("--credentials-file applies to single-user endpoints only")
     endpoint = api.activate_site(state)
     click.echo(f"Endpoint configured at {endpoint}")
     click.echo("Read its UUID with globus-compute-endpoint list as this same administrator.")
@@ -106,6 +155,21 @@ def verify(state, endpoint_id, runtime_only):
     if endpoint_id:
         click.echo(f"Send {state.resolve() / 'registration.json'} to the coordinator.")
         click.echo("Remote worker verification is still required before this site is ready.")
+
+
+@site.command("check-data")
+@click.argument("bundle", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--data-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help="Where the data actually is, if not the directory the bundle suggests.",
+)
+@errors
+def check_data(bundle, data_dir):
+    """Load the staged data exactly as the experiment task will, as this account."""
+    spec = api.read_bundle(bundle)
+    for line in api.check_data(spec, data_dir):
+        click.echo(line)
 
 
 @click.group()
@@ -154,8 +218,15 @@ def package(experiment_name, federation, sites, out, wheel):
 @click.option("--federation", required=True, type=click.Path(exists=True, path_type=Path))
 @click.option("--updated-federation", required=True, type=click.Path(path_type=Path))
 @click.option("--timeout", default=300.0, type=click.FloatRange(min=1))
+@click.option(
+    "--site-credentials",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    envvar="APPFL_BIO_SUITE_GLOBUS_CREDENTIALS",
+    help="Coordinator-only routing manifest. Required for single-user endpoints; the probe "
+    "authenticates as the route for the receipt's endpoint.",
+)
 @errors
-def register(receipt, bundle, out, timeout, federation, updated_federation):
+def register(receipt, bundle, out, timeout, federation, updated_federation, site_credentials):
     """Check a receipt against its bundle and verify a real remote worker before readiness."""
     import yaml
 
@@ -168,7 +239,13 @@ def register(receipt, bundle, out, timeout, federation, updated_federation):
         raise ValueError("Registration and federation outputs must be different files")
     registration = api.Receipt.model_validate_json(receipt.read_text())
     document = api.updated_federation(spec, registration, federation)
-    result = api.register_site(spec, receipt, out, timeout)
+    credential = None
+    if site_credentials is not None:
+        from appfl_bio_suite.core.site_credentials import load_site_credentials
+
+        endpoint_id = str(registration.endpoint_id)
+        credential = load_site_credentials(site_credentials, [endpoint_id])[endpoint_id]
+    result = api.register_site(spec, receipt, out, timeout, credential)
     updated_federation.parent.mkdir(parents=True, exist_ok=True)
     updated_federation.write_text(yaml.safe_dump(document, sort_keys=False))
     click.echo(f"Ready: {result['client_id']} ({result['endpoint_id']}); saved {out}")

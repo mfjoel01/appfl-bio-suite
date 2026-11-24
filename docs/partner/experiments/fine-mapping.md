@@ -1,6 +1,7 @@
-# Part 2 — Federated fine-mapping: placing your data
+# {% if manual_setup %}Part 2 — {% endif %}Federated fine-mapping: placing your data
 
-Assumes Part 1 (`1-endpoint-setup.md`, beside this file) is done and your endpoint is running.
+{% if uses_join %}Your endpoint is set up by `0-onboarding.md`, beside this file. The data can be placed
+before or after its `join` step, and must be in place before activation.{% else %}Assumes Part 1 (`1-endpoint-setup.md`, beside this file) is done and your endpoint is running.{% endif %}
 
 ---
 
@@ -22,20 +23,27 @@ leave, and neither does anything about any individual. Your site computes those 
 fits either SuSiEx or MultiSuSiE; that backend choice does not change your payload
 or require additional partner packages.
 
-**The payload is larger than you may expect** — hundreds of megabytes rather than a few,
-because the statistic being combined is a variant-by-variant matrix rather than one number
-per variant. That is the nature of this analysis, not a fault. If your endpoint has an
-outbound transfer limit that this would run into, tell us and we will split the run into
-smaller pieces; that is a change on our side only.
+**The payload is larger than you may expect** — hundreds of megabytes to a few
+gigabytes rather than a few megabytes, because the statistic being combined is a
+variant-by-variant matrix rather than one number per variant. That is the nature of this
+analysis, not a fault. Globus Compute returns at most 10 MiB per task, so your worker
+writes the result to `{{ output_dir }}/spool/` and we read it back through your endpoint
+in pieces, check its checksum, and then delete your copy. **Leave free space in
+`{{ output_dir }}` at least the size of the payload.** If your endpoint has an outbound
+transfer limit that this would run into, tell us and we will split the run into smaller
+pieces; that is a change on our side only.
 
-**Nothing to install beyond Part 1.** The analysis is numpy and pandas. There is no
+**Nothing to install beyond {% if uses_join %}what `join` sets up{% else %}Part 1{% endif %}.** The analysis is numpy and pandas. There is no
 statistical package, no genetics toolchain, and no compiler involved on your side.
 
 ---
 
 ## Step 1 — Place your bundle
 
-Unpack the archive we sent you somewhere `{{ service_account }}` can read:
+We deliver your cohort either as an archive or as a directory (by rsync or a Globus
+transfer). Put it somewhere `{{ service_account }}` can read.
+
+From a `.tar.gz` archive:
 
 ```bash
 sudo -iu {{ service_account }}
@@ -43,6 +51,25 @@ mkdir -p {{ data_dir }}
 cd {{ data_dir }}
 tar xzf /path/to/the/bundle/you/received.tar.gz --strip-components=1
 ```
+
+From a `.zip` archive whose top-level folder is `data/` (as `{{ service_account }}`; no
+root needed if that account downloaded it):
+
+```bash
+mkdir -p unpacked && python3.12 -m zipfile -e /path/to/the/data.zip unpacked
+mkdir -p "$(dirname {{ data_dir }})" && mv unpacked/data {{ data_dir }}
+```
+
+From a delivered directory (here, one copied into a staging area by another account):
+
+```bash
+sudo mkdir -p {{ data_dir }}
+sudo rsync -a /path/to/the/delivered/directory/ {{ data_dir }}/
+sudo chown -R {{ service_account }}: {{ data_dir }}
+```
+
+The trailing slashes matter: the files must land directly in `{{ data_dir }}`, not in a
+subdirectory of it.
 
 Your data directory is:
 
@@ -53,7 +80,10 @@ Your data directory is:
 That exact path is already in the configuration we hold for you, so if you put it
 somewhere else, tell us.
 
-**Check the free space first.** The genotype file is the bulk of it and is not small.
+**Check the free space first.** A full cohort unpacks to tens of gigabytes: the genotype file is
+several, and the thousands of phenotype files together are larger still. You need room for
+the archive and its unpacked copy at once, plus several gigabytes in the work directory
+for each run's result (the `spool/` note above).
 
 ## Step 2 — Check the contents
 
@@ -139,17 +169,15 @@ data.
 
 ## Step 3 — Verify, and send us the number
 
-Still as `{{ service_account }}`, in the Part 1 environment:
+Still as `{{ service_account }}`, in the environment where you installed
+`appfl-bio-suite` ({% if uses_join %}the bootstrap environment from `0-onboarding.md`{% else %}the bootstrap environment from `0-onboarding.md`, or your Part 1
+environment{% endif %}), with the ZIP we sent you:
 
 ```bash
-python -c "
-from appfl_bio_suite.experiments.fine_mapping.dataset import get_dataset
-d, _ = get_dataset(data_dir='{{ data_dir }}', site_id='{{ client_id }}')
-print('OK, samples:', len(d))
-print('    ancestries:', d.composition)
-print('    regions:', len(d.loci), ' instances:', len(d.available_instances))
-"
+appfl-bio-suite site check-data /path/to/{{ bundle_zip }}
 ```
+
+Add `--data-dir /your/actual/path` if the data is not in `{{ data_dir }}`.
 
 **Expected output starts with: `OK, samples: {{ expected_samples }}`**
 
@@ -230,5 +258,5 @@ Contact: {{ coordinator_contact }}
 The coordinator can enable fixed-roster masked sums for either SuSiEx or MultiSuSiE.
 All sites must return matching ancestry/variant blocks. Provision the worker-local
 `APPFL_FINEMAP_SECAGG_KEYS` authorization file and use fresh authorization for every
-launch/retry; never send keys to the coordinator. See the
-[secure aggregation guide](../../experiments/fine-mapping/SECURE_AGGREGATION.md).
+launch/retry; never send keys to the coordinator. The coordinator sends the secure
+aggregation guide with the keys when this is in use.

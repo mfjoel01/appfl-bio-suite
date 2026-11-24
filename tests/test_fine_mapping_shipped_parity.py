@@ -38,6 +38,7 @@ paths are both exercised rather than skipped.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -466,3 +467,158 @@ def test_secure_trainer_to_decoder_matches_plain_moments(package, tmp_path, monk
                 np.testing.assert_allclose(a.c, b.c, atol=1e-6, rtol=0)
                 assert a.q == pytest.approx(b.q, abs=1e-6)
                 assert a.w == pytest.approx(b.w, abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# Results over Globus Compute's 10 MiB cap: spooled at the site, fetched in chunks.
+# ---------------------------------------------------------------------------
+
+
+def _local_submit(calls=None, fail_once_at=None):
+    """``submit`` for fetch_spooled that runs the shipped function here, as a worker would."""
+    from concurrent.futures import Future
+
+    failed = set()
+
+    def submit(fn, *args):
+        future = Future()
+        if calls is not None:
+            calls.append((fn.__name__, args))
+        if fail_once_at is not None and args[1:2] == (fail_once_at,) and fail_once_at not in failed:
+            failed.add(fail_once_at)
+            future.set_exception(RuntimeError("transient endpoint failure"))
+            return future
+        try:
+            future.set_result(fn(*args))
+        except Exception as exc:  # noqa: BLE001 - surfaced through the future, as the SDK does
+            future.set_exception(exc)
+        return future
+
+    return submit
+
+
+def _site_payload(package, tmp_path, **settings):
+    root, _cfg, _locus = package
+    dataset, _ = get_dataset(root / "anl" / "data", "anl", instances=INSTANCES)
+    trainer = SiteFineMappingTrainer(
+        train_dataset=dataset,
+        train_configs={"pops": POPS, "trainer_output_dirname": str(tmp_path / "site"), **settings},
+        logger=logging.getLogger("parity.spool"),
+        client_id="anl",
+    )
+    trainer.train()
+    return trainer.get_parameters()
+
+
+def test_spooled_result_round_trips_exactly(package, tmp_path):
+    """A result held at the site and read back in chunks is the inline result, bit for bit."""
+    import torch
+
+    from appfl_bio_suite.core.result_spool import fetch_spooled, remove_spool, spool_info
+
+    inline = _site_payload(package, tmp_path / "inline")
+    handle = _site_payload(package, tmp_path / "spooled", result_spool_bytes=1)
+    info = spool_info(handle)
+    assert info is not None and set(handle) == {"result_spool"}
+    assert info["path"].startswith(str(tmp_path / "spooled" / "site" / "spool"))
+
+    calls = []
+    # A chunk far smaller than the file, so reassembly order is exercised.
+    fetched = fetch_spooled(
+        info,
+        _local_submit(calls),
+        tmp_path / "coordinator",
+        chunk_bytes=max(1, info["size"] // 7),
+        window=3,
+        log=lambda m: None,
+    )
+    assert len(calls) >= 7
+    assert set(fetched) == set(inline)
+    for key, tensor in inline.items():
+        assert fetched[key].dtype == tensor.dtype
+        assert torch.equal(fetched[key], tensor), key
+    assert not list((tmp_path / "coordinator").iterdir()), "the coordinator's copy was kept"
+
+    remove_spool(info["path"])
+    assert not Path(info["path"]).exists()
+
+
+def test_inline_results_are_unchanged_below_the_limit(package, tmp_path):
+    from appfl_bio_suite.core.result_spool import spool_info
+
+    payload = _site_payload(package, tmp_path, result_spool_bytes=10**12)
+    assert spool_info(payload) is None and "manifest" in payload
+
+
+def test_a_corrupted_spool_is_never_aggregated(package, tmp_path):
+    from appfl_bio_suite.core.result_spool import fetch_spooled, spool_info
+
+    info = spool_info(_site_payload(package, tmp_path, result_spool_bytes=1))
+    path = Path(info["path"])
+    data = bytearray(path.read_bytes())
+    data[len(data) // 2] ^= 0xFF
+    path.write_bytes(bytes(data))
+    with pytest.raises(RuntimeError, match="does not match the sha-256"):
+        fetch_spooled(info, _local_submit(), tmp_path / "coordinator", log=lambda m: None)
+
+    path.write_bytes(bytes(data[:-10]))
+    with pytest.raises(RuntimeError, match="truncated"):
+        fetch_spooled(info, _local_submit(), tmp_path / "coordinator", log=lambda m: None)
+
+
+def test_a_transient_chunk_failure_is_retried(package, tmp_path):
+    from appfl_bio_suite.core.result_spool import fetch_spooled, spool_info
+
+    info = spool_info(_site_payload(package, tmp_path, result_spool_bytes=1))
+    chunk = max(1, info["size"] // 4)
+    calls = []
+    fetched = fetch_spooled(
+        info,
+        _local_submit(calls, fail_once_at=chunk),
+        tmp_path / "coordinator",
+        chunk_bytes=chunk,
+        log=lambda m: None,
+    )
+    assert "manifest" in fetched
+    assert [args[1] for name, args in calls].count(chunk) == 2
+
+
+def test_aggregator_refuses_an_unfetched_handle(package, tmp_path):
+    from appfl_bio_suite.experiments.fine_mapping.aggregator import FineMappingAggregator
+
+    handle = _site_payload(package, tmp_path, result_spool_bytes=1)
+    aggregator = object.__new__(FineMappingAggregator)
+    with pytest.raises(RuntimeError, match="result-spool handle"):
+        aggregator.aggregate({"anl": handle})
+
+
+def test_spool_reads_only_spool_files(tmp_path):
+    from appfl_bio_suite.core.result_spool import read_spool_chunk, remove_spool
+
+    other = tmp_path / "data" / "site_genotypes.bed"
+    other.parent.mkdir()
+    other.write_bytes(b"genotypes")
+    with pytest.raises(ValueError, match="not a result-spool file"):
+        read_spool_chunk(str(other), 0, 4)
+    with pytest.raises(ValueError, match="not a result-spool file"):
+        remove_spool(str(other))
+    assert other.exists()
+
+
+def test_chunks_fit_under_the_endpoint_result_limit():
+    """The chunk size is chosen against the SDK's real serializer, not a guess."""
+    import os as _os
+
+    from globus_compute_sdk.serialize import ComputeSerializer
+
+    from appfl_bio_suite.core.result_spool import CHUNK_BYTES
+
+    serialized = ComputeSerializer().serialize(_os.urandom(CHUNK_BYTES))
+    assert len(serialized) < 10 * 1024 * 1024
+
+
+def test_trainer_and_coordinator_agree_on_the_handle_key():
+    from appfl_bio_suite.core.result_spool import SPOOL_KEY
+    from appfl_bio_suite.experiments.fine_mapping.trainer import KEY_SPOOL
+
+    assert KEY_SPOOL == SPOOL_KEY

@@ -1,12 +1,19 @@
 # Part 1 — Setting up your endpoint
-
+{% if single_user %}
+> **Your bundle declares a single-user endpoint, so this part does not apply to you.**
+> Follow `0-onboarding.md`: `appfl-bio-suite join` prepares everything, and
+> `site activate` starts the endpoint as `{{ service_account }}` under the
+> service-account client your coordinator issues. No root, no identity mapping. Part 1
+> below describes the manual multi-user endpoint, and is kept for reference.
+{% endif %}
 You are being asked to set up a **multi-user Globus Compute endpoint (MEP)** on your
 cluster. When a task arrives from {{ coordinator_organization }}, your cluster runs it
 **locally** and returns only results — nothing else leaves your machine. You authorize
 one Globus identity; no secret is shared, and you never run the experiment yourself.
 
-**This is an admin task.** You need privileged (root) access on a login node, a scheduler
-account and {{ scheduler_slot }}, and `conda`.
+**This is an admin task.** You need privileged (root) access on a login node, {% if local_scheduler %}a host
+whose own CPUs will run the workers (no batch scheduler){% else %}a scheduler
+account and {{ scheduler_slot }}{% endif %}, and `conda`.
 
 Everything you need is in this bundle: this guide, Part 2, and the files they name. Nothing
 is sent separately.
@@ -98,7 +105,7 @@ you work around it.
 Create a local POSIX account named **`{{ service_account }}`**. It must be able to:
 
 - activate `{{ conda_env }}` from Step 1
-- submit {{ scheduler }} jobs
+- {% if local_scheduler %}run processes on this host{% else %}submit {{ scheduler }} jobs{% endif %}
 - read and write `{{ output_dir }}`
 
 Every task we send runs as this account and nothing else. Check the first of these the
@@ -177,7 +184,9 @@ Install the pre-filled `user_config_template.yaml.j2` from this bundle as
 ```yaml
 {{ worker_template | trim }}
 ```
-{% if not account or not scheduler_slot_value %}
+{% if local_scheduler %}
+Workers run on this host, so there is no scheduler account or queue to fill in.
+{% elif not account or not scheduler_slot_value %}
 **Replace each `REPLACE_WITH_` value** with your own {{ scheduler }} account and
 {{ scheduler_slot }} — we do not know them from here. Leave nothing else changed.
 {% else %}
@@ -288,8 +297,8 @@ The three `*_NUM_THREADS=1` lines are missing from `worker_init`.
 
 **First task works, later ones stall**
 Your block is being torn down between tasks and re-queued. Check
-`idle_heartbeats_soft: 0` and `idle_heartbeats_hard: 5760` are present, and prefer a
-{{ scheduler_slot }} with short queue waits.
+`idle_heartbeats_soft: 0` and `idle_heartbeats_hard: 5760` are present{% if not local_scheduler %}, and prefer a
+{{ scheduler_slot }} with short queue waits{% endif %}.
 
 **Nothing happens at all**
 The queue is busy and the job is waiting in line. That is normal; tell us if it persists.

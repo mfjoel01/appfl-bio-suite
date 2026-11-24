@@ -43,13 +43,18 @@ reproducible.
 ## 2. Check before you launch
 
 ```bash
-appfl-bio-suite preflight fine-mapping --data-root /scratch/fm
+appfl-bio-suite preflight --experiment fine-mapping
 ```
 
-Reports the per-locus uplink, the ancestry columns that survive `min_gwas_n`, and the
-GA4GH checks (consent terms, bundle digests, tool pin). A DRS mismatch is fatal rather
-than a warning: if a site computed over an object other than the one the run's provenance
-claims, every number in the results table is attributed to the wrong data.
+Checks the environment and version pins, the generated configs, the endpoints, each
+site's data where its `data_dir` exists on this machine, and the GA4GH settings: consent
+terms, that every site's `drs_uri` resolves to a bundle in the registry, and the tool
+pin. `--check data` or `--check ga4gh` runs one group. There is no `--data-root`: data
+paths come from `federation.yaml`, and the loopback run below reads the package itself.
+
+A `drs_uri` that does not resolve fails rather than warns: if a site computed over an
+object other than the one the run's provenance claims, every number in the results table
+is attributed to the wrong data.
 
 ## 3. Run it
 

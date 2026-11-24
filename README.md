@@ -60,13 +60,13 @@ including one real-data run, are recorded as measured in its
 ## Quickstart
 
 Python 3.12 is required. Install the release from
-[PyPI](https://pypi.org/project/appfl-bio-suite/0.3.1/), with the release's pinned
+[PyPI](https://pypi.org/project/appfl-bio-suite/0.3.2/), with the release's pinned
 constraints:
 
 ```bash
 python3.12 -m venv .venv && source .venv/bin/activate
-python -m pip install "appfl-bio-suite[all]==0.3.1" \
-    -c https://raw.githubusercontent.com/mfjoel01/appfl-bio-suite/v0.3.1/constraints.txt
+python -m pip install "appfl-bio-suite[all]==0.3.2" \
+    -c https://raw.githubusercontent.com/mfjoel01/appfl-bio-suite/v0.3.2/constraints.txt
 ```
 
 Always pin the exact version. Every site in a federation must run the same release, and
@@ -88,7 +88,7 @@ installers under `scripts/`, and the example configurations are not part of the 
 so take them from the matching release tag:
 
 ```bash
-git clone --branch v0.3.1 https://github.com/mfjoel01/appfl-bio-suite.git
+git clone --branch v0.3.2 https://github.com/mfjoel01/appfl-bio-suite.git
 cd appfl-bio-suite
 cp federation.yaml.example local/federation.yaml
 $EDITOR local/federation.yaml
@@ -111,7 +111,8 @@ appfl-bio-suite endpoint smoke [SITE]               round-trip: does it actually
 appfl-bio-suite identity validate <mapping.json>    catch mapping bugs offline, in a second
 appfl-bio-suite simulate EXPERIMENT --scenario NAME  generate and split synthetic data
 appfl-bio-suite run EXPERIMENT                      run it
-appfl-bio-suite partner-bundle EXPERIMENT --site X  a partner's complete setup package
+appfl-bio-suite experiment package EXPERIMENT ...   one onboarding ZIP per partner
+appfl-bio-suite partner-bundle EXPERIMENT --site X  a partner's manual-setup bundle
 appfl-bio-suite watch build | serve | export        the federation, on a map
 appfl-bio-suite ga4gh duo | drs | trs | tes         data use, data objects, tools, tasks
 ```
@@ -125,10 +126,11 @@ what each is doing. Every generator, config, document template and check reads f
 Nothing in `src/` contains a coordinator identity, an endpoint UUID, or a site name, and
 CI verifies that.
 
-**Generated partner bundles, not templates.** `partner-bundle` emits a directory with a
-partner's configuration fully resolved — their site ID, their data assignment, *your*
-identity, their scheduler's provider block — plus their two setup documents with no
-placeholders left to interpret.
+**Generated partner bundles, not templates.** `experiment package` emits a ZIP per
+partner with their configuration fully resolved — their site ID, their data assignment,
+*your* identity, their scheduler — plus their setup and data guides with no placeholders
+left to interpret. `join` sets the site up from it. `partner-bundle` adds Part 1's files
+for a partner building their endpoint by hand.
 
 **A closed set for partner-facing content.** Bundles are built from `docs/partner/` and
 nowhere else, enforced in code, so nothing outside that tree can reach a partner.
@@ -191,7 +193,7 @@ every institution on a world map, which experiments each runs, what kind of data
 holds, how many samples they declared, and whether their endpoint is answering.
 
 ```bash
-pip install "appfl-bio-suite[watch]==0.3.1" -c constraints.txt   # included in [all]
+pip install "appfl-bio-suite[watch]==0.3.2" -c constraints.txt   # included in [all]
 
 appfl-bio-suite watch build              # draw it from federation.yaml
 appfl-bio-suite watch serve              # look at it locally

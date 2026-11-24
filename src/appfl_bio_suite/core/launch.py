@@ -252,7 +252,11 @@ def _apply_ga4gh(
         # a formality, and the whole value of DUO here is that the refusal happens where
         # the data is.
         data_kwargs["data_use_request"] = request.to_dict()
-    data_kwargs["enforce_data_use"] = block.enforce_data_use
+    # Always on. `enforce_data_use: false` waives the coordinator's own launch gate and
+    # nothing else: a site's refusal is decided on the site's terms, in the site's
+    # process, and a flag in the coordinator's config that could switch it off would make
+    # the party being checked the one who decides whether to be checked.
+    data_kwargs["enforce_data_use"] = True
     data_kwargs["verify_bundles"] = block.verify_bundles
 
     drs_object = resolve_drs_object(federation, entry)
@@ -425,20 +429,42 @@ def _resolve_config_paths(config: dict[str, Any], spec: ExperimentSpec) -> None:
         node[key] = _shipped_module_path(spec, module)
 
 
-def resolve_run(federation: Federation, experiment: str, variant: str = "default") -> ResolvedRun:
+def resolve_run(
+    federation: Federation,
+    experiment: str,
+    variant: str = "default",
+    *,
+    allow_unregistered: bool = False,
+) -> ResolvedRun:
     spec = get_spec(experiment)
     exp = federation.experiment(experiment)
     if not exp.sites:
         raise RuntimeError(
             f"experiment '{experiment}' has no sites in {federation._where()}.\n"
-            "Add at least one under experiments.{experiment}.sites before running."
+            f"Add at least one under experiments.{experiment}.sites before running."
         )
     return ResolvedRun(
         experiment=experiment,
         server_config=build_server_config(federation, experiment, variant, spec),
-        client_configs=build_client_configs(federation, experiment, spec),
+        client_configs=build_client_configs(
+            federation, experiment, spec, allow_unregistered=allow_unregistered
+        ),
         spec=spec,
     )
+
+
+def enable_result_spool(experiment: str, client_configs: list[dict[str, Any]]) -> None:
+    """Let fine-mapping sites hold results over Globus Compute's 10 MiB result cap.
+
+    Only for the Globus Compute driver, which knows how to fetch them back; see
+    core/result_spool.py. Serial and TES runs keep the inline payload.
+    """
+    from appfl_bio_suite.core.result_spool import INLINE_LIMIT_BYTES
+
+    if experiment != "fine-mapping":
+        return
+    for client in client_configs:
+        client["train_configs"].setdefault("result_spool_bytes", INLINE_LIMIT_BYTES)
 
 
 def check_no_placeholders(config: Any, where: str) -> None:
@@ -501,7 +527,13 @@ def launch(
             raise ValueError("Site credentials apply only to the globus_compute driver.")
         load_site_credentials(
             credential_path,
-            [entry.endpoint_uuid for entry in federation.experiment(experiment).sites],
+            # Registered sites only. One still onboarding is refused by name further
+            # down, which is a better message than a missing-route error for `None`.
+            [
+                entry.endpoint_uuid
+                for entry in federation.experiment(experiment).sites
+                if entry.endpoint_uuid
+            ],
         )
 
     report = run_preflight(federation=federation, experiment=experiment, check="env")
@@ -519,13 +551,21 @@ def launch(
     if not ok:
         return 1
 
-    run = resolve_run(federation, experiment, variant)
+    if driver == "serial":
+        # A serial run contacts no endpoint -- its driver drops `endpoint_id` -- so a
+        # federation still onboarding a site can prove the rest of its configuration.
+        run = resolve_run(federation, experiment, variant, allow_unregistered=True)
+    else:
+        run = resolve_run(federation, experiment, variant)
+    if driver == "globus_compute":
+        enable_result_spool(experiment, run.client_configs)
     out_dir = out_dir or Path("local/configs/generated")
     server_path, client_path = write_run_configs(run, out_dir)
 
     print(f"\nResolved {run.num_clients} client(s) for '{experiment}':", file=sys.stderr)
     for client in run.client_configs:
-        print(f"  {client['client_id']:10} -> {client['endpoint_id']}", file=sys.stderr)
+        target = client["endpoint_id"] or "(no endpoint registered; not needed for a serial run)"
+        print(f"  {client['client_id']:10} -> {target}", file=sys.stderr)
     print(f"\nserver config: {server_path}\nclient config: {client_path}", file=sys.stderr)
 
     # Written beside the generated configs so that `--dry-run` shows exactly what the map

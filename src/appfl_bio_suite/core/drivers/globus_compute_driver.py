@@ -18,6 +18,7 @@ import os
 import pprint
 import sys
 from concurrent.futures import Future
+from pathlib import Path
 
 # Before APPFL. appfl 1.10.0 imports a globus-compute-sdk module that 4.9.0 removed, and
 # this suite pins both.
@@ -83,6 +84,14 @@ def main(argv: list[str] | None = None) -> int:
     def site(endpoint_id: str) -> str:
         return site_names.get(endpoint_id, endpoint_id)
 
+    # APPFL reports results under the client id; a spooled result is fetched from the
+    # endpoint that holds it.
+    endpoint_of = {
+        str(c.get("client_id", c["endpoint_id"])): c["endpoint_id"] for c in client_configs
+    }
+    spool_dir = Path(server_config.server_configs.logging_output_dirname) / "spool"
+    spool_executors: dict = {}
+
     watcher = RunWatcher.load(args.watch)
     watcher.start(
         algorithm=str(server_config.server_configs.get("scheduler", "SyncScheduler")),
@@ -145,6 +154,15 @@ def main(argv: list[str] | None = None) -> int:
 
         while not server_agent.training_finished():
             endpoint_id, client_model, client_metadata = communicator.recv_result_from_one_client()
+            client_model = _fetch_if_spooled(
+                client_model,
+                endpoint_of.get(str(endpoint_id), endpoint_id),
+                site(endpoint_id),
+                credentials,
+                spool_executors,
+                spool_dir,
+                log,
+            )
             client_rounds[endpoint_id] = client_rounds.get(endpoint_id, 0) + 1
             this_round = client_rounds[endpoint_id]
             log.info(
@@ -195,6 +213,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     finally:
         watcher.finish()
+        for executor in spool_executors.values():
+            try:
+                executor.shutdown(wait=False, cancel_futures=True)
+            except Exception:  # noqa: BLE001 - shutdown must not mask the real error
+                pass
         try:
             communicator.cancel_all_tasks()
             communicator.shutdown_all_clients()
@@ -204,6 +227,37 @@ def main(argv: list[str] | None = None) -> int:
     log.info("Federated Learning Training Completed!")
     log.info(f"[done] results in {server_config.server_configs.logging_output_dirname}")
     return 0
+
+
+def _fetch_if_spooled(model, endpoint_uuid, name, credentials, executors, spool_dir, log):
+    """Swap a result-spool handle for the payload it names; anything else passes through."""
+    from appfl_bio_suite.core.result_spool import (
+        fetch_spooled,
+        remove_spool,
+        spool_executor,
+        spool_info,
+    )
+
+    info = spool_info(model)
+    if info is None:
+        return model
+    if endpoint_uuid not in executors:
+        credential = credentials.get(endpoint_uuid) if credentials else None
+        executors[endpoint_uuid] = spool_executor(endpoint_uuid, credential)
+    executor = executors[endpoint_uuid]
+    log.info(
+        f"[train] {name} held its {info['size'] / 2**20:.0f} MiB result at the site "
+        "(over the Globus Compute result limit); fetching it in chunks"
+    )
+    payload = fetch_spooled(
+        info, executor.submit, spool_dir, log=lambda m: log.info(f"[fetch] {m}")
+    )
+    log.info(f"[fetch] {name}: verified sha-256 {info['sha256'][:16]}")
+    try:
+        executor.submit(remove_spool, info["path"]).result(timeout=300)
+    except Exception as exc:  # noqa: BLE001 - a leftover file at the site is not a failed run
+        log.warning(f"[fetch] {name}: could not remove {info['path']} at the site: {exc}")
+    return payload
 
 
 def _dispatch_next(communicator, server_agent, log, site, endpoint_id, global_model, round_no):

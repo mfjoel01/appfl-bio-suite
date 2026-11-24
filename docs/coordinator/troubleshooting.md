@@ -29,6 +29,7 @@ command is named. Documentation that has to be read is the weakest control avail
 | `ModuleNotFoundError` for your own helper module | [Shipped module imports](#shipped-modules-cannot-import-siblings) |
 | "Another instance of this endpoint is running" | [Stale pidfile](#stale-pidfile-on-a-shared-filesystem) |
 | Endpoint reports online but tasks never run | [Status is not liveness](#online-is-not-the-same-as-working) |
+| `MaxResultSizeExceeded`, or a site "held its … MiB result at the site" | [The 10 MiB result cap](#task-results-are-capped-at-10-mib) |
 | `PermissionError: … do not permit this study` | [A site's terms refuse the run](#a-sites-terms-refuse-the-run) |
 | A site refuses, and no study was declared | [Terms with no request](#a-bundle-with-terms-and-a-run-with-no-request) |
 | Preflight says `undetermined` and will not launch | [Undetermined is not a hedge](#undetermined-is-not-a-hedge) |
@@ -352,6 +353,25 @@ mapping is not taking effect.
 
 Also note the reverse: the **cloud** status is authoritative, not local
 `globus-compute-endpoint list`, which reads a possibly-stale pidfile.
+
+### Task results are capped at 10 MiB
+
+**Symptom.** A site finishes its computation and the task fails with
+`MaxResultSizeExceeded`, and no amount of locus sharding makes it go away.
+
+**Mechanism.** A Globus Compute endpoint refuses to return a result whose serialized form
+exceeds 10 MiB, and the limit is not configurable. A fine-mapping site's payload is
+O(M²) per locus and ancestry, so a single realistic locus is already tens of MiB.
+
+**Fix.** Run through `appfl-bio-suite run`, which sets `result_spool_bytes` for the Globus
+Compute driver. A site whose payload is over the limit writes it to
+`<output_dir>/spool/` and returns a handle. The driver logs that it is fetching, reads the
+file back through the same endpoint in 6 MiB pieces, checks the sha-256 the site reported,
+then deletes the site's copy. A failed piece is retried. A checksum mismatch or a
+truncated file stops the run rather than aggregating it. If a site reports running out of
+disk, it needs free space in `output_dir` at least the size of its payload. A driver
+other than the bundled one that passes a handle to the aggregator gets an error naming
+this.
 
 ---
 

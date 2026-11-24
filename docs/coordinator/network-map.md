@@ -30,7 +30,7 @@ So the network view is built from `federation.yaml` alone. The day the config na
 partner, that partner is on the map.
 
 ```bash
-pip install "appfl-bio-suite[watch]==0.3.1" -c constraints.txt
+pip install "appfl-bio-suite[watch]==0.3.2" -c constraints.txt
 
 appfl-bio-suite watch build          # draw it from federation.yaml
 appfl-bio-suite watch serve          # open http://localhost:7070
@@ -138,9 +138,12 @@ only a fictional partner and an empty results group ready for your selected file
 
 ## Giving everyone the same page
 
-`watch serve` binds a port on the machine you run it on. On an HPC login node that means
-you can see it and nobody else can — partners cannot reach inbound ports on your cluster,
-and the cluster is right not to let them.
+`watch serve` binds a port on the machine you run it on — by default on `127.0.0.1`
+only, because the server has no login of its own. On an HPC login node, forward it to
+your laptop (`ssh -L 7070:localhost:7070 <login node>`) and open `http://localhost:7070`
+there. `--host 0.0.0.0` offers the page to every machine that can reach the node, which
+on a shared cluster is every other user of it. Partners cannot reach it either way:
+inbound ports on your cluster are closed to them, and the cluster is right to keep them so.
 
 What you hand out is a static export:
 
@@ -287,14 +290,29 @@ A site with two endpoints and one of them down is neither up nor down; it is dra
 `idle`, distinct from both, because a site half-online is exactly the state worth being
 able to see at a glance.
 
+`--probe` asks once, at build time, so an exported page keeps saying what was true then.
+For a hosted copy that keeps asking:
+
+```bash
+appfl-bio-suite watch export --live-status --out site/
+appfl-bio-suite watch targets --out local/live-map/targets.json
+appfl-bio-suite watch live --targets local/live-map/targets.json --out site/
+```
+
+`watch live` rewrites `endpoints.status.json` beside the map every minute and the viewer
+polls it. [live-map-aws.md](live-map-aws.md) covers what the states mean, why the probe
+list is its own file, and a one-command deployment of the whole site to EC2.
+
 ---
 
 ## Command reference
 
 ```
 appfl-bio-suite watch build   [--experiment X] [--probe] [--include-endpoint-uuids]
-appfl-bio-suite watch serve   [--port 7070] [--runs-dir DIR]
-appfl-bio-suite watch export  --out DIR [--experiment X] [--probe] [--title "..."]
+appfl-bio-suite watch serve   [--host 127.0.0.1] [--port 7070] [--runs-dir DIR]
+appfl-bio-suite watch export  --out DIR [--experiment X] [--probe] [--live-status] [--home-url URL] [--title "..."]
+appfl-bio-suite watch targets --out FILE [--rename LOCAL=PUBLIC]
+appfl-bio-suite watch live    --targets FILE --out DIR [--interval 60] [--once]
 appfl-bio-suite run EXPERIMENT --watch
 ```
 
@@ -308,7 +326,7 @@ excluded when the data was generated.
 ## Troubleshooting
 
 **`hivewatch is not installed`** — it is a coordinator-only extra and never reaches a
-partner: `pip install "appfl-bio-suite[watch]==0.3.1" -c constraints.txt`.
+partner: `pip install "appfl-bio-suite[watch]==0.3.2" -c constraints.txt`.
 
 **The map is empty and the sidebar says "Waiting for clients…"** — no participating site
 has coordinates. `watch build` names them and prints the YAML.

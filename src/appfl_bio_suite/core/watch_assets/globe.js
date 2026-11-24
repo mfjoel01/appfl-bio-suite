@@ -35,6 +35,7 @@
       this.hitTargets = [];
       this.hovered = null;
       this.drag = null;
+      this.ping = null;  // {ids: Set, direction: 'out' | 'back', start: ms} while one runs
       this.width = 0;
       this.height = 0;
       this.canvas = document.createElement('canvas');
@@ -91,6 +92,40 @@
       this.tooltip.hidden = true;
       this.draw();
       this._schedule();
+    }
+
+    // Pulses along the routes of the probed sites: out from the coordinator while the
+    // prober asks, back when the answers land. The globe keeps drawing while one runs,
+    // spinning or not.
+    setPing(ids, direction) {
+      this.ping = direction && ids && ids.size ? { ids, direction, start: performance.now() } : null;
+      this.draw();
+      this._schedule();
+    }
+
+    _drawPing(ctx, light, visible) {
+      if (!this.ping || !this.server) return;
+      const from = [Number(this.server.lng), Number(this.server.lat)];
+      const phase = ((performance.now() - this.ping.start) / 1400) % 1;
+      ctx.save();
+      for (const item of this.clients) {
+        if (this._isCoordinator(item) || !this.ping.ids.has(item.client_id)) continue;
+        const along = d3.geoInterpolate(from, [Number(item.lng), Number(item.lat)]);
+        for (let k = 0; k < 3; k++) {
+          let t = (phase + k / 3) % 1;
+          if (this.ping.direction === 'back') t = 1 - t;
+          const point = visible(along(t));
+          if (!point) continue;
+          const glow = ctx.createRadialGradient(point[0], point[1], 0, point[0], point[1], 7);
+          glow.addColorStop(0, light ? 'rgba(0,125,131,.95)' : 'rgba(140,255,240,.95)');
+          glow.addColorStop(1, light ? 'rgba(0,125,131,0)' : 'rgba(140,255,240,0)');
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(point[0], point[1], 7, 0, TAU);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
     }
 
     setTheme(theme) {
@@ -272,7 +307,8 @@
     }
 
     _schedule() {
-      const animate = this.visible && !document.hidden && this.spinning && !this.drag && !this.hovered;
+      const pinging = this.ping !== null && this.visible && !document.hidden;
+      const animate = pinging || (this.visible && !document.hidden && this.spinning && !this.drag && !this.hovered);
       if (!animate) {
         if (this.frame !== null) cancelAnimationFrame(this.frame);
         this.frame = null;
@@ -284,7 +320,7 @@
         this.frame = null;
         const elapsed = this.lastFrame === null ? 0 : Math.min(time - this.lastFrame, 64);
         this.lastFrame = time;
-        this.rotation[0] = (this.rotation[0] + elapsed * .0035) % 360;
+        if (this.spinning && !this.drag && !this.hovered) this.rotation[0] = (this.rotation[0] + elapsed * .0035) % 360;
         this.draw();
         this._schedule();
       });
@@ -321,7 +357,7 @@
       description.className = 'bio-globe-tip-detail';
       description.style.color = this.theme === 'light' ? '#496b78' : '#a8c0d0';
       description.textContent = target.server ? [item.city, item.country].filter(Boolean).join(', ') :
-        `${item.partnership_stage || item.status || 'Site'} · Select to inspect`;
+        `${item.live_summary || item.partnership_stage || item.status || 'Site'} · Select to inspect`;
       parts.push(title, description);
       this.tooltip.replaceChildren(...parts);
       const left = clamp(point[0] + 17, 8, Math.max(8, this.width - this.tooltip.offsetWidth - 12));
@@ -423,6 +459,8 @@
         const location = [Number(item.lng), Number(item.lat)];
         return d3.geoDistance(center, location) < Math.PI / 2 - .008 ? this.projection(location) : null;
       };
+      this._drawPing(ctx, light, location => (
+        d3.geoDistance(center, location) < Math.PI / 2 - .008 ? this.projection(location) : null));
       for (const item of this.clients) {
         const point = visiblePoint(item);
         if (point) this._drawMarker(point[0], point[1], item, false);
@@ -436,7 +474,7 @@
       const stage = String(item.partnership_stage || '').slice(0, 1);
       const stageColors = { '0': '#8d9eaa', '1': '#669fe0', '2': '#d89e42', '4': '#15b9a6', X: '#db717e' };
       const color = server ? '#8d9eaa'
-        : stageColors[stage] || (this.theme === 'light' && item.status === 'active' ? '#088981' : COLORS[item.status] || '#66ddd7');
+        : item.live_color || stageColors[stage] || (this.theme === 'light' && item.status === 'active' ? '#088981' : COLORS[item.status] || '#66ddd7');
       const coordinator = server || this._isCoordinator(item);
       const ring = coordinator ? GOLD[this.theme] : color;
       const hovered = this.hovered && this.hovered.server === server &&
