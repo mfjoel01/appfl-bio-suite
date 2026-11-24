@@ -261,9 +261,11 @@ are compared against the coordinator implementation at zero tolerance by
 
 Beyond the synthetic simulation grid, [MAGE_VALIDATION.md](MAGE_VALIDATION.md) validates
 FedFM on **MAGE v1.0** LCL expression with the same individuals' 1000 Genomes NYGC 30x
-genotypes, across 16 eQTL loci. A pooled SuSiE run with the published covariate adjustment
-replicates the published MAGE fine-mapping (41 of 46 credible sets matched, PIP r = 0.91).
-Each of three ancestry-structured sites alone recovers 5–17 of the pooled analysis's 58
+genotypes. At the 16 original loci, using the published susieR version and released FastQTL
+statistics reproduces all 46 published credible sets exactly. Across 22 prespecified
+additional loci, federation reproduces every pooled credible set for SuSiE (33) and
+five-ancestry MultiSuSiE (36), with maximum absolute PIP difference below 1.2 × 10⁻¹².
+On the original panel, each of three ancestry-structured sites alone recovers 5–17 of the pooled analysis's 58
 credible sets; the federation recovers all 58, with PIPs equal to the pooled run to 1e-13,
 including a federated covariate adjustment (sites send covariate cross-moments; see
 `covariates.py`).

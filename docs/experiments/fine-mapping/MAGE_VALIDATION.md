@@ -156,6 +156,23 @@ The covariate adjustment is computed from the sites' cross-moments, and the resu
 regressing the covariates out of the pooled data directly. SuSiEx does not converge at
 ZNRF2P1 and DHRS4 in either arm (1,000 iterations), so its comparison covers 14 loci.
 
+### Prespecified held-out loci
+
+We froze one additional eGene per autosome before fitting. The selection rule excluded the
+original loci and used the gene ID to rank eligible genes independently of published set
+location or size. Two selected genes (ZNF248 and RP11-147L13.13) have published credible-set
+variants outside the analysis window. Both comparisons use the clean 730-person cohort
+and published preprocessing. [Panel and selection criteria](mage/heldout_design.md).
+
+| Method | Converged pooled/federated locus pairs | Pooled credible sets | Loci with exact set membership | Worst absolute PIP difference |
+| --- | ---: | ---: | ---: | ---: |
+| SuSiE | 22/22 | 33 | 22/22 | 1.19 × 10⁻¹² |
+| Five-ancestry MultiSuSiE | 22/22 | 36 | 22/22 | 9.71 × 10⁻¹³ |
+
+The pooled and federated fits covered the same 68,222 variants for each method. Every
+pooled credible set was reproduced with identical membership, with no additional federated
+sets. This extends the parity result to new loci in the same people. [Per-locus parity results](mage/heldout_parity.tsv).
+
 ### Covariates a site can compute itself
 
 The published covariates are pooled quantities: expression was rank-normalized across all 731
