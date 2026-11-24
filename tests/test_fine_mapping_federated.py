@@ -195,10 +195,15 @@ def test_uplink_carries_only_the_six_objects_of_section_7() -> None:
     # payload is algo.md §7's (G, c, u, n, q, w) and nothing else; the rest is
     # routing labels, the harmonized variant list of Theorem 1 condition (i),
     # and a drop counter. No dosages, no phenotypes, no per-individual anything.
+    # ``u_raw`` is not on the wire: the coordinator fills it in after covariate
+    # adjustment (covariates.fwl_adjust_locus) to keep allele frequencies on the raw
+    # dosages. The opt-in covariate cross-moments a site may also send (Z'X, Z'Z, 1'Z,
+    # Z'y) are separate payload kinds, off unless requested; see
+    # test_secure_backend_matches_plaintext, which asserts they are absent by default.
     geno = {f.name for f in GenoAggregate.__dataclass_fields__.values()}
     pheno = {f.name for f in PhenoAggregate.__dataclass_fields__.values()}
     assert geno == {"site", "pop", "locus_id", "variants", "G", "u", "n",
-                    "n_incomplete_variants", "snp_ids"}
+                    "n_incomplete_variants", "u_raw", "snp_ids"}
     assert pheno == {"site", "pop", "instance", "snp_ids", "c", "q", "w", "n"}
 
 

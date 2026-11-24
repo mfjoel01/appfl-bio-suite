@@ -29,6 +29,23 @@ Only ``c``, ``q`` and ``w`` depend on the phenotype, so the O(M^2) half is emitt
 per locus and the O(M) half once per instance; together they are exactly the six objects
 of §7.
 
+OPTIONAL: COVARIATE CROSS-MOMENTS (``covariates`` in the client config)
+-----------------------------------------------------------------------
+Only when the coordinator asks for covariate adjustment, and only from a covariate file in
+this site's bundle, the site also emits, per (locus, ancestry) and per instance::
+
+    Z'X  (k x M)      Z'Z  (k x k)      1'Z  (k)        <- once per (locus, ancestry)
+    Z'y  (k)                                            <- once per instance
+
+with ``Z`` the k covariate columns (sex, genotype PCs, expression factors). These are sums
+over individuals like the six above, and are what the coordinator needs to regress the
+covariates out of genotypes and phenotype together (Frisch-Waugh-Lovell) exactly as a
+pooled analysis would; see ``covariates.py`` on the coordinator side. Off by default: a
+bundle that happens to contain a covariate file sends nothing extra unless asked.
+
+``single_population`` treats every individual at this site as one block, ``ALL``, for a
+pooled analysis that does not stratify by ancestry (plain SuSiE).
+
 WHY THIS CODE EXISTS TWICE
 --------------------------
 ``fedfm/fed_fine_mapping.py::site_aggregates`` is the same computation, vendored verbatim
@@ -108,6 +125,12 @@ KEY_USUM = "u"  # u::<locus_id>::<pop>    -- (M,)   column sums
 KEY_XTY = "c"  # c::<instance>::<pop>    -- (M,)   X'y
 KEY_SCALARS = "s"  # s::<instance>::<pop>    -- (3,)   (q, w, n)
 KEY_MANIFEST = "manifest"
+# Optional covariate cross-moments, emitted only when the client config asks for them.
+KEY_COV_X = "zx"  # zx::<locus_id>::<pop>   -- (k, M) Z'X
+KEY_COV_Z = "zz"  # zz::<locus_id>::<pop>   -- (k, k) Z'Z
+KEY_COV_U = "zu"  # zu::<locus_id>::<pop>   -- (k,)   1'Z
+KEY_COV_Y = "zy"  # zy::<instance>::<pop>   -- (k,)   Z'y
+SINGLE_POPULATION = "ALL"
 # A spooled payload's handle; equal to appfl_bio_suite.core.result_spool.SPOOL_KEY.
 KEY_SPOOL = "result_spool"
 
@@ -473,6 +496,14 @@ class SiteFineMappingTrainer(BaseTrainer):
         # Ancestry columns the coordinator asked for. A site simply skips any it does not
         # hold; the coordinator pools whoever contributed.
         self.pops = list(self.train_configs.get("pops", []) or [])
+        self.single_population = bool(self.train_configs.get("single_population", False))
+
+        # Covariate file (relative to the bundle's data dir) whose cross-moments to emit.
+        # ``True`` means the conventional name. Off unless the coordinator asks.
+        covariates = self.train_configs.get("covariates", None)
+        if covariates is True:
+            covariates = "covariates.tsv"
+        self.covariates_file = str(covariates) if covariates else None
 
         # The TRS pin the coordinator dispatched, echoed back in the manifest. The site
         # cannot verify it -- the shipped source IS the tool, and code that checksums
@@ -569,6 +600,34 @@ class SiteFineMappingTrainer(BaseTrainer):
             Y[:, col] = y
         return Y
 
+    def _covariates(self, iids):
+        """Covariate matrix aligned to this site's fam order, or ``(None, None)``.
+
+        Every individual must have every covariate: a partly observed covariate would make
+        the rows behind ``Z'X`` differ from those behind ``X'X``, the same complete-case
+        condition the phenotypes are held to.
+        """
+        if self.covariates_file is None:
+            return None, None
+        path = Path(self.covariates_file)
+        if not path.is_absolute():
+            path = self.train_dataset.data_dir / path
+        if path.resolve().parent != self.train_dataset.data_dir.resolve():
+            raise RuntimeError(f"{self.client_id}: covariate file must sit in the site bundle")
+        table = pd.read_csv(path, sep="\t", dtype={"FID": str, "IID": str})
+        if "IID" not in table.columns or table["IID"].duplicated().any():
+            raise RuntimeError(f"{self.client_id}: {path.name} needs one IID column, unique")
+        names = [c for c in table.columns if c not in ("FID", "IID")]
+        if not names:
+            raise RuntimeError(f"{self.client_id}: {path.name} has no covariate columns")
+        Z = table.set_index("IID")[names].reindex(iids.values).to_numpy(dtype=np.float64)
+        if not np.isfinite(Z).all():
+            raise RuntimeError(
+                f"{self.client_id}: {path.name} does not cover every individual with "
+                "finite values for every covariate"
+            )
+        return names, Z
+
     def _pack_gram(self, G):
         """Downcast the Gram for transmission when that is provably lossless."""
         if self.gram_dtype == "float32" and np.abs(G).max(initial=0.0) < _EXACT_FLOAT32_INT:
@@ -648,8 +707,17 @@ class SiteFineMappingTrainer(BaseTrainer):
             )
 
         pops = self.pops or list(dataset.composition)
+        if self.single_population:
+            manifest = manifest.assign(superpopulation=SINGLE_POPULATION)
+            pops = [SINGLE_POPULATION]
         row_of = pd.Series(np.arange(len(fam)), index=fam["IID"].values)
         loci = self._selected_loci()
+        cov_names, Z = self._covariates(fam["IID"])
+        if cov_names is not None:
+            self.logger.info(
+                f"{self.client_id}: emitting cross-moments for {len(cov_names)} covariate(s) "
+                f"from {self.covariates_file}"
+            )
 
         payload = {}
         geno_meta = []
@@ -708,6 +776,17 @@ class SiteFineMappingTrainer(BaseTrainer):
                     payload[block_key(KEY_USUM, locus_id, pop)] = torch.from_numpy(
                         Xp.sum(axis=0, dtype=np.float64)
                     )
+                    if Z is not None:
+                        Zp = Z[rows]
+                        payload[block_key(KEY_COV_X, locus_id, pop)] = torch.from_numpy(
+                            np.ascontiguousarray(xty(Xp, Zp).T)
+                        )
+                        payload[block_key(KEY_COV_Z, locus_id, pop)] = torch.from_numpy(
+                            np.ascontiguousarray(Zp.T @ Zp)
+                        )
+                        payload[block_key(KEY_COV_U, locus_id, pop)] = torch.from_numpy(
+                            Zp.sum(axis=0)
+                        )
                     geno_meta.append(
                         {
                             "locus_id": locus_id,
@@ -729,7 +808,12 @@ class SiteFineMappingTrainer(BaseTrainer):
                         C = xty(Xp, Yp)
                         q = Yp.sum(axis=0)
                         w = np.einsum("ij,ij->j", Yp, Yp)
+                        ZY = Zp.T @ Yp if Z is not None else None
                         for col, inst in enumerate(instances):
+                            if ZY is not None:
+                                payload[block_key(KEY_COV_Y, inst, pop)] = torch.from_numpy(
+                                    np.ascontiguousarray(ZY[:, col])
+                                )
                             payload[block_key(KEY_XTY, inst, pop)] = torch.from_numpy(
                                 np.ascontiguousarray(C[:, col])
                             )
@@ -776,6 +860,8 @@ class SiteFineMappingTrainer(BaseTrainer):
                 "geno_blocks": geno_meta,
                 "pheno_blocks": pheno_meta,
                 "n_flipped": n_flipped,
+                "covariates": cov_names,
+                "single_population": self.single_population,
                 "gram_dtype": self.gram_dtype,
                 "locus_shard": [self.locus_shard_index, self.locus_n_shards],
                 "ga4gh": self._provenance(),

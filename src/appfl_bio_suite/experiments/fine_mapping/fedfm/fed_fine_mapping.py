@@ -166,6 +166,10 @@ class GenoAggregate:
     # Diagnostics, not inputs to the fit: window variants dropped because they
     # were not fully observed in this block (see the module docstring).
     n_incomplete_variants: int = 0
+    # Set only after covariate adjustment (``covariates.fwl_adjust_locus``), which
+    # rewrites ``G``/``u`` as moments of the adjusted dosages. Allele frequencies --
+    # the MAF filter and SuSiEx's .frq -- must still come from the raw allele totals.
+    u_raw: np.ndarray | None = None
     snp_ids: np.ndarray = field(init=False)
 
     def __post_init__(self) -> None:
@@ -436,10 +440,16 @@ class PooledGeno:
     n: int
     sites: tuple[str, ...] = ()
     n_incomplete_variants: int = 0
+    u_raw: np.ndarray | None = None
 
     @property
     def snp_ids(self) -> np.ndarray:
         return self.variants["snp_id"].to_numpy()
+
+    @property
+    def allele_totals(self) -> np.ndarray:
+        """Raw A1 allele counts: ``u`` unless covariate adjustment replaced it."""
+        return self.u if self.u_raw is None else self.u_raw
 
 
 @dataclass
@@ -515,16 +525,23 @@ def pool_geno(blocks: Sequence[GenoAggregate]) -> PooledGeno:
     M = len(ids)
     G = np.zeros((M, M), dtype=np.float64)
     u = np.zeros(M, dtype=np.float64)
+    adjusted = [b.u_raw is not None for b in blocks]
+    if any(adjusted) and not all(adjusted):
+        raise ValueError("pool_geno got a mix of covariate-adjusted and unadjusted blocks")
+    u_raw = np.zeros(M, dtype=np.float64) if all(adjusted) else None
     n = 0
     for b in blocks:
         idx = _align(b.snp_ids, ids)
         G += b.G if idx is None else b.G[np.ix_(idx, idx)]
         u += b.u if idx is None else b.u[idx]
+        if u_raw is not None:
+            u_raw += b.u_raw if idx is None else b.u_raw[idx]
         n += b.n
     return PooledGeno(
         pop=blocks[0].pop, variants=target, G=G, u=u, n=n,
         sites=tuple(b.site for b in blocks),
         n_incomplete_variants=sum(b.n_incomplete_variants for b in blocks),
+        u_raw=u_raw,
     )
 
 
@@ -647,6 +664,25 @@ def pooled_sumstats(
     return out.loc[ok & np.isfinite(se) & (se > 0)].reset_index(drop=True)
 
 
+def finite_sample_adjust(sumstats: pd.DataFrame, n: int) -> pd.DataFrame:
+    """Rescale ``beta`` so SuSiEx's standardized effect is the marginal correlation.
+
+    SuSiEx standardizes each variant as ``(BETA/SE)/sqrt(n)`` (``data.cpp:311``), which
+    equals the marginal correlation ``r = t/sqrt(n - 2 + t^2)`` only while ``t^2 << n``.
+    That holds for GWAS-sized effects and fails for eQTLs, where a lead variant can explain a
+    large share of expression variance: at ``t = 25``, ``n = 731`` it reports 0.92 for a
+    correlation of 0.68, which no longer fits the LD matrix and distorts every secondary
+    signal. ``susieR::susie_rss`` makes the same correction when given ``n``. ``se``, ``p``
+    and the marginal-p filter are unchanged; the reported BETA becomes the rescaled one.
+    """
+    out = sumstats.copy()
+    t = out["stat"].to_numpy(dtype=np.float64)
+    scale = np.sqrt(float(n) / (float(n) - 2.0 + t * t))
+    out["beta"] = out["beta"].to_numpy(dtype=np.float64) * scale
+    out["stat"] = t * scale
+    return out
+
+
 def write_sumstats(sumstats: pd.DataFrame, path: Path) -> Path:
     """Write a SuSiEx summary-statistics file.
 
@@ -759,8 +795,9 @@ def build_columns(
         if not blocks:
             continue
         pooled = pool_geno(blocks)
-        freq = pooled.u / (2 * pooled.n)
-        keep = np.minimum(pooled.u, 2 * pooled.n - pooled.u) >= 2 * pooled.n * maf - 1e-10
+        totals = pooled.allele_totals
+        freq = totals / (2 * pooled.n)
+        keep = np.minimum(totals, 2 * pooled.n - totals) >= 2 * pooled.n * maf - 1e-10
         if not keep.any():
             raise RuntimeError(f"No variant survives MAF {maf} in the pooled {pop} column")
         idx = np.flatnonzero(keep)
@@ -820,6 +857,8 @@ def fed_finemap_instance(
                 )
             ss = pooled_sumstats(col.variants, col.g_diag, col.u,
                                  moments.c, moments.q, moments.w, col.n)
+            if (options or {}).get("finite_sample_adjust"):
+                ss = finite_sample_adjust(ss, col.n)
             min_p[col.pop] = float(ss["p"].min()) if len(ss) else np.nan
             sumstats.append(write_sumstats(ss, priv / f"{col.pop}.sumstats"))
             ld_list.append(col.ld_prefix)

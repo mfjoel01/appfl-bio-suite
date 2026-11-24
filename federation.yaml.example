@@ -389,6 +389,18 @@ experiments:
     # uplink; float64 is the conservative default.
     uplink_gram_dtype: float64
 
+    # Optional covariate adjustment. With "fwl", each site bundle carries covariates.tsv
+    # (IID plus one column per covariate, the same columns at every site); sites also send
+    # its cross-moments and the coordinator regresses the covariates out of genotypes and
+    # phenotype together. See docs/experiments/fine-mapping/MAGE_VALIDATION.md.
+    # covariate_adjustment: fwl
+    # covariates_file: covariates.tsv
+
+    # SuSiEx standardizes effects as z/sqrt(n), which overstates them when one variant
+    # explains much of the trait (eQTLs). true rescales its inputs to marginal correlations,
+    # as susieR's susie_rss does. Coordinator-side only.
+    # susiex_finite_sample_adjust: true
+
     # Optional masked sums for either backend; keys stay in worker environments.
     # Every site must hold matching ancestry/variant blocks.
     # See docs/experiments/fine-mapping/SECURE_AGGREGATION.md.

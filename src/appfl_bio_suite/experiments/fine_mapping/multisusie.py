@@ -83,9 +83,20 @@ def prepare_inputs(
             raise ValueError("Missing or duplicate variant metadata")
         if any(not np.isfinite(a).all() for a in (g.G, g.u, p.c, [p.q, p.w])):
             raise ValueError("Nonfinite moments")
-        if not np.allclose(g.G, g.G.T, rtol=0, atol=1e-8):
+        # Cache-blocked check avoids strided G.T cache thrashing on large matrices.
+        n_var = g.G.shape[0]
+        if g.G.ndim != 2 or g.G.shape[1] != n_var:
             raise ValueError("Genotype Gram matrix is not symmetric")
-        if ((g.u < 0) | (g.u > 2 * g.n)).any():
+        for i0 in range(0, n_var, 256):
+            i1 = min(i0 + 256, n_var)
+            for j0 in range(i0, n_var, 256):
+                j1 = min(j0 + 256, n_var)
+                if float(np.max(np.abs(g.G[i0:i1, j0:j1] - g.G[j0:j1, i0:i1].T))) > 1e-8:
+                    raise ValueError("Genotype Gram matrix is not symmetric")
+        # After covariate adjustment ``u`` is a moment of adjusted dosages and may be
+        # negative; the dosage bound applies to the raw allele totals kept beside it.
+        totals = g.u if g.u_raw is None else g.u_raw
+        if totals.shape != (m,) or ((totals < 0) | (totals > 2 * g.n)).any():
             raise ValueError("Allele totals are outside dosage bounds")
 
     # Ancestry order must not depend on the order in which sites report.
@@ -101,7 +112,8 @@ def prepare_inputs(
         if g.n <= 2:
             raise ValueError("Each pooled ancestry needs at least three samples")
         centered = g.G - np.outer(g.u, g.u) / g.n
-        mac = np.minimum(g.u, 2 * g.n - g.u)
+        totals = g.allele_totals
+        mac = np.minimum(totals, 2 * g.n - totals)
         keep = (mac >= max(options.min_mac, 2 * g.n * options.maf) - 1e-10) & (
             np.diag(centered) > 1e-10
         )

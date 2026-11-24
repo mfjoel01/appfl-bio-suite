@@ -248,6 +248,7 @@ src/appfl_bio_suite/experiments/fine_mapping/
 ├── plotting.py    coordinator-side   — the aggregator's figure entry point
 ├── figures/       coordinator-side   — the full figure set
 ├── fedfm/         coordinator-side   — the maintained science fork; see UPSTREAM.json
+├── real_data/     coordinator-side   — MAGE + 1000G NYGC 30x real-data benchmark & figures
 └── simulation/    coordinator-side   — never reaches a partner at all
 ```
 
@@ -255,6 +256,19 @@ src/appfl_bio_suite/experiments/fine_mapping/
 `fedfm/UPSTREAM.json`. The shipped site stage is self-contained; its numerical results
 are compared against the coordinator implementation at zero tolerance by
 `tests/test_fine_mapping_shipped_parity.py`.
+
+## Real-data validation (MAGE + 1000 Genomes NYGC 30x)
+
+Beyond the synthetic simulation grid, [MAGE_VALIDATION.md](MAGE_VALIDATION.md) validates
+FedFM on **MAGE v1.0** LCL expression with the same individuals' 1000 Genomes NYGC 30x
+genotypes. At the 16 original loci, using the published susieR version and released FastQTL
+statistics reproduces all 46 published credible sets exactly. Across 22 prespecified
+additional loci, federation reproduces every pooled credible set for SuSiE (33) and
+five-ancestry MultiSuSiE (36), with maximum absolute PIP difference below 1.2 × 10⁻¹².
+On the original panel, each of three ancestry-structured sites alone recovers 5–17 of the pooled analysis's 58
+credible sets; the federation recovers all 58, with PIPs equal to the pooled run to 1e-13,
+including a federated covariate adjustment (sites send covariate cross-moments; see
+`covariates.py`).
 
 ## Running it
 

@@ -9,9 +9,13 @@ import pandas as pd
 import pytest
 
 
-@pytest.mark.parametrize("method", ["susiex", "multisusie"])
-def test_secure_backend_matches_plaintext(tmp_path, tmp_path_factory, monkeypatch, method):
-    # This fixture includes allele flips and two ancestries with unequal site sizes.
+@pytest.mark.parametrize(
+    ("method", "fwl"),
+    [("susiex", False), ("multisusie", False), ("susiex", True), ("multisusie", True)],
+)
+def test_secure_backend_matches_plaintext(tmp_path, tmp_path_factory, monkeypatch, method, fwl):
+    # This fixture includes allele flips and two ancestries with unequal site sizes. With
+    # ``fwl`` the sites also send covariate cross-moments, which must survive masking too.
     from test_fine_mapping_shipped_parity import POPS
     from test_fine_mapping_shipped_parity import package as make_package
 
@@ -28,10 +32,20 @@ def test_secure_backend_matches_plaintext(tmp_path, tmp_path_factory, monkeypatc
     sites = ["covenant", "mbzuai"]
     config = {"run_id": "test-" + method, "participants": sites}
     payloads = {False: {}, True: {}}
+    rng = np.random.default_rng(3)
     for site in sites:
         dataset, _ = get_dataset(root / site / "data", site)
+        if fwl:
+            fam = pd.read_csv(
+                root / site / "data" / "site_genotypes.fam", sep=r"\s+", header=None, dtype=str
+            )
+            covariates = pd.DataFrame(rng.normal(size=(len(fam), 3)), columns=["c1", "c2", "c3"])
+            covariates.insert(0, "IID", fam[1].tolist())
+            covariates.to_csv(root / site / "data" / "covariates.tsv", sep="\t", index=False)
         for secure in (False, True):
             settings = {"trainer_output_dirname": str(tmp_path / site), "pops": POPS}
+            if fwl:
+                settings["covariates"] = "covariates.tsv"
             if secure:
                 path = tmp_path / f"{site}.json"
                 path.write_text(
@@ -53,6 +67,10 @@ def test_secure_backend_matches_plaintext(tmp_path, tmp_path_factory, monkeypatc
             )
             trainer.train()
             payloads[secure][site] = trainer.get_parameters()
+            # Covariate cross-moments leave the site only when the coordinator asks.
+            covariate_kinds = ("zx::", "zz::", "zu::", "zy::")
+            sent = [k for k in payloads[secure][site] if k.startswith(covariate_kinds)]
+            assert bool(sent) == fwl
     tables = []
     for secure in (False, True):
         output = tmp_path / str(secure)
@@ -69,6 +87,8 @@ def test_secure_backend_matches_plaintext(tmp_path, tmp_path_factory, monkeypatc
         }
         if secure:
             cfg["secure_aggregation"] = config
+        if fwl:
+            cfg["covariate_adjustment"] = "fwl"
         agg = FineMappingAggregator(
             aggregator_configs=cfg, logger=logging.getLogger("backend-parity")
         )
@@ -79,6 +99,7 @@ def test_secure_backend_matches_plaintext(tmp_path, tmp_path_factory, monkeypatc
         assert len(list((output / "data/instances").glob("*/variants.tsv"))) == 2
         if secure:
             assert (output / "data/secure_aggregation.json").is_file()
+        assert (output / "data/covariate_adjustment.json").is_file() == fwl
         tables.append(table)
     for plain_path in (tmp_path / "False/data/instances").glob("*/variants.tsv"):
         secure_path = tmp_path / "True/data/instances" / plain_path.parent.name / plain_path.name
